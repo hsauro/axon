@@ -1,0 +1,77 @@
+> import docs
+> help docs
+module docs
+  Small numerical helpers.
+  Used by the REPL help tests.
+  exports: norm2, trapz, undocumented, LVParams
+> help docs.norm2
+norm2(v: vector): real
+  Euclidean norm of a real or complex vector.
+  Returns a real scalar.
+> help docs.trapz
+trapz(f, a: real, b: real; n: int = 100): real
+  Integrates f from a to b with n trapezoids.
+
+  The keyword n sets the number of panels.
+> help docs.undocumented
+undocumented(x)
+  (no documentation)
+> help docs.LVParams
+record LVParams(a: real, b: real)
+  Parameters of the Lotka-Volterra model.
+> help docs.hidden
+ImportError: module "docs" has no exported name "hidden"
+  at <repl>:1:1
+> from docs import norm2
+> help norm2
+norm2(v: vector): real
+  Euclidean norm of a real or complex vector.
+  Returns a real scalar.
+> import attached
+> help attached
+module attached
+  (no documentation)
+  exports: double
+> help attached.double
+double(x: matrix{real}): matrix{real}
+  Doubles x. This block opens the file but has no blank line after it,
+  so it documents the function, not the module.
+> import linalg
+> help linalg.solve
+solve(A, b)
+  The solution of A x = b for square A (the same as A \ b).
+> help sqrt
+sqrt(x)
+  The square root (NaN for a negative real; use a complex argument)
+> help print
+print(a, b, ...)
+  Writes the values separated by spaces, then a newline
+> function sq(x: real): real
+...   return x * x
+... end
+> help sq
+sq(x: real): real
+  (no documentation)
+> help   sq
+sq(x: real): real
+  (no documentation)
+> x = 3
+x = 3
+> help x
+x is an int
+> s = "text"
+s = "text"
+> help s
+s is a string
+> help undefined_thing
+NameError: "undefined_thing" is not defined
+  at <repl>:1:1
+> help
+Type a statement or expression to run it; its value is displayed.
+A trailing ";" suppresses the display.
+help name   shows the documentation of a function, record type or module
+Ctrl+D (Ctrl+Z then Enter on Windows) ends the session.
+> help = 2
+help = 2
+> help + 1
+3

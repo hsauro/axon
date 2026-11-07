@@ -1,0 +1,58 @@
+> x = 10
+x = 10
+> y = div(x, 0)
+DomainError: div by zero
+  at <repl>:1:5
+> x
+10
+> y
+NameError: "y" is not defined
+  at <repl>:1:1
+> a = 1; b = undefined_name; c = 3
+NameError: "undefined_name" is not defined
+  at <repl>:1:12
+> a
+1
+> c
+NameError: "c" is not defined
+  at <repl>:1:1
+> function inner(v)
+...   return v + "s"
+... end
+> function outer(v)
+...   return inner(v)
+... end
+> outer(1)
+TypeError: operator + is not defined for int and string
+  at <repl>:2:3 in inner
+  at <repl>:2:10 in outer
+  at <repl>:1:1
+> n = 0
+n = 0
+> for k in 1:5
+...   n = n + 1
+...   if k == 3
+...     error("ValueError", "stop at 3")
+...   end
+... end
+ValueError: stop at 3
+  at <repl>:4:5
+> n
+3
+> A = [1, 2; 3, 4]
+A = 2×2 matrix{int}
+  1  2
+  3  4
+> A[3, 1]
+IndexError: index 3 is out of bounds for a dimension of length 2
+  at <repl>:1:3
+> A[1, 1] = 9;
+> A
+2×2 matrix{int}
+  9  2
+  3  4
+> import no_such_module
+ImportError: module "no_such_module" not found
+  at <repl>:1:1
+> x
+10

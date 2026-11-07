@@ -1,0 +1,100 @@
+> 5
+5
+> -42
+-42
+> 2.5
+2.5
+> 0.1 + 0.2
+0.3
+> 1.0e-10
+1.0e-10
+> 6.02e23
+6.02e23
+> 1.0 / 0.0
+Inf
+> -1.0 / 0.0
+-Inf
+> 0.0 / 0.0
+NaN
+> 3.0 + 4.0i
+3.0 + 4.0i
+> true
+true
+> nothing
+> "S1"
+"S1"
+> "a\tb"
+"a\tb"
+> print("S1")
+S1
+> {1, "S1", 2.5}
+{1, "S1", 2.5}
+> {}
+{}
+> {name: "S1", init: 10.0}
+{name: "S1", init: 10.0}
+> dict("Km" => 0.5, "Vm" => 10.0)
+dict("Km" => 0.5, "Vm" => 10.0)
+> dict()
+dict()
+> 1:5
+1:5
+> 1:2:9
+1:2:9
+> 0.0:0.5:1.0
+0.0:0.5:1.0
+> sin
+function sin
+> function f(x) return x end
+> f
+function f
+> function(x) x end
+anonymous function
+> record P
+...   x: real
+... end
+> P
+record type P
+> P(1.0)
+{x: 1.0}
+> import linalg
+> linalg
+module linalg
+> A = [1, 2; 3, 4]
+A = 2×2 matrix{int}
+  1  2
+  3  4
+> [1.5; -2.0]
+2-vector{real}
+   1.5
+  -2.0
+> [1.0 / 3.0, 2.0]
+1×2 matrix{real}
+  0.333333  2.0
+> zeros(0, 3)
+0×3 matrix{real}
+> {[1, 2; 3, 4], [1; 2]}
+{[1, 2; 3, 4], [1; 2]}
+> reshape([1:24], 12, 2)
+12×2 matrix{int}
+   1  13
+   2  14
+   3  15
+   4  16
+   5  17
+  ⋮
+   8  20
+   9  21
+  10  22
+  11  23
+  12  24
+> reshape([1:20], 2, 10)
+2×10 matrix{int}
+  1  3  5  7  …  13  15  17  19
+  2  4  6  8  …  14  16  18  20
+> speye(2)
+2×2 sparse{real} with 2 stored entries
+  (1, 1)  1.0
+  (2, 2)  1.0
+> {speye(2)}
+{sparse(2×2, 2 stored)}

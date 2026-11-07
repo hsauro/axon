@@ -84,6 +84,7 @@ type
     ExportNames: TList<string>;
     Children: TDictionary<string, TAxValue>;
     Loading: Boolean;
+    Doc: TArray<string>;      // the module docstring (help)
     constructor Create(const AName: string);
     destructor Destroy; override;
   end;
@@ -184,7 +185,7 @@ type
     { Runs one top-level statement (the REPL). Shown receives the values to
       display: an expression's values, or the new value of an assigned name
       (then ShownName is that name). }
-    function ExecTopLevel(S: TStmt; out Shown: TAxValues; out ShownName: string): Boolean;
+    function ExecTopLevel(S: TStmt; out Shown: TAxValues; out ShownNames: TArray<string>): Boolean;
   end;
 
 const
@@ -411,7 +412,12 @@ begin
   FHoistedRecords := TDictionary<TRecordStmt, Boolean>.Create;
   FHoistedExterns := TDictionary<TExternStmt, Boolean>.Create;
   FEndStack := TList<Int64>.Create;
-  FCurrentPath := TPath.GetFullPath(FileName);
+  // A pseudo-file such as <repl> stands for the working directory, so that
+  // imports made at the REPL resolve from there.
+  if FileName.StartsWith('<') then
+    FCurrentPath := IncludeTrailingPathDelimiter(GetCurrentDir) + FileName
+  else
+    FCurrentPath := TPath.GetFullPath(FileName);
   FModules := TDictionary<string, TAxValue>.Create;
   FLoadStack := TList<string>.Create;
   FPrograms := TObjectList<TProgram>.Create;
@@ -1760,6 +1766,7 @@ var
 begin
   RT := TRecordTypeObj.Create;
   RT.Name := S.Name;
+  RT.Doc := S.Doc.ToArray;
   for F in S.Fields do
   begin
     RT.FieldNames := RT.FieldNames + [F.Name];
@@ -2095,8 +2102,9 @@ begin
   SavedPath := FCurrentPath;
   try
     try
-      Prog := ParseProgram(Tokenize(LoadSourceFile(Path), Display), Display);
+      Prog := ParseSource(LoadSourceFile(Path), Display);
       FPrograms.Add(Prog);
+      M.Doc := Prog.Doc.ToArray;
       for S in Prog.Body do
         if (S is TFunctionStmt) and TFunctionStmt(S).Func.Exported then
           M.ExportNames.Add(TFunctionStmt(S).Func.Name)
@@ -2587,12 +2595,14 @@ begin
   M.Loading := False;
 end;
 
-function TInterpreter.ExecTopLevel(S: TStmt; out Shown: TAxValues; out ShownName: string): Boolean;
+function TInterpreter.ExecTopLevel(S: TStmt; out Shown: TAxValues;
+  out ShownNames: TArray<string>): Boolean;
 var
-  V: TAxValue;
+  T: TExpr;
+  Name: string;
 begin
   Shown := nil;
-  ShownName := '';
+  ShownNames := nil;
   if S is TExprStmt then
   begin
     try
@@ -2609,14 +2619,16 @@ begin
     Exit;
   end;
   ExecStmt(S, FGlobals);
-  Result := False;
+  // Assignments to plain names show "name = value", one line per name.
   if (S is TAssignStmt) and (TAssignStmt(S).Target is TNameExpr) then
-  begin
-    ShownName := TNameExpr(TAssignStmt(S).Target).Name;
-    V := Lookup(ShownName, FGlobals, S);
-    Shown := [V];
-    Result := True;
-  end;
+    ShownNames := [TNameExpr(TAssignStmt(S).Target).Name]
+  else if S is TDestructureStmt then
+    for T in TDestructureStmt(S).Targets do
+      if T is TNameExpr then
+        ShownNames := ShownNames + [TNameExpr(T).Name];
+  for Name in ShownNames do
+    Shown := Shown + [Lookup(Name, FGlobals, S)];
+  Result := Length(ShownNames) > 0;
 end;
 
 end.

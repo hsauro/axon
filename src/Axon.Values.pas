@@ -127,6 +127,7 @@ type
   public
     FieldNames: TArray<string>;
     FieldTypes: TArray<TTypeRef>;   // owned by the AST
+    Doc: TArray<string>;            // docstring lines (help)
     function IndexOf(const Field: string): Integer;
   end;
 
@@ -1078,7 +1079,7 @@ begin
       if TCallableObj(V.Obj).Name <> '' then
         Result := 'function ' + TCallableObj(V.Obj).Name
       else
-        Result := 'function';
+        Result := 'anonymous function';
     vkList:    Result := FormatList(AsList(V));
     vkRecord:  Result := FormatRecord(AsRecord(V));
     vkDict:    Result := FormatDict(AsDict(V));

@@ -179,6 +179,7 @@ type
     Body: TStmtList;
     Exported: Boolean;
     Doc: TList<string>;  // docstring lines
+    Header: string;      // the header as written (help); '' when unknown
     constructor Create;
     destructor Destroy; override;
   end;
@@ -363,6 +364,7 @@ type
   public
     FileName: string;
     Body: TStmtList;
+    Doc: TList<string>;  // the module docstring
     constructor Create;
     destructor Destroy; override;
   end;
@@ -729,10 +731,12 @@ constructor TProgram.Create;
 begin
   inherited;
   Body := TStmtList.Create;
+  Doc := TList<string>.Create;
 end;
 
 destructor TProgram.Destroy;
 begin
+  Doc.Free;
   Body.Free;
   inherited;
 end;

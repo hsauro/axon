@@ -26,11 +26,15 @@ uses
 (* Parses a whole file. Raises EAxonError (SyntaxError) on the first error. *)
 function ParseProgram(const Tokens: TArray<TToken>; const FileName: string): TProgram;
 
+(* Tokenizes and parses source text, then records the header text of each
+   top-level function (for help). *)
+function ParseSource(const Source, FileName: string): TProgram;
+
 implementation
 
 uses
-  System.SysUtils, System.Generics.Collections,
-  Axon.Errors;
+  System.SysUtils, System.Character, System.Generics.Collections,
+  Axon.Errors, Axon.Lexer;
 
 type
   TKinds = set of TTokenKind;
@@ -44,6 +48,7 @@ type
     FInIndex: Boolean;
     FLoopDepth: Integer;   // loops enclosing the current point, within the current function
     FFuncDepth: Integer;   // functions enclosing the current point
+    FModuleDoc: TList<string>;   // set by Run: the module docstring goes here
 
     // ---- token access
     function Cur: TToken;
@@ -278,7 +283,14 @@ begin
         tkNewline:
           begin
             if PrevNewline then
+            begin
+              // A docstring that opens a file, followed by a blank line,
+              // documents the module.
+              if (Closers = []) and (Into.Count = 0) and (FModuleDoc <> nil) and
+                (FModuleDoc.Count = 0) then
+                FModuleDoc.AddRange(Docs);
               Docs.Clear;   // a blank line separates a docstring from what follows
+            end;
             PrevNewline := True;
             Advance;
             Continue;
@@ -1669,7 +1681,9 @@ begin
     Result.FileName := FFile;
     Start := FTokens[0];
     Result.SetPos(Start);
+    FModuleDoc := Result.Doc;
     ParseBlock(Result.Body, [], Start);
+    FModuleDoc := nil;
     if CurKind <> tkEOF then
       ErrorExpected('a statement');
   except
@@ -1688,6 +1702,126 @@ begin
   finally
     P.Free;
   end;
+end;
+
+(* The header of a function as written: from "function" (at Line:Col) through
+   the closing ")" of its parameters and an optional ": type", which may
+   carry braces (matrix{real}). Parameter lists may span lines; the line
+   breaks become single spaces. *)
+function HeaderText(const Lines: TArray<string>; Line, Col: Integer): string;
+var
+  L, I, Depth: Integer;
+  Text: string;
+  C: Char;
+  InString, Closed: Boolean;
+  SB: TStringBuilder;
+
+  // Appends the return type after ':' (an identifier with optional braces).
+  procedure TakeType(const Text: string; var I: Integer);
+  var
+    J, D: Integer;
+  begin
+    J := I;
+    while (J <= Length(Text)) and (Text[J] = ' ') do Inc(J);
+    if (J > Length(Text)) or (Text[J] <> ':') then
+      Exit;
+    Inc(J);
+    while (J <= Length(Text)) and (Text[J] = ' ') do Inc(J);
+    D := 0;
+    while J <= Length(Text) do
+    begin
+      C := Text[J];
+      if C = '{' then Inc(D)
+      else if C = '}' then Dec(D)
+      else if (D = 0) and not (C.IsLetterOrDigit or (C = '_')) then
+        Break;
+      Inc(J);
+      if (D = 0) and (C = '}') then
+        Break;
+    end;
+    SB.Append(Copy(Text, I, J - I));
+    I := J;
+  end;
+
+begin
+  Result := '';
+  if (Line < 1) or (Line > Length(Lines)) then
+    Exit;
+  SB := TStringBuilder.Create;
+  try
+    Depth := 0;
+    InString := False;
+    Closed := False;
+    L := Line;
+    I := Col;
+    while (L <= Length(Lines)) and not Closed do
+    begin
+      Text := Lines[L - 1].TrimRight;
+      if L > Line then
+      begin
+        SB.Append(' ');
+        I := 1;
+        while (I <= Length(Text)) and (Text[I] = ' ') do Inc(I);
+      end;
+      while I <= Length(Text) do
+      begin
+        C := Text[I];
+        if InString then
+        begin
+          SB.Append(C);
+          if C = '' then
+          begin
+            Inc(I);
+            if I <= Length(Text) then SB.Append(Text[I]);
+          end
+          else if C = '"' then
+            InString := False;
+          Inc(I);
+          Continue;
+        end;
+        if (C = '#') then
+          Break;
+        SB.Append(C);
+        Inc(I);
+        case C of
+          '"': InString := True;
+          '(', '[', '{': Inc(Depth);
+          ')', ']', '}':
+            begin
+              Dec(Depth);
+              if (Depth = 0) and (C = ')') then
+              begin
+                TakeType(Text, I);
+                Closed := True;
+                Break;
+              end;
+            end;
+        end;
+      end;
+      Inc(L);
+    end;
+    Result := SB.ToString.Trim;
+  finally
+    SB.Free;
+  end;
+  if Result.StartsWith('function ') then
+    Result := Copy(Result, Length('function ') + 1, MaxInt).TrimLeft;
+end;
+
+function ParseSource(const Source, FileName: string): TProgram;
+var
+  Lines: TArray<string>;
+  S: TStmt;
+  F: TFunctionDecl;
+begin
+  Result := ParseProgram(Tokenize(Source, FileName), FileName);
+  Lines := Source.Replace(#13#10, #10).Replace(#13, #10).Split([#10]);
+  for S in Result.Body do
+    if S is TFunctionStmt then
+    begin
+      F := TFunctionStmt(S).Func;
+      F.Header := HeaderText(Lines, F.Line, F.Col);
+    end;
 end;
 
 end.

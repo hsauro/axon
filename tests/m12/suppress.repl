@@ -1,0 +1,25 @@
+> a = 5;
+> a
+5
+> a;
+> a + 1;
+> b = a * 2
+b = 10
+> print(b);
+10
+> c = 1; d = 2
+d = 2
+> c; d
+2
+> c, d
+SyntaxError: expected end of line or ";", found ","
+  at <repl>:1:2
+> [p, q] = size(ones(2, 3))
+p = 2
+q = 3
+> [p, q] = size(ones(4, 5));
+> p
+4
+> size(ones(2, 3))
+2
+3

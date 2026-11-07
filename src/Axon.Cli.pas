@@ -32,6 +32,7 @@ begin
   Writeln('  axon file.sci           run a program (.sci or .txt)');
   Writeln('  axon --tokens file.sci  print the token stream');
   Writeln('  axon --ast file.sci     print the syntax tree');
+  Writeln('  axon --transcript file  replay the input lines of a REPL transcript');
   Writeln('  axon test [-v] [path]   run the conformance tests (default path: tests)');
   Writeln('  axon --version          print the version');
 end;
@@ -69,7 +70,7 @@ begin
     Exit(ExitUsage);
   // The whole file is parsed before anything runs, so a syntax error anywhere
   // stops the program before it has any effect.
-  Prog := ParseProgram(Tokenize(Source, FileName), FileName);
+  Prog := ParseSource(Source, FileName);
   try
     Interp := TInterpreter.Create(FileName);
     try
@@ -138,6 +139,20 @@ begin
     Result := RunTestCommand(Copy(Args, 1, MaxInt))
   else if (Cmd = '--tokens') or (Cmd = '--ast') then
     Result := FrontEndDump(Cmd, Arg1)
+  else if Cmd = '--transcript' then
+  begin
+    if Arg1 = '' then
+    begin
+      Writeln(ErrOutput, 'axon: --transcript needs a transcript file');
+      Exit(ExitUsage);
+    end;
+    if not FileExists(Arg1) then
+    begin
+      Writeln(ErrOutput, 'axon: cannot read ', Arg1);
+      Exit(ExitUsage);
+    end;
+    Result := RunTranscript(Arg1);
+  end
   else if Cmd.StartsWith('-') then
   begin
     Writeln(ErrOutput, 'axon: unknown option ', Cmd);

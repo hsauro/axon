@@ -83,6 +83,7 @@ xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.sci" "$(MSBuildProjectDir
         <DCCReference Include="src\Axon.Builtins.pas"/>
         <DCCReference Include="src\Axon.Interp.pas"/>
         <DCCReference Include="src\Axon.Repl.pas"/>
+        <DCCReference Include="src\Axon.Help.pas"/>
         <DCCReference Include="src\Axon.Packages.pas"/>
         <DCCReference Include="src\Axon.Ffi.pas"/>
         <DCCReference Include="src\Axon.Linalg.pas"/>

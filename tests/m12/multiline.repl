@@ -1,0 +1,53 @@
+> x = 0
+x = 0
+> for i in 1:3
+...   x = x + i
+... end
+> x
+6
+> if x > 5
+...   print("big")
+... else
+...   print("small")
+... end
+big
+> v = [1, 2,
+...   3]
+v = 1×3 matrix{int}
+  1  2  3
+> s = (1 +
+...   2)
+s = 3
+> t = 1 +
+...   2
+t = 3
+> function add(a,
+...     b)
+...   return a + b
+... end
+> add(2, 3)
+5
+> r = {a: 1,
+...   b: [1; 2]}
+r = {a: 1, b: [1; 2]}
+> while x > 4
+...   x = x - 1
+...   if x == 5
+...     print("five")
+...   end
+... end
+five
+> x
+4
+> try
+...   error("boom")
+... catch e
+...   print(e.message)
+... end
+boom
+> function bad(
+...   1)
+SyntaxError: expected a parameter name, found number 1
+  at <repl>:2:3
+> x
+4

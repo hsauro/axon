@@ -4,7 +4,7 @@ interface
 
 const
   AxonVersion = '0.0.1';
-  AxonMilestone = 'M0';
+  AxonMilestone = 'M12';
 
 implementation
 

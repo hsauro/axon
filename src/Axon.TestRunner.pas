@@ -19,6 +19,9 @@ unit Axon.TestRunner;
     name.tokens                  - output of `axon --tokens name.sci`
     name.ast                     - output of `axon --ast name.sci`
 
+  A name.repl file is a REPL transcript: `axon --transcript name.repl` must
+  reproduce it, ignoring trailing spaces and trailing blank lines.
+
   Line endings are normalised to LF before comparison. }
 
 interface
@@ -38,10 +41,10 @@ const
   ErrorDirective = '#! error:';
 
 type
-  TTestKind = (tkOutput, tkError, tkTokens, tkAst);
+  TTestKind = (tkOutput, tkError, tkTokens, tkAst, tkTranscript);
 
   TTestCase = record
-    Source: string;          // full path of the .sci file
+    Source: string;          // full path of the .sci (or .repl) file
     Kind: TTestKind;
     ExpectedFile: string;    // .out / .tokens / .ast, or '' for none
     ExpectedKind: string;    // for tkError
@@ -55,11 +58,27 @@ type
   end;
 
 const
-  KindNames: array[TTestKind] of string = ('output', 'error', 'tokens', 'ast');
+  KindNames: array[TTestKind] of string = ('output', 'error', 'tokens', 'ast', 'transcript');
 
 function Normalize(const S: string): string;
 begin
   Result := S.Replace(#13#10, #10).Replace(#13, #10);
+end;
+
+{ A transcript compares without trailing spaces or trailing blank lines. }
+function NormalizeTranscript(const S: string): string;
+var
+  L: string;
+  SB: TStringBuilder;
+begin
+  SB := TStringBuilder.Create;
+  try
+    for L in Normalize(S).Split([#10]) do
+      SB.Append(L.TrimRight).Append(#10);
+    Result := SB.ToString.TrimRight + #10;
+  finally
+    SB.Free;
+  end;
 end;
 
 function QuoteLine(const S: string): string;
@@ -137,6 +156,17 @@ begin
   Base := ChangeFileExt(SciFile, '');
   Found := False;
 
+  // A .repl file is a REPL transcript that must reproduce itself.
+  if SameText(ExtractFileExt(SciFile), '.repl') then
+  begin
+    C := Default(TTestCase);
+    C.Source := SciFile;
+    C.Kind := tkTranscript;
+    C.ExpectedFile := SciFile;
+    List.Add(C);
+    Exit;
+  end;
+
   Line := Trim(FirstLineOf(LoadSourceFile(SciFile)));
   if StartsText(ErrorDirective, Line) then
   begin
@@ -184,7 +214,8 @@ var
 begin
   Result.Name := Name;
   Result.Fixtures := 0;
-  Files := TDirectory.GetFiles(Dir, '*.sci', TSearchOption.soTopDirectoryOnly);
+  Files := TDirectory.GetFiles(Dir, '*.sci', TSearchOption.soTopDirectoryOnly) +
+    TDirectory.GetFiles(Dir, '*.repl', TSearchOption.soTopDirectoryOnly);
   TArray.Sort<string>(Files, TStringComparer.Ordinal);
   List := TList<TTestCase>.Create;
   try
@@ -254,6 +285,7 @@ begin
   case C.Kind of
     tkTokens: Args := ['--tokens', ExtractFileName(C.Source)];
     tkAst:    Args := ['--ast', ExtractFileName(C.Source)];
+    tkTranscript: Args := ['--transcript', ExtractFileName(C.Source)];
   else
     Args := [ExtractFileName(C.Source)];
   end;
@@ -312,8 +344,16 @@ begin
 
   if C.ExpectedFile <> '' then
   begin
-    Expected := Normalize(LoadUtf8File(C.ExpectedFile));
-    Actual := Normalize(StdOut);
+    if C.Kind = tkTranscript then
+    begin
+      Expected := NormalizeTranscript(LoadUtf8File(C.ExpectedFile));
+      Actual := NormalizeTranscript(StdOut);
+    end
+    else
+    begin
+      Expected := Normalize(LoadUtf8File(C.ExpectedFile));
+      Actual := Normalize(StdOut);
+    end;
     if Expected <> Actual then
     begin
       Detail := DescribeDiff(Expected, Actual);
@@ -326,7 +366,7 @@ end;
 procedure PrintUsage;
 begin
   Writeln('usage: axon test [-v] [path]');
-  Writeln('  path     tests root (default "tests"), a milestone folder, or one .sci file');
+  Writeln('  path     tests root (default "tests"), a milestone folder, or one .sci or .repl file');
   Writeln('  -v       list passing tests as well as failures');
 end;
 

@@ -25,6 +25,7 @@ uses
   Axon.Builtins in 'src\Axon.Builtins.pas',
   Axon.Interp in 'src\Axon.Interp.pas',
   Axon.Repl in 'src\Axon.Repl.pas',
+  Axon.Help in 'src\Axon.Help.pas',
   Axon.Packages in 'src\Axon.Packages.pas',
   Axon.Ffi in 'src\Axon.Ffi.pas',
   Axon.Linalg in 'src\Axon.Linalg.pas',

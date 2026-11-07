@@ -1,0 +1,11 @@
+> A = [1, 2; 3, 4]
+A = 2×2 matrix{int}
+  1  2
+  3  4
+> import linalg
+> linalg.eig(A)
+2-vector{real}
+  -0.372281
+    5.37228
+> z = sqrt(-4 + 0i)
+z = 0.0 + 2.0i

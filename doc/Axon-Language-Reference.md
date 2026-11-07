@@ -48,7 +48,7 @@ Strings are enclosed in double quotes, with the escapes `\n`, `\t`, `\"`, `\\` a
 
 - `#` starts a comment that runs to the end of the line.
 - `#=` … `=#` encloses a block comment, which may span lines and may be nested.
-- `##` at the start of a line (after optional spaces) begins a documentation comment, which the lexer keeps as a `DOCSTRING` token. Consecutive `##` lines directly above a `function` or `record` form its docstring. Elsewhere on a line, `##` is an ordinary comment.
+- `##` at the start of a line (after optional spaces) begins a documentation comment, which the lexer keeps as a `DOCSTRING` token. Consecutive `##` lines directly above a `function` or `record` form its docstring. A `##` block at the very start of a file, before any statement and followed by a blank line, is the module's docstring. Elsewhere on a line, `##` is an ordinary comment.
 - A block comment that spans lines still ends those lines: the lexer emits a `NEWLINE` for each line end inside it.
 
 ### Characters outside tokens
@@ -254,6 +254,10 @@ Output tests compare text exactly, so every value has one display form.
 | `string` | Without quotes from `print`; with quotes at the REPL | `S1` / `"S1"` |
 | `list` | Elements in braces, separated by ", " | `{1, "S1", 2.5}`, `{}` |
 | `record` | Fields in braces as `name: value`, in definition order | `{name: "S1", init: 10.0}` |
+| `range` | As written, with the step only when it is not 1 | `1:5`, `1:2:9`, `0.0:0.5:1.0` |
+| function | `function` and its name; a lambda is anonymous | `function solve`, `anonymous function` |
+| record type | `record type` and its name | `record type LVParams` |
+| `module` | `module` and its name | `module linalg` |
 
 Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print(a, b, …)` writes its arguments separated by one space and ends with a newline. Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. A dictionary displays as the call that builds it, `dict("Km" => 0.5, "Vm" => 10.0)`, with entries in insertion order; an empty one is `dict()`.
 
@@ -538,6 +542,15 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 - **Pointers.** A `ptr T` result, or a callback argument, that is not an array is an opaque pointer value: `typeof` gives `"pointer"`, it displays as `pointer 0x…`, it compares equal to the same address, and it can be passed back to any `ptr` parameter. A null pointer is `nothing`, and `nothing` passed to a `ptr` or `cstring` parameter is null. `ptr void` also accepts any array, whose buffer is passed as is.
 - **Element widths.** `ptr float64`, `ptr complex` and `ptr int64` pass a `real`, `complex` or `int` array's own buffer. `ptr int32`, `ptr int16`, `ptr int8`, the unsigned widths and `ptr float32` take an `int` or `real` array through a temporary buffer of that width: values are converted in before the call, checked to fit, and converted back into the (unique) array after it.
 - **Results.** Integer results become `int` (a `uint64` above the `int` range raises `OverflowError`), floating-point results `real`, `cstring` results a copied `string` (or `nothing` for null), and a function with no result type returns `nothing`. `char` is an 8-bit integer; a one-character ASCII string is also accepted for it.
+
+## The REPL
+
+`axon` with no arguments starts an interactive session. The prompt is `> `. Input that ends inside an open block or bracket continues on further lines, each with the prompt `... `, until the construct closes. Statements run in the session's top-level scope, as in a script, and imports resolve from the working directory.
+
+- **Display.** After an expression statement the REPL displays its value as described under Display, with strings quoted; a value of `nothing` is not displayed, so `print(x)` shows only its own output. An assignment to a plain name shows `name = ` followed by the value, and a destructuring assignment shows one such line per name. Other statements show nothing. A trailing `;` suppresses the display.
+- **Errors.** An uncaught error prints the report described under Errors and returns to the prompt. Statements that completed before the error keep their effects, so the session's variables stay intact; the rest of that input is skipped.
+- **`help`.** A line of the form `help name` (where `name` may be dotted, as in `help linalg.solve`) is a REPL command, not a statement. For a function it shows the function's header as written in the source, without `export` and `function`, followed by its docstring indented by two spaces. A record type shows as `record T(field: type, …)` and a module as `module m`, each followed by its docstring; a module then lists its exported names on a line `  exports: a, b, …`. A built-in function shows its parameters and a one-line description. A name without a docstring shows `  (no documentation)`, and any other value shows `name is a T`, with `T` its `typeof` and `an` before a vowel, as in `x is an int`. A name that is not defined raises `NameError` as an expression would. `help` alone lists the REPL commands.
+- **Transcripts.** `axon --transcript file` runs a recorded session: it takes as input the lines of the file that begin with `> ` or `... ` (the prompt is removed), runs them as the REPL would, and writes the transcript to standard output: each input line after its prompt, then its output, with error reports in place. Lines of the file that are not input are ignored, so a transcript file reproduces itself when the REPL's behaviour matches it. Trailing spaces are not written.
 
 ## Decisions made in this draft
 

@@ -183,12 +183,12 @@ This milestone adds the core sparse type and its solvers.
 
 This milestone finishes the interactive environment. A basic REPL exists from M3; here it reaches the white paper's standard.
 
-- [ ] Multi-line input that waits for an open block or bracket to close
-- [ ] A trailing `;` suppresses display
-- [ ] Display of every type, matching the white paper's examples
-- [ ] An uncaught error returns to the prompt with variables intact
-- [ ] `help name` shows the `##` docstring of a function, record or module
-- [ ] REPL behaviour tested by feeding scripted input and comparing a transcript
+- [x] Multi-line input that waits for an open block or bracket to close
+- [x] A trailing `;` suppresses display
+- [x] Display of every type, matching the white paper's examples
+- [x] An uncaught error returns to the prompt with variables intact
+- [x] `help name` shows the `##` docstring of a function, record or module
+- [x] REPL behaviour tested by feeding scripted input and comparing a transcript
 
 ### M13 — Official packages
 
