@@ -124,12 +124,12 @@ This milestone adds vectors and matrices in pure code, without BLAS. The matrix 
 
 This milestone adds lists, records and dictionaries.
 
-- [ ] List literals, indexing, range slices, iteration with `for`, and `append`
-- [ ] Record literals with field access, and assignment that adds fields
-- [ ] Declared `record` types with `FieldError` and field type checks
-- [ ] `dict` with `=>` pairs, `KeyError`, and `get` with a default
-- [ ] Value semantics for all three, including nested values
-- [ ] A list of records used as a metadata table, matching the [white paper's example](Axon-White-Paper.md#collections-lists-records-and-dictionaries)
+- [x] List literals, indexing, range slices, iteration with `for`, and `append`
+- [x] Record literals with field access, and assignment that adds fields
+- [x] Declared `record` types with `FieldError` and field type checks
+- [x] `dict` with `=>` pairs, `KeyError`, and `get` with a default
+- [x] Value semantics for all three, including nested values
+- [x] A list of records used as a metadata table, matching the [white paper's example](Axon-White-Paper.md#collections-lists-records-and-dictionaries)
 
 ## Modules, native code and numerics
 

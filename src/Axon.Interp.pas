@@ -90,13 +90,14 @@ type
     FCallDepth: Integer;
     FReturn: TAxValues;                       // values of the last `return`
     FHoisted: TDictionary<TFunctionDecl, Boolean>;
+    FHoistedRecords: TDictionary<TRecordStmt, Boolean>;
     FEndStack: TList<Int64>;                  // values of `end` in nested indexing
     procedure NotYet(const What, Milestone: string; Node: TNode);
     function FunctionValue(Decl: TFunctionDecl; Scope: TScope; IsClosure: Boolean): TAxValue;
     function FunctionRootOf(Scope: TScope): TScope;
     function Lookup(const Name: string; Scope: TScope; Node: TNode): TAxValue;
     procedure Assign(const Name: string; const V: TAxValue; Scope: TScope);
-    procedure Store(Cell: TVarCell; const V: TAxValue; const Name: string);
+    procedure Store(Cell: TVarCell; const V: TAxValue; const Name: string; Scope: TScope);
     procedure CheckCondition(const V: TAxValue; const Construct: string);
     function ExecBody(Stmts: TStmtList; Scope: TScope): TSignal;
     function ExecBlock(Stmts: TStmtList; Parent: TScope): TSignal;
@@ -114,7 +115,20 @@ type
       E: TIndexExpr; Scope: TScope): TSelection;
     function IndexList(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
     function FindCellForWrite(const Name: string; Scope: TScope): TVarCell;
-    procedure AssignIndexed(Target: TIndexExpr; const V: TAxValue; Scope: TScope);
+    procedure AssignArraySlot(var Slot: TAxValue; Target: TIndexExpr; const V: TAxValue;
+      TypeRef: TTypeRef; const Name: string; Scope: TScope);
+    procedure SetIn(var Slot: TAxValue; const Steps: TArray<TExpr>; I: Integer;
+      const V: TAxValue; RootCell: TVarCell; const Name: string; Scope: TScope);
+    procedure AssignPath(Target: TExpr; const V: TAxValue; Scope: TScope);
+    function Coerce(const V: TAxValue; T: TTypeRef; const What: string; Scope: TScope): TAxValue;
+    function CoerceRecord(const V, RTValue: TAxValue; const What: string; Scope: TScope): TAxValue;
+    function RecordTypeValue(S: TRecordStmt): TAxValue;
+    function ConstructRecord(const RTValue: TAxValue; E: TCallExpr; Scope: TScope): TAxValue;
+    function BuildDict(E: TCallExpr; Scope: TScope): TAxValue;
+    function EvalList(E: TListExpr; Scope: TScope): TAxValue;
+    function EvalRecord(E: TRecordExpr; Scope: TScope): TAxValue;
+    function IndexString(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
+    function IndexDict(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
     function MakeRange(E: TRangeExpr; Scope: TScope): TAxValue;
     function EvalLogical(E: TBinaryExpr; Scope: TScope): TAxValue;
     function EvalMulti(E: TExpr; Scope: TScope): TAxValues;
@@ -146,8 +160,10 @@ function CoerceToType(const V: TAxValue; T: TTypeRef; const What: string): TAxVa
 implementation
 
 uses
-  System.Math,
+  System.Math, System.Character,
   Axon.Errors, Axon.Tokens, Axon.Ops, Axon.Builtins, Axon.Complex, Axon.Arrays;
+
+function StringChars(const S: string): TArray<string>; forward;
 
 { ===================== type annotations ===================== }
 
@@ -331,12 +347,14 @@ begin
     end);
   FGlobals := TScope.Create(FPrelude, rkModule);
   FHoisted := TDictionary<TFunctionDecl, Boolean>.Create;
+  FHoistedRecords := TDictionary<TRecordStmt, Boolean>.Create;
   FEndStack := TList<Int64>.Create;
 end;
 
 destructor TInterpreter.Destroy;
 begin
   FHoisted.Free;
+  FHoistedRecords.Free;
   FEndStack.Free;
   // Functions stored in the globals refer back to them, so the globals may
   // stay alive in a cycle; that memory goes when the process ends.
@@ -402,10 +420,10 @@ begin
     FFile, Node.Line, Node.Col);
 end;
 
-procedure TInterpreter.Store(Cell: TVarCell; const V: TAxValue; const Name: string);
+procedure TInterpreter.Store(Cell: TVarCell; const V: TAxValue; const Name: string; Scope: TScope);
 begin
   if Cell.TypeRef <> nil then
-    Cell.Value := CoerceToType(V, Cell.TypeRef, Format('variable "%s"', [Name]))
+    Cell.Value := Coerce(V, Cell.TypeRef, Format('variable "%s"', [Name]), Scope)
   else
     Cell.Value := V;
 end;
@@ -424,7 +442,7 @@ begin
     begin
       if C.IsGlobalAlias then
         C := S.Module.Define(Name);
-      Store(C, V, Name);
+      Store(C, V, Name, Scope);
       Exit;
     end;
     if S.Root <> rkNone then
@@ -438,7 +456,7 @@ begin
     end;
     S := S.Parent;
   end;
-  Store(FirstRoot.Define(Name), V, Name);
+  Store(FirstRoot.Define(Name), V, Name, Scope);
 end;
 
 procedure TInterpreter.CheckCondition(const V: TAxValue; const Construct: string);
@@ -486,6 +504,9 @@ var
   K: Int64;
   A: TArrayObj;
   N: Int64;
+  Items: TAxValues;
+  Chars: TArray<string>;
+  J: Integer;
   IterScope: TScope;
   Sig: TSignal;
 begin
@@ -505,6 +526,22 @@ begin
     A := AsArray(Iter);
     N := A.Count;
   end
+  else if Iter.Kind in [vkList, vkDict, vkString] then
+  begin
+    // A list's elements, a dictionary's keys, a string's characters.
+    case Iter.Kind of
+      vkList: Items := AsList(Iter).Items;
+      vkDict: Items := Copy(AsDict(Iter).Keys);
+    else
+      begin
+        Chars := StringChars(AsString(Iter));
+        SetLength(Items, Length(Chars));
+        for J := 0 to High(Chars) do
+          Items[J] := StringValue(Chars[J]);
+      end;
+    end;
+    N := Length(Items);
+  end
   else
   begin
     RaiseFmt(TypeError, 'cannot iterate over %s', [TypeName(Iter)]);
@@ -518,8 +555,10 @@ begin
     try
       if R <> nil then
         IterScope.Define(S.VarName).Value := R.ItemAt(K)
+      else if A <> nil then
+        IterScope.Define(S.VarName).Value := A.Get(K)
       else
-        IterScope.Define(S.VarName).Value := A.Get(K);
+        IterScope.Define(S.VarName).Value := Items[K];
       Sig := ExecBody(S.Body, IterScope);
     finally
       IterScope.Release;
@@ -548,7 +587,7 @@ begin
     C := Scope.Define(S.Name);
     C.IsGlobalAlias := False;
     C.TypeRef := S.TypeRef;
-    Store(C, V, S.Name);
+    Store(C, V, S.Name, Scope);
     Exit;
   end;
 
@@ -564,7 +603,7 @@ begin
     ModCell := Scope.Module.Define(S.Name);
     if S.TypeRef <> nil then
       ModCell.TypeRef := S.TypeRef;
-    Store(ModCell, V, S.Name);
+    Store(ModCell, V, S.Name, Scope);
   end;
 end;
 
@@ -582,16 +621,13 @@ var
   Values: TAxValues;
   I: Integer;
 begin
-  for I := 0 to S.Targets.Count - 1 do
-    if not ((S.Targets[I] is TNameExpr) or (S.Targets[I] is TIndexExpr)) then
-      NotYet('assignment to a field', 'M7', S.Targets[I]);
   Values := EvalMulti(S.Value, Scope);
   if Length(Values) <> S.Targets.Count then
     RaiseFmt(ArgumentError, 'cannot unpack %d value(s) into %d targets',
       [Length(Values), S.Targets.Count]);
   for I := 0 to S.Targets.Count - 1 do
-    if S.Targets[I] is TIndexExpr then
-      AssignIndexed(TIndexExpr(S.Targets[I]), Values[I], Scope)
+    if not (S.Targets[I] is TNameExpr) then
+      AssignPath(S.Targets[I], Values[I], Scope)
     else
       Assign(TNameExpr(S.Targets[I]).Name, Values[I], Scope);
 end;
@@ -653,22 +689,20 @@ begin
     begin
       Target := TAssignStmt(S).Target;
       V := Eval(TAssignStmt(S).Value, Scope);
-      if Target is TIndexExpr then
+      if not (Target is TNameExpr) then
       begin
         if TAssignStmt(S).TypeRef <> nil then
           RaiseError(TypeError, 'only a plain variable can carry a type annotation');
-        AssignIndexed(TIndexExpr(Target), V, Scope);
+        AssignPath(Target, V, Scope);
         Exit;
       end;
-      if not (Target is TNameExpr) then
-        NotYet('assignment to a field', 'M7', S);
       if TAssignStmt(S).TypeRef <> nil then
       begin
         // x: T = e declares x in the current scope.
         Cell := Scope.Define(TNameExpr(Target).Name);
         Cell.IsGlobalAlias := False;
         Cell.TypeRef := TAssignStmt(S).TypeRef;
-        Store(Cell, V, TNameExpr(Target).Name);
+        Store(Cell, V, TNameExpr(Target).Name, Scope);
       end
       else
         Assign(TNameExpr(Target).Name, V, Scope);
@@ -733,7 +767,7 @@ begin
         V := FunctionValue(Decl, Scope, Root.Root <> rkModule);
         Cell := Root.Define(Decl.Name);
         Cell.IsGlobalAlias := False;
-        Store(Cell, V, Decl.Name);
+        Store(Cell, V, Decl.Name, Scope);
       end;
     end
     else if C = TDeclStmt then
@@ -743,7 +777,16 @@ begin
     else if C = TTryStmt then
       Result := ExecTry(TTryStmt(S), Scope)
     else if C = TRecordStmt then
-      NotYet('record declaration', 'M7', S)
+    begin
+      if not FHoistedRecords.ContainsKey(TRecordStmt(S)) then
+      begin
+        Root := FunctionRootOf(Scope);
+        Cell := Root.Define(TRecordStmt(S).Name);
+        Cell.IsGlobalAlias := False;
+        Cell.TypeRef := nil;
+        Cell.Value := RecordTypeValue(TRecordStmt(S));
+      end;
+    end
     else if C = TImportStmt then
       NotYet('import', 'M8', S)
     else if C = TExternStmt then
@@ -773,7 +816,7 @@ begin
       RaiseFmt(ArgumentError, '%s takes no keyword arguments (got %s=)',
         [B.Name, E.Args[I].Name]);
     if E.Args[I].Kind = akPair then
-      NotYet('"=>" pairs', 'M7', E.Args[I]);
+      RaiseError(TypeError, '"=>" pairs are only accepted by dict(...)');
     Args[I] := Eval(E.Args[I].Value, Scope);
   end;
   if (Length(Args) < B.MinArgs) or ((B.MaxArgs >= 0) and (Length(Args) > B.MaxArgs)) then
@@ -882,7 +925,7 @@ begin
         else
           V := Eval(P.Default, Root);
         if P.TypeRef <> nil then
-          V := CoerceToType(V, P.TypeRef, Format('argument "%s" of %s', [P.Name, Fn]));
+          V := Coerce(V, P.TypeRef, Format('argument "%s" of %s', [P.Name, Fn]), Root);
         Cell := Root.Define(P.Name);
         Cell.TypeRef := P.TypeRef;
         Cell.Value := V;
@@ -914,8 +957,8 @@ begin
       if Length(Result) <> 1 then
         RaiseFmt(TypeError, '%s is annotated to return %s but returned %d values',
           [Fn, D.ReturnType.ToString, Length(Result)]);
-      Result[0] := CoerceToType(Result[0], D.ReturnType,
-        Format('the return value of %s', [Fn]));
+      Result[0] := Coerce(Result[0], D.ReturnType,
+        Format('the return value of %s', [Fn]), F.Closure);
     end;
   finally
     Dec(FCallDepth);
@@ -933,7 +976,12 @@ begin
     Callee := Eval(E.Callee, Scope);
     case Callee.Kind of
       vkBuiltin:
-        Result := CallBuiltin(AsBuiltin(Callee), E, Scope);
+        if AsBuiltin(Callee).Name = 'dict' then
+          Result := [BuildDict(E, Scope)]
+        else
+          Result := CallBuiltin(AsBuiltin(Callee), E, Scope);
+      vkRecordType:
+        Result := [ConstructRecord(Callee, E, Scope)];
       vkFunction:
         begin
           // Arguments are evaluated left to right before the call.
@@ -945,7 +993,7 @@ begin
                   KwNames := KwNames + [A.Name];
                   KwValues := KwValues + [Eval(A.Value, Scope)];
                 end;
-              akPair: NotYet('"=>" pairs', 'M7', A);
+              akPair: RaiseError(TypeError, '"=>" pairs are only accepted by dict(...)');
             end;
           Result := Invoke(TFunctionObj(Callee.Obj), Pos, KwNames, KwValues);
         end;
@@ -1199,15 +1247,21 @@ var
   L: TListObj;
   Pos: TArray<Integer>;
   Scalar: Boolean;
+  Items: TAxValues;
+  K: Integer;
 begin
   L := AsList(T);
   if E.Items.Count <> 1 then
     raise EAxonError.CreateAt(IndexError, Format('a list takes one index, got %d',
       [E.Items.Count]), FFile, E.Line, E.Col);
   EvalIndexItem(E.Items[0], Length(L.Items), Scope, Pos, Scalar);
-  if not Scalar then
-    NotYet('list slices', 'M7', E);
-  Result := L.Items[Pos[0]];
+  if Scalar then
+    Exit(L.Items[Pos[0]]);
+  // A range, index list or mask selects a sublist.
+  SetLength(Items, Length(Pos));
+  for K := 0 to High(Pos) do
+    Items[K] := L.Items[Pos[K]];
+  Result := ListValue(Items);
 end;
 
 function TInterpreter.EvalIndex(E: TIndexExpr; Scope: TScope): TAxValue;
@@ -1227,7 +1281,9 @@ begin
         Result := ReadSelection(A, ResolveSelection(A.Rows, A.Cols, A.IsVector, E, Scope));
       end;
     vkString:
-      NotYet('string indexing', 'M7', E);
+      Result := IndexString(T, E, Scope);
+    vkDict:
+      Result := IndexDict(T, E, Scope);
   else
     raise EAxonError.CreateAt(TypeError, Format('%s cannot be indexed', [TypeName(T)]),
       FFile, E.Line, E.Col);
@@ -1257,41 +1313,26 @@ begin
   Result := nil;
 end;
 
-{ A[idx] = V. The array is copied first if it is shared (copy-on-write), its
-  element type widens to hold V, and the selection never grows it. }
-procedure TInterpreter.AssignIndexed(Target: TIndexExpr; const V: TAxValue; Scope: TScope);
+(* Slot[idx] = V for an array in Slot. The array is copied first if it is
+   shared (copy-on-write), its element type widens to hold V, and the
+   selection never grows it. TypeRef is the variable's annotation when Slot is
+   a variable's own value, so that matrix{real} cannot widen. *)
+procedure TInterpreter.AssignArraySlot(var Slot: TAxValue; Target: TIndexExpr;
+  const V: TAxValue; TypeRef: TTypeRef; const Name: string; Scope: TScope);
 var
-  Name: string;
-  Cell: TVarCell;
   Arr, Src: TArrayObj;
   SrcHolder: TAxValue;
   Sel: TSelection;
   Pos: TArray<Integer>;
   N, K, SelRows, SelCols: Integer;
-  NewType: TElemType;
+  NewType, Want: TElemType;
   OneDim, Ok: Boolean;
-  Want: TElemType;
 begin
-  if not (Target.Target is TNameExpr) then
-    NotYet('assignment through a nested index or a field', 'M7', Target);
-  Name := TNameExpr(Target.Target).Name;
-  Cell := FindCellForWrite(Name, Scope);
-  if Cell = nil then
-    raise EAxonError.CreateAt(NameError, Format('"%s" is not defined here', [Name]),
-      FFile, Target.Line, Target.Col);
-  if Cell.Value.Kind = vkRange then
-    Cell.Value := ArrayValue(RangeToArray(AsRange(Cell.Value)));
-  if Cell.Value.Kind = vkList then
-    NotYet('assignment to list elements', 'M7', Target);
-  if Cell.Value.Kind <> vkArray then
-    raise EAxonError.CreateAt(TypeError, Format('"%s" is %s, which cannot be assigned through an index',
-      [Name, TypeName(Cell.Value)]), FFile, Target.Line, Target.Col);
-
   // Resolve the selection. Index expressions may call functions, so the
   // array is fetched again afterwards rather than held across the evaluation.
-  Arr := AsArray(Cell.Value);
+  Arr := AsArray(Slot);
   Sel := ResolveSelection(Arr.Rows, Arr.Cols, Arr.IsVector, Target, Scope);
-  Arr := AsArray(Cell.Value);
+  Arr := AsArray(Slot);
   Pos := SelectionPositions(Sel, Arr.Rows);
   N := Length(Pos);
   OneDim := not Sel.Two or Sel.ScalarA or Sel.ScalarB;
@@ -1330,23 +1371,23 @@ begin
     NewType := Arr.ElemType;
 
   // A typed variable such as A: matrix{real} cannot widen past its type.
-  if (Cell.TypeRef <> nil) and (Cell.TypeRef.Param <> nil) then
+  if (TypeRef <> nil) and (TypeRef.Param <> nil) then
   begin
     Want := Arr.ElemType;
-    if Cell.TypeRef.Param.Name = 'bool' then Want := etBool
-    else if Cell.TypeRef.Param.Name = 'int' then Want := etInt
-    else if Cell.TypeRef.Param.Name = 'real' then Want := etReal
-    else if Cell.TypeRef.Param.Name = 'complex' then Want := etComplex;
+    if TypeRef.Param.Name = 'bool' then Want := etBool
+    else if TypeRef.Param.Name = 'int' then Want := etInt
+    else if TypeRef.Param.Name = 'real' then Want := etReal
+    else if TypeRef.Param.Name = 'complex' then Want := etComplex;
     if NewType > Want then
       raise EAxonError.CreateAt(TypeError, Format('variable "%s" must be %s; cannot store %s elements',
-        [Name, Cell.TypeRef.ToString, ElemTypeName(NewType)]), FFile, Target.Line, Target.Col);
+        [Name, TypeRef.ToString, ElemTypeName(NewType)]), FFile, Target.Line, Target.Col);
   end;
 
   // Copy-on-write: another value shares this array, so write to a copy.
   if Arr.RefCount > 1 then
   begin
     Arr := Arr.Clone;
-    Cell.Value := ArrayValue(Arr);
+    Slot := ArrayValue(Arr);
   end;
   Arr.Widen(NewType);
   for K := 0 to N - 1 do
@@ -1354,6 +1395,421 @@ begin
       Arr.Put(Pos[K], Src.Get(K))
     else
       Arr.Put(Pos[K], V);
+end;
+
+{ Writes V at the end of the path Steps[I..] inside Slot. Each level is made
+  unique (copy-on-write) before it is changed, so only the assigned variable
+  sees the change. }
+procedure TInterpreter.SetIn(var Slot: TAxValue; const Steps: TArray<TExpr>; I: Integer;
+  const V: TAxValue; RootCell: TVarCell; const Name: string; Scope: TScope);
+var
+  Step: TExpr;
+  Last, Scalar: Boolean;
+  FieldName: string;
+  R: TRecordObj;
+  K: Integer;
+  E: TIndexExpr;
+  Pos: TArray<Integer>;
+  L: TListObj;
+  Src: TListObj;
+  Key: TAxValue;
+  D: TDictObj;
+  TypeRef: TTypeRef;
+begin
+  Step := Steps[I];
+  Last := I = High(Steps);
+
+  if Step is TFieldExpr then
+  begin
+    FieldName := TFieldExpr(Step).Name;
+    if Slot.Kind <> vkRecord then
+      raise EAxonError.CreateAt(TypeError, Format('%s has no fields (assigning ".%s")',
+        [TypeName(Slot), FieldName]), FFile, Step.Line, Step.Col);
+    MakeUnique(Slot);
+    R := AsRecord(Slot);
+    K := R.IndexOf(FieldName);
+    if Last then
+    begin
+      if K < 0 then
+      begin
+        if R.DeclType <> nil then
+          raise EAxonError.CreateAt(FieldError, Format('record type %s has no field "%s"',
+            [R.DeclType.Name, FieldName]), FFile, Step.Line, Step.Col);
+        // A literal record gains the field.
+        R.Names := R.Names + [FieldName];
+        R.Values := R.Values + [V];
+      end
+      else if R.DeclType <> nil then
+        R.Values[K] := Coerce(V, R.DeclType.FieldTypes[K],
+          Format('field "%s" of %s', [FieldName, R.DeclType.Name]), Scope)
+      else
+        R.Values[K] := V;
+    end
+    else
+    begin
+      if K < 0 then
+        raise EAxonError.CreateAt(FieldError, Format('the record has no field "%s"', [FieldName]),
+          FFile, Step.Line, Step.Col);
+      SetIn(R.Values[K], Steps, I + 1, V, nil, Name, Scope);
+      if R.DeclType <> nil then
+        R.Values[K] := Coerce(R.Values[K], R.DeclType.FieldTypes[K],
+          Format('field "%s" of %s', [FieldName, R.DeclType.Name]), Scope);
+    end;
+    Exit;
+  end;
+
+  E := TIndexExpr(Step);
+  case Slot.Kind of
+    vkRange, vkArray:
+      begin
+        if not Last then
+          raise EAxonError.CreateAt(TypeError,
+            'array elements are numbers, so they cannot be indexed or have fields',
+            FFile, Step.Line, Step.Col);
+        if Slot.Kind = vkRange then
+          Slot := ArrayValue(RangeToArray(AsRange(Slot)));
+        if (RootCell <> nil) and (I = 0) then TypeRef := RootCell.TypeRef else TypeRef := nil;
+        AssignArraySlot(Slot, E, V, TypeRef, Name, Scope);
+      end;
+    vkList:
+      begin
+        if E.Items.Count <> 1 then
+          raise EAxonError.CreateAt(IndexError, Format('a list takes one index, got %d',
+            [E.Items.Count]), FFile, E.Line, E.Col);
+        EvalIndexItem(E.Items[0], Length(AsList(Slot).Items), Scope, Pos, Scalar);
+        MakeUnique(Slot);
+        L := AsList(Slot);
+        if Last then
+        begin
+          if Scalar then
+            L.Items[Pos[0]] := V
+          else
+          begin
+            if (V.Kind <> vkList) or (Length(AsList(V).Items) <> Length(Pos)) then
+              raise EAxonError.CreateAt(DimensionError, Format(
+                'a selection of %d list elements needs a list of %d values', [Length(Pos), Length(Pos)]),
+                FFile, E.Line, E.Col);
+            Src := AsList(V);
+            for K := 0 to High(Pos) do
+              L.Items[Pos[K]] := Src.Items[K];
+          end;
+        end
+        else
+        begin
+          if not Scalar then
+            raise EAxonError.CreateAt(TypeError, 'cannot assign through a list slice',
+              FFile, E.Line, E.Col);
+          SetIn(L.Items[Pos[0]], Steps, I + 1, V, nil, Name, Scope);
+        end;
+      end;
+    vkDict:
+      begin
+        if E.Items.Count <> 1 then
+          raise EAxonError.CreateAt(IndexError, 'a dictionary takes one key', FFile, E.Line, E.Col);
+        Key := Eval(E.Items[0], Scope);
+        MakeUnique(Slot);
+        D := AsDict(Slot);
+        try
+          if Last then
+            D.Put(Key, V)
+          else
+          begin
+            K := D.Find(Key);
+            if K < 0 then
+              raise EAxonError.CreateAt(KeyError, Format('key %s not found', [Display(Key, True)]),
+                FFile, E.Line, E.Col);
+            SetIn(D.Values[K], Steps, I + 1, V, nil, Name, Scope);
+          end;
+        except
+          on X: EAxonError do
+          begin
+            X.Locate(FFile, E.Line, E.Col);
+            raise;
+          end;
+        end;
+      end;
+    vkString:
+      raise EAxonError.CreateAt(TypeError, 'strings are immutable; build a new string instead',
+        FFile, E.Line, E.Col);
+  else
+    raise EAxonError.CreateAt(TypeError, Format('%s cannot be indexed', [TypeName(Slot)]),
+      FFile, E.Line, E.Col);
+  end;
+end;
+
+{ Assignment to a target that indexes or takes fields: x[i] = v, r.f = v,
+  species[2].name = v, and so on to any depth. }
+procedure TInterpreter.AssignPath(Target: TExpr; const V: TAxValue; Scope: TScope);
+var
+  Steps: TArray<TExpr>;
+  Node: TExpr;
+  Name: string;
+  Cell: TVarCell;
+begin
+  Node := Target;
+  while not (Node is TNameExpr) do
+  begin
+    Steps := [Node] + Steps;
+    if Node is TIndexExpr then
+      Node := TIndexExpr(Node).Target
+    else
+      Node := TFieldExpr(Node).Target;
+  end;
+  Name := TNameExpr(Node).Name;
+  Cell := FindCellForWrite(Name, Scope);
+  if Cell = nil then
+    raise EAxonError.CreateAt(NameError, Format('"%s" is not defined here', [Name]),
+      FFile, Node.Line, Node.Col);
+  SetIn(Cell.Value, Steps, 0, V, Cell, Name, Scope);
+  // The variable's own annotation still holds (for example a record type).
+  if (Cell.TypeRef <> nil) and not (Cell.Value.Kind = vkArray) then
+    Cell.Value := Coerce(Cell.Value, Cell.TypeRef, Format('variable "%s"', [Name]), Scope);
+end;
+
+{ ---------------- records, lists and dictionaries ---------------- }
+
+function IsBuiltinTypeName(const N: string): Boolean;
+begin
+  Result := (N = 'bool') or (N = 'int') or (N = 'real') or (N = 'complex') or
+    (N = 'string') or (N = 'nothing') or (N = 'range') or (N = 'function') or
+    (N = 'vector') or (N = 'matrix') or (N = 'sparse') or (N = 'list') or
+    (N = 'record') or (N = 'dict');
+end;
+
+{ Checks V against an annotation; declared record types are looked up from
+  Scope. }
+function TInterpreter.Coerce(const V: TAxValue; T: TTypeRef; const What: string;
+  Scope: TScope): TAxValue;
+var
+  S: TScope;
+  C: TVarCell;
+begin
+  if IsBuiltinTypeName(T.Name) then
+    Exit(CoerceToType(V, T, What));
+  S := Scope;
+  while S <> nil do
+  begin
+    C := S.Find(T.Name);
+    if C <> nil then
+    begin
+      if C.IsGlobalAlias then
+        C := S.Module.Find(T.Name);
+      if (C <> nil) and (C.Value.Kind = vkRecordType) then
+      begin
+        if T.Param <> nil then
+          RaiseFmt(TypeError, 'type %s takes no parameter', [T.Name]);
+        Exit(CoerceRecord(V, C.Value, What, Scope));
+      end;
+      Break;
+    end;
+    S := S.Parent;
+  end;
+  RaiseFmt(TypeError, 'unknown type "%s"', [T.ToString]);
+end;
+
+{ A record of the declared type RTValue: the fields must match exactly, and
+  each is checked and widened. }
+function TInterpreter.CoerceRecord(const V, RTValue: TAxValue; const What: string;
+  Scope: TScope): TAxValue;
+var
+  RT: TRecordTypeObj;
+  R, NewR: TRecordObj;
+  K, P: Integer;
+begin
+  RT := AsRecordType(RTValue);
+  if V.Kind <> vkRecord then
+    RaiseFmt(TypeError, '%s must be %s, got %s', [What, RT.Name, TypeName(V)]);
+  R := AsRecord(V);
+  if R.DeclType = RT then
+    Exit(V);
+  for K := 0 to High(R.Names) do
+    if RT.IndexOf(R.Names[K]) < 0 then
+      RaiseFmt(FieldError, '%s: record type %s has no field "%s"', [What, RT.Name, R.Names[K]]);
+  NewR := TRecordObj.Create;
+  Result := NothingValue;
+  Result.Kind := vkRecord;
+  Result.Obj := NewR;
+  NewR.DeclType := RT;
+  NewR.DeclRef := RTValue.Obj;
+  NewR.Names := Copy(RT.FieldNames);
+  SetLength(NewR.Values, Length(RT.FieldNames));
+  for K := 0 to High(RT.FieldNames) do
+  begin
+    P := R.IndexOf(RT.FieldNames[K]);
+    if P < 0 then
+      RaiseFmt(FieldError, '%s: field "%s" of %s is missing', [What, RT.FieldNames[K], RT.Name]);
+    NewR.Values[K] := Coerce(R.Values[P], RT.FieldTypes[K],
+      Format('field "%s" of %s', [RT.FieldNames[K], RT.Name]), Scope);
+  end;
+end;
+
+function TInterpreter.RecordTypeValue(S: TRecordStmt): TAxValue;
+var
+  RT: TRecordTypeObj;
+  F: TFieldDecl;
+begin
+  RT := TRecordTypeObj.Create;
+  RT.Name := S.Name;
+  for F in S.Fields do
+  begin
+    RT.FieldNames := RT.FieldNames + [F.Name];
+    RT.FieldTypes := RT.FieldTypes + [F.TypeRef];
+  end;
+  Result := NothingValue;
+  Result.Kind := vkRecordType;
+  Result.Obj := RT;
+end;
+
+{ T(...) for a declared record type: fields by position, then by keyword. }
+function TInterpreter.ConstructRecord(const RTValue: TAxValue; E: TCallExpr;
+  Scope: TScope): TAxValue;
+var
+  RT: TRecordTypeObj;
+  Names: TArray<string>;
+  Values: TAxValues;
+  A: TArg;
+  NPos, K: Integer;
+begin
+  RT := AsRecordType(RTValue);
+  NPos := 0;
+  for A in E.Args do
+    case A.Kind of
+      akPositional:
+        begin
+          if NPos >= Length(RT.FieldNames) then
+            RaiseFmt(ArgumentError, '%s has %d fields, got more positional arguments',
+              [RT.Name, Length(RT.FieldNames)]);
+          Names := Names + [RT.FieldNames[NPos]];
+          Values := Values + [Eval(A.Value, Scope)];
+          Inc(NPos);
+        end;
+      akKeyword:
+        begin
+          for K := 0 to High(Names) do
+            if Names[K] = A.Name then
+              RaiseFmt(ArgumentError, 'field "%s" of %s given twice', [A.Name, RT.Name]);
+          Names := Names + [A.Name];
+          Values := Values + [Eval(A.Value, Scope)];
+        end;
+      akPair:
+        RaiseError(TypeError, '"=>" pairs are only accepted by dict(...)');
+    end;
+  Result := CoerceRecord(RecordValue(Names, Values), RTValue,
+    Format('constructing %s', [RT.Name]), Scope);
+end;
+
+{ dict(k1 => v1, k2 => v2, ...). }
+function TInterpreter.BuildDict(E: TCallExpr; Scope: TScope): TAxValue;
+var
+  D: TDictObj;
+  A: TArg;
+begin
+  D := TDictObj.Create;
+  Result := DictValue(D);
+  for A in E.Args do
+  begin
+    if A.Kind <> akPair then
+      raise EAxonError.CreateAt(ArgumentError, 'dict(...) takes "key => value" pairs',
+        FFile, A.Line, A.Col);
+    D.Put(Eval(A.Key, Scope), Eval(A.Value, Scope));
+  end;
+end;
+
+function TInterpreter.EvalList(E: TListExpr; Scope: TScope): TAxValue;
+var
+  Items: TAxValues;
+  K: Integer;
+begin
+  SetLength(Items, E.Items.Count);
+  for K := 0 to E.Items.Count - 1 do
+    Items[K] := Eval(E.Items[K], Scope);
+  Result := ListValue(Items);
+end;
+
+function TInterpreter.EvalRecord(E: TRecordExpr; Scope: TScope): TAxValue;
+var
+  Values: TAxValues;
+  K: Integer;
+begin
+  SetLength(Values, E.Values.Count);
+  for K := 0 to E.Values.Count - 1 do
+    Values[K] := Eval(E.Values[K], Scope);
+  Result := RecordValue(E.Names.ToArray, Values);
+end;
+
+{ The characters (code points) of a string, each as a string. }
+function StringChars(const S: string): TArray<string>;
+var
+  I, N: Integer;
+begin
+  SetLength(Result, Length(S));
+  N := 0;
+  I := 1;
+  while I <= Length(S) do
+  begin
+    if S[I].IsHighSurrogate and (I < Length(S)) then
+    begin
+      Result[N] := Copy(S, I, 2);
+      Inc(I, 2);
+    end
+    else
+    begin
+      Result[N] := S[I];
+      Inc(I);
+    end;
+    Inc(N);
+  end;
+  SetLength(Result, N);
+end;
+
+function TInterpreter.IndexString(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
+var
+  Chars: TArray<string>;
+  Pos: TArray<Integer>;
+  Scalar: Boolean;
+  SB: TStringBuilder;
+  K: Integer;
+begin
+  if E.Items.Count <> 1 then
+    raise EAxonError.CreateAt(IndexError, Format('a string takes one index, got %d',
+      [E.Items.Count]), FFile, E.Line, E.Col);
+  Chars := StringChars(AsString(T));
+  EvalIndexItem(E.Items[0], Length(Chars), Scope, Pos, Scalar);
+  if Scalar then
+    Exit(StringValue(Chars[Pos[0]]));
+  SB := TStringBuilder.Create;
+  try
+    for K := 0 to High(Pos) do
+      SB.Append(Chars[Pos[K]]);
+    Result := StringValue(SB.ToString);
+  finally
+    SB.Free;
+  end;
+end;
+
+function TInterpreter.IndexDict(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
+var
+  D: TDictObj;
+  Key: TAxValue;
+  P: Integer;
+begin
+  if E.Items.Count <> 1 then
+    raise EAxonError.CreateAt(IndexError, 'a dictionary takes one key', FFile, E.Line, E.Col);
+  D := AsDict(T);
+  Key := Eval(E.Items[0], Scope);
+  try
+    P := D.Find(Key);
+  except
+    on X: EAxonError do
+    begin
+      X.Locate(FFile, E.Line, E.Col);
+      raise;
+    end;
+  end;
+  if P < 0 then
+    raise EAxonError.CreateAt(KeyError, Format('key %s not found', [Display(Key, True)]),
+      FFile, E.Line, E.Col);
+  Result := D.Values[P];
 end;
 
 function TInterpreter.Eval(E: TExpr; Scope: TScope): TAxValue;
@@ -1413,8 +1869,10 @@ begin
     Result := EvalMatrix(TMatrixExpr(E), Scope)
   else if C = TColonExpr then
     NotYet('":" outside an index', 'M6', E)
-  else if (C = TListExpr) or (C = TRecordExpr) then
-    NotYet('lists and records', 'M7', E)
+  else if C = TListExpr then
+    Result := EvalList(TListExpr(E), Scope)
+  else if C = TRecordExpr then
+    Result := EvalRecord(TRecordExpr(E), Scope)
   else
     NotYet(E.ClassName, 'a later milestone', E);
 end;
@@ -1434,6 +1892,11 @@ begin
       Decl := TFunctionStmt(S).Func;
       FGlobals.Define(Decl.Name).Value := FunctionValue(Decl, FGlobals, False);
       FHoisted.AddOrSetValue(Decl, True);
+    end
+    else if S is TRecordStmt then
+    begin
+      FGlobals.Define(TRecordStmt(S).Name).Value := RecordTypeValue(TRecordStmt(S));
+      FHoistedRecords.AddOrSetValue(TRecordStmt(S), True);
     end;
 end;
 

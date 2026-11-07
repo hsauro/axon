@@ -1,0 +1,2 @@
+FieldError: record type P has no field "z"
+  at err_declared_unknown_field.sci:7:1

@@ -1,0 +1,8 @@
+{x: 1.0, y: 2.0} Point
+7.0
+{x: 10.0, y: 4.0} real
+{x: 2.0, y: 1.0}
+2.0 Point
+{x: 2.0, y: 7.0}
+73.0
+record type Point type

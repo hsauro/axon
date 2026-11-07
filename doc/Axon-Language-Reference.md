@@ -255,7 +255,7 @@ Output tests compare text exactly, so every value has one display form.
 | `list` | Elements in braces, separated by ", " | `{1, "S1", 2.5}`, `{}` |
 | `record` | Fields in braces as `name: value`, in definition order | `{name: "S1", init: 10.0}` |
 
-Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print(a, b, …)` writes its arguments separated by one space and ends with a newline. Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. Display of dictionaries is fixed in M7.
+Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print(a, b, …)` writes its arguments separated by one space and ends with a newline. Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. A dictionary displays as the call that builds it, `dict("Km" => 0.5, "Vm" => 10.0)`, with entries in insertion order; an empty one is `dict()`.
 
 Arrays display as a header line, then one line per row with each entry right-aligned in its column and preceded by two spaces. The header is `R×C matrix{T}` or `N-vector{T}`. Elements show up to 6 significant digits, following the same rules as scalars, and complex elements show both parts that way. Above 10 rows, only the first and last 5 are shown, with a `  ⋮` line between; above 8 columns, only the first and last 4, with a `…` column between. An empty array shows only its header. At the REPL an assignment shows `A = ` before the header:
 
@@ -301,7 +301,7 @@ A result is sparse when both operands are sparse, or when one is a scalar and th
 ### Comparison
 
 - On scalars, `==`, `!=`, `<`, `<=`, `>` and `>=` return a `bool`. On arrays they apply elementwise with broadcasting and return a `bool` array.
-- `==` and `!=` accept values of any two types. Values of unrelated types (a string and a number, or `nothing` and anything else) are unequal, so `"1" == 1` is `false`. Numbers of different types compare after promotion, so `1 == 1.0` and `1 == 1.0 + 0i` are `true`.
+- `==` and `!=` accept values of any two types. Values of unrelated types (a string and a number, or `nothing` and anything else) are unequal, so `"1" == 1` is `false`. Numbers of different types compare after promotion, so `1 == 1.0` and `1 == 1.0 + 0i` are `true`. Lists, records and dictionaries compare as whole values and give one `bool`.
 - `isequal(a, b)` compares whole values and returns one `bool`. Arrays are equal when shapes and all elements are equal, and records when field names and values are equal.
 - The order comparisons apply to real numbers and strings. Complex numbers have no ordering and raise `TypeError`.
 - Comparisons involving NaN are false, except `!=`, which is true.
@@ -346,9 +346,14 @@ Indices are 1-based. Each position in an index list accepts one of these forms:
 
 ### Lists, records and dictionaries
 
-- **Lists** index like vectors. A range index returns a sublist, and a scalar index returns the element.
-- **Records** use only `.` field access. Assigning to a field that does not exist raises `FieldError` for a declared record type and adds the field for a literal record.
-- **Dictionaries** use `d[key]`. A missing key raises `KeyError`, and `get(d, key, default)` avoids that.
+- **Lists** index like vectors. A range index returns a sublist, and a scalar index returns the element. `l[k] = x` replaces an element, and a range or index-list selection can be assigned a list of the same length. `append(l, x)` returns a new list with `x` added at the end; `append(v, x)` does the same for a vector, with `x` a scalar or a vector.
+- **Records** use only `.` field access. Reading a field that does not exist raises `FieldError`. Assigning to a field that does not exist raises `FieldError` for a declared record type and adds the field for a literal record.
+- **Declared record types.** `record T … end` binds `T` in the outermost scope of the enclosing function or module, like a named function. A value of type `T` is made either by calling `T` with every field, by position in declaration order or by keyword (`LVParams(a = 1.0, b = 0.1, c = 0.075, d = 1.5)`), or by checking a literal record against the annotation `T` (`p: LVParams = {a: 1.0, …}`). Either way the fields must match the declaration exactly, missing or extra fields raise `FieldError`, and each field is checked and widened against its type. Assigning to a field of a declared record checks the new value against the field's type. `typeof` of such a record is the type's name.
+- **Dictionaries** use `d[key]`. A missing key raises `KeyError`, and `get(d, key, default)` avoids that. `d[key] = x` adds or replaces an entry. Keys are strings or real numbers (`int`, `real` or `bool`); numeric keys compare by value, so `1` and `1.0` are the same key, and any other key raises `TypeError`. Entries keep their insertion order. `keys(d)` returns the keys as a list, `haskey(d, key)` tests for one, and `length(d)` counts entries. `=>` pairs are accepted only by `dict(...)`; anywhere else they raise `TypeError`.
+- **Strings** index by character (Unicode code point): `s[k]` is a one-character string and a range gives a substring. Strings are immutable, so assigning through an index raises `TypeError`.
+- **Iteration.** `for x in l` visits a list's elements, `for c in s` a string's characters, and `for k in d` a dictionary's keys in insertion order.
+- **Equality.** `==` and `isequal` compare lists, records and dictionaries as whole values: lists elementwise in order, records by field names and values regardless of field order, and dictionaries by their sets of entries regardless of order.
+- **Nested assignment.** An assignment target may chain indexing and fields to any depth, as in `species[2].name = "S3"` or `p.m[1, 2] = 0`. Value semantics hold at every level: only the variable assigned to changes, whatever other names share its parts.
 
 ## Assignment, copy semantics and scoping
 

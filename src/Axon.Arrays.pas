@@ -527,6 +527,8 @@ var
   K: Integer;
   RA, RB: TRecordObj;
   LA, LB: TListObj;
+  DA, DB: TDictObj;
+  P: Integer;
 begin
   if IsArrayLike(A) and IsArrayLike(B) then
   begin
@@ -552,15 +554,33 @@ begin
         Exit(False);
     Exit(True);
   end;
+  if (A.Kind = vkDict) and (B.Kind = vkDict) then
+  begin
+    DA := AsDict(A);
+    DB := AsDict(B);
+    if Length(DA.Keys) <> Length(DB.Keys) then
+      Exit(False);
+    for K := 0 to High(DA.Keys) do
+    begin
+      P := DB.Find(DA.Keys[K]);
+      if (P < 0) or not ValuesIdentical(DA.Values[K], DB.Values[P]) then
+        Exit(False);
+    end;
+    Exit(True);
+  end;
   if (A.Kind = vkRecord) and (B.Kind = vkRecord) then
   begin
     RA := AsRecord(A);
     RB := AsRecord(B);
     if Length(RA.Names) <> Length(RB.Names) then
       Exit(False);
+    // Fields match by name, in any order.
     for K := 0 to High(RA.Names) do
-      if (RA.Names[K] <> RB.Names[K]) or not ValuesIdentical(RA.Values[K], RB.Values[K]) then
+    begin
+      P := RB.IndexOf(RA.Names[K]);
+      if (P < 0) or not ValuesIdentical(RA.Values[K], RB.Values[P]) then
         Exit(False);
+    end;
     Exit(True);
   end;
   Result := ValuesEqual(A, B);

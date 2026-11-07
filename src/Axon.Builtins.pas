@@ -164,6 +164,7 @@ begin
     vkList:  Result := IntValue(Length(AsList(Args[0]).Items));
     vkRange: Result := IntValue(AsRange(Args[0]).Count);
     vkArray: Result := IntValue(AsArray(Args[0]).Count);
+    vkDict:  Result := IntValue(Length(AsDict(Args[0]).Keys));
     vkString:
       begin
         S := AsString(Args[0]);
@@ -696,6 +697,80 @@ begin
   Result := BoolValue(ValuesIdentical(Args[0], Args[1]));
 end;
 
+{ ---- collections (M7) ---- }
+
+{ append(list, x) and append(vector, x): a new value with x added. }
+function BAppend(const Args: TAxValues): TAxValue;
+var
+  A, X: TArrayObj;
+  HA, HX: TAxValue;
+  Values: TAxValues;
+  K: Integer;
+begin
+  case Args[0].Kind of
+    vkList:
+      Exit(ListValue(AsList(Args[0]).Items + [Args[1]]));
+    vkArray, vkRange:
+      begin
+        A := ToArray(Args[0]);
+        HA := ArrayValue(A);
+        if not A.IsVector then
+          RaiseError(TypeError, 'append works on lists and vectors, not matrices');
+        SetLength(Values, A.Count);
+        for K := 0 to A.Count - 1 do
+          Values[K] := A.Get(K);
+        if IsArrayLike(Args[1]) then
+        begin
+          X := ToArray(Args[1]);
+          HX := ArrayValue(X);
+          for K := 0 to X.Count - 1 do
+            Values := Values + [X.Get(K)];
+        end
+        else
+          Values := Values + [Args[1]];
+        Result := BuildArray(Length(Values), 1, True, Values, A.ElemType);
+      end;
+  else
+    RaiseFmt(TypeError, 'append works on lists and vectors, got %s', [TypeName(Args[0])]);
+  end;
+end;
+
+function NeedDict(const Fn: string; const V: TAxValue): TDictObj;
+begin
+  if V.Kind <> vkDict then
+    RaiseFmt(TypeError, '%s needs a dictionary, got %s', [Fn, TypeName(V)]);
+  Result := AsDict(V);
+end;
+
+function BGet(const Args: TAxValues): TAxValue;
+var
+  D: TDictObj;
+  P: Integer;
+begin
+  D := NeedDict('get', Args[0]);
+  P := D.Find(Args[1]);
+  if P >= 0 then
+    Result := D.Values[P]
+  else
+    Result := Args[2];
+end;
+
+function BKeys(const Args: TAxValues): TAxValue;
+begin
+  Result := ListValue(Copy(NeedDict('keys', Args[0]).Keys));
+end;
+
+function BHaskey(const Args: TAxValues): TAxValue;
+begin
+  Result := BoolValue(NeedDict('haskey', Args[0]).Find(Args[1]) >= 0);
+end;
+
+{ dict() with no entries. Calls with => pairs are built by the interpreter. }
+function BDictEmpty(const Args: TAxValues): TAxValue;
+begin
+  Result := DictValue(TDictObj.Create);
+end;
+
 { Test hook: the number of copy-on-write array copies made so far. }
 function BCopies(const Args: TAxValues): TAxValue;
 begin
@@ -752,6 +827,11 @@ begin
   Add('adjoint', BAdjoint, 1, 1);
   Add('isequal', BIsequal, 2, 2);
   Add('__copies', BCopies, 0, 0);
+  Add('append', BAppend, 2, 2);
+  Add('get', BGet, 3, 3);
+  Add('keys', BKeys, 1, 1);
+  Add('haskey', BHaskey, 2, 2);
+  Add('dict', BDictEmpty, 0, 0);
   Add('print', BPrint, 0, -1);
   Add('error', BError, 1, 2);
   Add('string', BString, 1, 1);

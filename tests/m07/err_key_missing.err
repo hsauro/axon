@@ -1,0 +1,2 @@
+KeyError: key "b" not found
+  at err_key_missing.sci:3:5

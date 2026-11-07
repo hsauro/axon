@@ -28,7 +28,8 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - `src/Axon.Values.pas`: `TAxValue`, a tagged record holding scalars inline and other payloads in reference-counted objects; also the display forms
 - `src/Axon.Ops.pas`: operators, promotion, checked integer arithmetic. Array and range operands are passed on to `Axon.Arrays`.
 - `src/Axon.Arrays.pas`: dense arrays. `TArrayObj` (declared in `Axon.Values`) is column-major, with one typed buffer per element type. This unit holds literals, broadcasting, `MatMul`, transpose, index resolution and reductions. Elementwise operations call the scalar operators per element.
-- Copy-on-write: `AssignIndexed` clones an array when `RefCount > 1`. Never keep an extra `TAxValue` copy of the target array alive while deciding, or every write will copy. `__copies()` counts clones for tests.
+- Assignment to `a[i].f[j] = v` and similar goes through `AssignPath`/`SetIn`. `SetIn` walks the path, calling `MakeUnique` on each level before writing; that function copies one level of a list, record or dictionary when it is shared. Arrays at the leaf go to `AssignArraySlot`.
+- Copy-on-write: `AssignArraySlot` clones an array when `RefCount > 1`. Never keep an extra `TAxValue` copy of the target array alive while deciding, or every write will copy. `__copies()` counts clones for tests.
 - `src/Axon.Complex.pas`: complex arithmetic and principal-value functions
 - `src/Axon.Builtins.pas`: prelude functions
 - `src/Axon.Interp.pas`: tree-walking evaluator and scopes. Constructs from later milestones raise `ENotImplemented` (exit code 2).

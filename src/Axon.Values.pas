@@ -14,12 +14,12 @@ unit Axon.Values;
 interface
 
 uses
-  System.SysUtils,
-  Axon.Complex, Axon.Errors;
+  System.SysUtils, System.Generics.Collections,
+  Axon.Complex, Axon.Errors, Axon.Ast;
 
 type
   TValueKind = (vkNothing, vkBool, vkInt, vkReal, vkComplex, vkString, vkRange,
-    vkBuiltin, vkFunction, vkList, vkRecord, vkArray);
+    vkBuiltin, vkFunction, vkList, vkRecord, vkArray, vkDict, vkRecordType);
 
   TElemType = (etBool, etInt, etReal, etComplex);
 
@@ -96,12 +96,40 @@ type
     Items: TAxValues;
   end;
 
-  { A record: named fields in definition order. Read-only until M7. }
+  { A declared record type (`record T … end`). Calling it builds a record. }
+  TRecordTypeObj = class(TCallableObj)
+  public
+    FieldNames: TArray<string>;
+    FieldTypes: TArray<TTypeRef>;   // owned by the AST
+    function IndexOf(const Field: string): Integer;
+  end;
+
+  { A record: named fields in definition order. DeclType is set for a record
+    of a declared type (DeclRef keeps the type alive). }
   TRecordObj = class(TInterfacedObject)
   public
     Names: TArray<string>;
     Values: TAxValues;
+    DeclType: TRecordTypeObj;
+    DeclRef: IInterface;
     function IndexOf(const Name: string): Integer;
+    function Clone: TRecordObj;
+  end;
+
+  { A dictionary: entries in insertion order, found through a normalised key. }
+  TDictObj = class(TInterfacedObject)
+  private
+    FIndex: TDictionary<string, Integer>;
+  public
+    Keys: TAxValues;
+    Values: TAxValues;
+    constructor Create;
+    destructor Destroy; override;
+    { The lookup form of a key; raises TypeError for an invalid key. }
+    class function KeyOf(const K: TAxValue): string; static;
+    function Find(const K: TAxValue): Integer;       // -1 if absent
+    procedure Put(const K, V: TAxValue);
+    function Clone: TDictObj;
   end;
 
 function NothingValue: TAxValue; inline;
@@ -119,6 +147,14 @@ function AsList(const V: TAxValue): TListObj; inline;
 function AsRecord(const V: TAxValue): TRecordObj; inline;
 function ListValue(const Items: TAxValues): TAxValue;
 function RecordValue(const Names: TArray<string>; const Values: TAxValues): TAxValue;
+function AsDict(const V: TAxValue): TDictObj; inline;
+function DictValue(D: TDictObj): TAxValue;
+function AsRecordType(const V: TAxValue): TRecordTypeObj; inline;
+
+{ Makes V the only reference to its payload, copying it first if it is
+  shared (copy-on-write). Containers copy one level: their elements stay
+  shared until they are written in turn. }
+procedure MakeUnique(var V: TAxValue);
 
 { The err record for a caught error: kind, message and trace (a list of
   records with file, line and function). }
@@ -412,6 +448,129 @@ begin
   Result.Obj := R;
 end;
 
+function TRecordTypeObj.IndexOf(const Field: string): Integer;
+begin
+  for Result := 0 to High(FieldNames) do
+    if FieldNames[Result] = Field then
+      Exit;
+  Result := -1;
+end;
+
+function TRecordObj.Clone: TRecordObj;
+begin
+  Result := TRecordObj.Create;
+  Result.Names := Copy(Names);
+  Result.Values := Copy(Values);
+  Result.DeclType := DeclType;
+  Result.DeclRef := DeclRef;
+end;
+
+{ ---- dictionaries ---- }
+
+constructor TDictObj.Create;
+begin
+  inherited Create;
+  FIndex := TDictionary<string, Integer>.Create;
+end;
+
+destructor TDictObj.Destroy;
+begin
+  FIndex.Free;
+  inherited;
+end;
+
+class function TDictObj.KeyOf(const K: TAxValue): string;
+const
+  TwoPow63 = 9223372036854775808.0;
+var
+  X: Double;
+begin
+  case K.Kind of
+    vkString: Result := 's' + AsString(K);
+    vkBool:   Result := 'n' + IntToStr(Ord(K.B));
+    vkInt:    Result := 'n' + IntToStr(K.I);
+    vkReal:
+      begin
+        X := K.R;
+        if IsNan(X) then
+          raise EAxonError.Create(TypeError, 'NaN cannot be a dictionary key');
+        // A whole real is the same key as the equal int.
+        if (Frac(X) = 0) and (X < TwoPow63) and (X >= -TwoPow63) then
+          Result := 'n' + IntToStr(Trunc(X))
+        else
+          Result := 'r' + IntToHex(PInt64(@X)^, 16);
+      end;
+  else
+    raise EAxonError.Create(TypeError, Format(
+      'dictionary keys must be strings or real numbers, got %s', [TypeName(K)]));
+  end;
+end;
+
+function TDictObj.Find(const K: TAxValue): Integer;
+begin
+  if not FIndex.TryGetValue(KeyOf(K), Result) then
+    Result := -1;
+end;
+
+procedure TDictObj.Put(const K, V: TAxValue);
+var
+  Key: string;
+  P: Integer;
+begin
+  Key := KeyOf(K);
+  if FIndex.TryGetValue(Key, P) then
+    Values[P] := V
+  else
+  begin
+    FIndex.Add(Key, Length(Keys));
+    Keys := Keys + [K];
+    Values := Values + [V];
+  end;
+end;
+
+function TDictObj.Clone: TDictObj;
+var
+  P: TPair<string, Integer>;
+begin
+  Result := TDictObj.Create;
+  Result.Keys := Copy(Keys);
+  Result.Values := Copy(Values);
+  for P in FIndex do
+    Result.FIndex.Add(P.Key, P.Value);
+end;
+
+function AsDict(const V: TAxValue): TDictObj;
+begin
+  Result := TDictObj(V.Obj);
+end;
+
+function DictValue(D: TDictObj): TAxValue;
+begin
+  Result := NothingValue;
+  Result.Kind := vkDict;
+  Result.Obj := D;
+end;
+
+function AsRecordType(const V: TAxValue): TRecordTypeObj;
+begin
+  Result := TRecordTypeObj(V.Obj);
+end;
+
+procedure MakeUnique(var V: TAxValue);
+begin
+  if (V.Obj = nil) or (TInterfacedObject(V.Obj).RefCount <= 1) then
+    Exit;
+  case V.Kind of
+    vkList:   V := ListValue(Copy(AsList(V).Items));
+    vkRecord:
+      begin
+        V.Obj := AsRecord(V).Clone;
+      end;
+    vkDict:   V.Obj := AsDict(V).Clone;
+    vkArray:  V.Obj := AsArray(V).Clone;
+  end;
+end;
+
 function ErrorToValue(E: EAxonError): TAxValue;
 var
   Frames: TAxValues;
@@ -477,12 +636,15 @@ end;
 function TypeName(const V: TAxValue): string;
 const
   Names: array[TValueKind] of string = ('nothing', 'bool', 'int', 'real',
-    'complex', 'string', 'range', 'function', 'function', 'list', 'record', '');
+    'complex', 'string', 'range', 'function', 'function', 'list', 'record', '',
+    'dict', 'type');
 begin
   if V.Kind = vkArray then
   begin
     if AsArray(V).IsVector then Result := 'vector' else Result := 'matrix';
   end
+  else if (V.Kind = vkRecord) and (AsRecord(V).DeclType <> nil) then
+    Result := AsRecord(V).DeclType.Name
   else
     Result := Names[V.Kind];
 end;
@@ -706,6 +868,21 @@ begin
   Result := Result + '}';
 end;
 
+function FormatDict(D: TDictObj): string;
+var
+  I: Integer;
+begin
+  Result := 'dict(';
+  for I := 0 to High(D.Keys) do
+  begin
+    if I > 0 then
+      Result := Result + ', ';
+    Result := Result + DisplayValue(D.Keys[I], True, True) + ' => ' +
+      DisplayValue(D.Values[I], True, True);
+  end;
+  Result := Result + ')';
+end;
+
 function FormatRecord(R: TRecordObj): string;
 var
   I: Integer;
@@ -741,6 +918,8 @@ begin
         Result := 'function';
     vkList:    Result := FormatList(AsList(V));
     vkRecord:  Result := FormatRecord(AsRecord(V));
+    vkDict:    Result := FormatDict(AsDict(V));
+    vkRecordType: Result := 'record type ' + AsRecordType(V).Name;
     vkArray:
       if Nested then
         Result := FormatArrayInline(AsArray(V))
