@@ -1,0 +1,7 @@
+(= [a b] (call f x))
+(matrix (a b))
+(= [(. r x) (index A 1)] (call g))
+(== (matrix (1 2)) (matrix (1 2)))
+(= z (matrix))
+(= c (matrix (1) (2) (3)))
+(= B (matrix (A A) (A A)))

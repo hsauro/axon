@@ -1,0 +1,23 @@
+(= A (matrix (1 2) (3 4)))
+(= y (+ a b))
+(= z (call f 1 2))
+(= w (call g (lambda (x)
+  (= y (+ x 1))
+  (return y)) 3))
+(if c
+  (= p 1)
+  (elseif d
+    (= p 2))
+  (else
+    (= p 3)))
+(try
+  (= q 1)
+  (catch e
+    (= q 2)))
+(= s 1)
+(= t 2)
+(= u a)
+(- b)
+(= v (and a b))
+(= h (lambda (x)
+  (return (^ x 2))))

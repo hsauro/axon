@@ -48,17 +48,17 @@ The lexer turns source text into tokens following the [Lexical structure](Axon-L
 
 The parser builds the syntax tree for the full grammar, and `axon --ast` prints it.
 
-- [ ] Every statement and expression form in the grammar
-- [ ] Newline handling: skipped inside brackets and after a binary operator or comma, restored inside every block body, including an anonymous function passed as an argument
-- [ ] No terminator needed before `end`, `elseif`, `else` and `catch`
-- [ ] Typed assignment `x: real = 0.0` told apart from the expression `x:n` by backtracking
-- [ ] `{a:b}` parsed as a record and `{(a:b)}` as a list
-- [ ] All ten precedence levels, with every worked case from the reference's [Operator precedence](Axon-Language-Reference.md#operator-precedence) section parsing as shown
-- [ ] Chained comparisons and chained ranges rejected
-- [ ] Destructuring `[a, b] = …` told apart from a matrix literal
-- [ ] List and record brace literals told apart, with `{}` as the empty list
-- [ ] Keyword arguments, `=>` pairs, and `end` inside index brackets
-- [ ] Syntax errors report the location and what was expected
+- [x] Every statement and expression form in the grammar
+- [x] Newline handling: skipped inside brackets and after a binary operator or comma, restored inside every block body, including an anonymous function passed as an argument
+- [x] No terminator needed before `end`, `elseif`, `else` and `catch`
+- [x] Typed assignment `x: real = 0.0` told apart from the expression `x:n` by backtracking
+- [x] `{a:b}` parsed as a record and `{(a:b)}` as a list
+- [x] All ten precedence levels, with every worked case from the reference's [Operator precedence](Axon-Language-Reference.md#operator-precedence) section parsing as shown
+- [x] Chained comparisons and chained ranges rejected
+- [x] Destructuring `[a, b] = …` told apart from a matrix literal
+- [x] List and record brace literals told apart, with `{}` as the empty list
+- [x] Keyword arguments, `=>` pairs, and `end` inside index brackets
+- [x] Syntax errors report the location and what was expected
 
 ## Core evaluation
 

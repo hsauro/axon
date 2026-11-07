@@ -20,7 +20,7 @@ implementation
 uses
   System.SysUtils, System.IOUtils,
   Axon.Version, Axon.Errors, Axon.Platform, Axon.Source, Axon.TestRunner,
-  Axon.Tokens, Axon.Lexer;
+  Axon.Tokens, Axon.Lexer, Axon.Ast, Axon.Parser, Axon.AstDump;
 
 procedure PrintUsage;
 begin
@@ -57,29 +57,22 @@ begin
   end;
 end;
 
-{ True if the tokens hold no statements: only newlines, docstrings and EOF. }
-function OnlyLayout(const Tokens: TArray<TToken>): Boolean;
-var
-  T: TToken;
-begin
-  for T in Tokens do
-    if not (T.Kind in [tkNewline, tkDocString, tkEOF, tkSemicolon]) then
-      Exit(False);
-  Result := True;
-end;
-
 function RunFile(const FileName: string): Integer;
 var
   Source: string;
-  Tokens: TArray<TToken>;
+  Prog: TProgram;
 begin
   if not LoadProgram(FileName, Source) then
     Exit(ExitUsage);
-  // Lexing first means syntax errors are reported even before evaluation exists.
-  Tokens := Tokenize(Source, FileName);
-  // A program with no statements does nothing, at every milestone.
-  if OnlyLayout(Tokens) then
-    Exit(ExitOk);
+  // Parsing first means syntax errors are reported even before evaluation exists.
+  Prog := ParseProgram(Tokenize(Source, FileName), FileName);
+  try
+    // A program with no statements does nothing, at every milestone.
+    if Prog.Body.Count = 0 then
+      Exit(ExitOk);
+  finally
+    Prog.Free;
+  end;
   Result := NotYet('running programs', 'M3');
 end;
 
@@ -87,6 +80,7 @@ function FrontEndDump(const Option, FileName: string): Integer;
 var
   Source: string;
   T: TToken;
+  Prog: TProgram;
 begin
   if FileName = '' then
   begin
@@ -102,7 +96,15 @@ begin
     Result := ExitOk;
   end
   else
-    Result := NotYet('--ast', 'M2');
+  begin
+    Prog := ParseProgram(Tokenize(Source, FileName), FileName);
+    try
+      Write(DumpProgram(Prog));
+    finally
+      Prog.Free;
+    end;
+    Result := ExitOk;
+  end;
 end;
 
 function Dispatch(const Args: TArray<string>): Integer;

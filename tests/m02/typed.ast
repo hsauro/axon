@@ -1,0 +1,8 @@
+(= x:real 0.0)
+(= y:matrix{complex} z)
+(: x n)
+(: a b c)
+(for k (: 1 n)
+  (= m:int k))
+(local t:vector{real} v)
+(= f:function g)

@@ -1,0 +1,52 @@
+(local a)
+(local b:int 1)
+(global g)
+(= x 1)
+(= x:real 2.0)
+(= (index A 1 2) 3)
+(= (. r f) 4)
+(= (. (index (. r f) 2) g) 5)
+(= [p q] (call f))
+(return)
+(return 1)
+(return 1 2)
+(break)
+(continue)
+(if a
+  (= b 1)
+  (elseif c
+    (= b 2))
+  (elseif d)
+  (else
+    (= b 3)))
+(if a)
+(for i (: 1 10)
+  (= s (+ s i)))
+(while (< k 10)
+  (= k (+ k 1)))
+(try
+  (call risky)
+  (catch err
+    (call print (. err message))))
+(try
+  (catch))
+(function f (x y:real ; k=1 m:int=(+ k 1)) :real
+  (return x))
+(function g ())
+(export function h (x)
+  (return x))
+(record P
+  a:real
+  b:matrix{complex}
+  c:list)
+(export record Q
+  x:int)
+(import linalg)
+(import linalg as la)
+(import ode.stiff)
+(from linalg import eig svd)
+(extern "openblas"
+  (function ddot_ (n:(ref int32) x:(ptr float64)) :float64)
+  (function dgesv_ (info:(ref int32)) name "dgesv")
+  (type RhsFn (callback (t:float64 user:(ptr void)) :int32))
+  (function cv (f:RhsFn n:clong s:csize)))

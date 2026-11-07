@@ -1,0 +1,2 @@
+SyntaxError: expected "end" to close "if" from line 2, found end of file
+  at err_missing_end.sci:4:1

@@ -73,6 +73,9 @@
         <DCCReference Include="src\Axon.Source.pas"/>
         <DCCReference Include="src\Axon.Tokens.pas"/>
         <DCCReference Include="src\Axon.Lexer.pas"/>
+        <DCCReference Include="src\Axon.Ast.pas"/>
+        <DCCReference Include="src\Axon.Parser.pas"/>
+        <DCCReference Include="src\Axon.AstDump.pas"/>
         <DCCReference Include="src\Axon.TestRunner.pas"/>
         <DCCReference Include="src\Axon.Cli.pas"/>
         <DCCReference Include="src\native\Axon.Native.LibFFI.pas"/>

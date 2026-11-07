@@ -1,0 +1,2 @@
+SyntaxError: expected end of line or ";", found identifier "y"
+  at err_two_statements.sci:2:7

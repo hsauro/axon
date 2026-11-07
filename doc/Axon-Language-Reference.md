@@ -90,11 +90,11 @@ target       = IDENT { "[" index_list "]" | "." IDENT } ;
 ### Control flow
 
 ```
-if_stmt      = "if" expression terminator block
-               { "elseif" expression terminator block }
+if_stmt      = "if" expression [ terminator ] block
+               { "elseif" expression [ terminator ] block }
                [ "else" block ] "end" ;
-for_stmt     = "for" IDENT "in" expression terminator block "end" ;
-while_stmt   = "while" expression terminator block "end" ;
+for_stmt     = "for" IDENT "in" expression [ terminator ] block "end" ;
+while_stmt   = "while" expression [ terminator ] block "end" ;
 try_stmt     = "try" block "catch" [ IDENT ] terminator block "end" ;
 ```
 
@@ -161,6 +161,7 @@ brace_lit    = "{" [ expression { "," expression } ] "}"
 - **Braces.** A brace literal is a record if its first element has the form `IDENT ":"`, and a list otherwise. `{}` is the empty list. So `{a:b}` is a record with field `a`; a list holding the range `a:b` is written `{(a:b)}`.
 - **Typed assignment.** A statement starting with `IDENT ":"` may be a typed assignment (`x: real = 0.0`) or an expression (`x:n`). The parser first tries to read a type followed by `=`; if that fails, it rewinds and parses an expression.
 - **Optional terminator.** The last statement of a block needs no terminator before `end`, `elseif`, `else` or `catch`, as the final `[ statement ]` in `block` shows.
+- **One-line headers.** The terminator after an `if`, `elseif`, `while` or `for` header is optional, so `if x > 0 return 1 end` is valid. The condition is the longest expression that parses, so a body that begins with `(`, `[`, `-`, `+` or `'` continues the condition. In `if f (x) end`, `f (x)` is a call; write `if f; (x) end` or use a new line. `catch` still needs a terminator after its name, because in `catch err x = 1` the name and the statement could not be told apart.
 - **Keyword arguments.** In an argument list, `IDENT "="` begins a keyword argument. Keyword arguments must follow all positional arguments.
 - **Pairs.** `=>` forms a key–value pair and is valid only as a function argument, as in `dict("Km" => 0.5)`.
 - **`end` in indices.** Inside `[ ]` index brackets, `end` is an expression, not a block terminator. This context resets inside any block body. The parser makes this decision; the lexer emits `end` as a keyword in both cases.

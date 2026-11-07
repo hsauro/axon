@@ -1,0 +1,7 @@
+(= e (list))
+(= l (list 1 "S1" A))
+(= r (rec a:1 b:2))
+(= r2 (rec a:b))
+(= l2 (list (: a b)))
+(= species (list (rec name:"S1" init:10.0) (rec name:"S2" init:0.0)))
+(= n (rec x:(rec y:1)))

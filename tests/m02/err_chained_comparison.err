@@ -1,0 +1,2 @@
+SyntaxError: comparisons cannot be chained; combine them with "and"
+  at err_chained_comparison.sci:2:7

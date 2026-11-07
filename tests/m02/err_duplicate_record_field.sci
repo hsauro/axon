@@ -1,0 +1,2 @@
+#! error: SyntaxError
+r = {a: 1, a: 2}

@@ -1,0 +1,7 @@
+(function f ()
+  (doc "Doc for f." "Second line."))
+(function g ())
+(record R
+  (doc "Doc for R.")
+  a:real)
+(= x 1)

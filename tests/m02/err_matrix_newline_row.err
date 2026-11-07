@@ -1,0 +1,2 @@
+SyntaxError: expected ",", ";" or "]" in the matrix, found number 3
+  at err_matrix_newline_row.sci:3:6

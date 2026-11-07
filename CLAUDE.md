@@ -35,4 +35,7 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - Tests: `name.sci` plus `name.out`, `name.tokens` or `name.ast`; or a first line `#! error: Kind`, with an optional `name.err` that stderr must match exactly. Only `.sci` files directly in `tests/mNN/` are tests; subfolders hold fixtures.
 - Write expected files (`.out`, `.tokens`, `.err`) from the reference by hand, not by recording the interpreter's output, so a test can catch a real bug.
 - `--tokens` prints one token per line as `LINE:COL KIND [VALUE]`. The kinds are EOF, NEWLINE, IDENT, INT (decimal value), REAL and IMAG (literal without `_`), STRING and DOCSTRING (quoted and re-escaped), KEYWORD and OP. See `src/Axon.Tokens.pas`.
+- `--ast` prints S-expressions, one statement per line, with block bodies on indented lines. The full format is in the header of `src/Axon.AstDump.pas`.
 - Debug builds have range and overflow checking on.
+- Delphi `{ … }` comments don't nest, so a comment that contains `{` or `}` (grammar excerpts, `matrix{T}`) must use `(* … *)`.
+- Parser ownership: a function that takes a child node frees it if it fails, so the caller must clear its own reference before the call. See `ParsePostfix`.
