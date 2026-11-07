@@ -46,6 +46,7 @@ function is_complex(A) return eltype(A) == "complex" end
 
 # A fresh real (or complex) m×n matrix holding A, for LAPACK to overwrite.
 function float_matrix(A)
+  if typeof(A) == "sparse" A = full(A) end
   [m, n] = size(A)
   return reshape([A] + 0.0, m, n)
 end
@@ -260,6 +261,10 @@ end
 ## Two values L, U with A = L * U: U upper triangular and L a row permutation
 ## of a unit lower-triangular matrix.
 export function lu(A)
+  if typeof(A) == "sparse"
+    [L, U] = splu(A)
+    return L, U
+  end
   [m, n] = size(A)
   k = min(m, n)
   M = float_matrix(A)

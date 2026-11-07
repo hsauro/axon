@@ -20,7 +20,7 @@ uses
 type
   TValueKind = (vkNothing, vkBool, vkInt, vkReal, vkComplex, vkString, vkRange,
     vkBuiltin, vkFunction, vkList, vkRecord, vkArray, vkDict, vkRecordType, vkModule,
-    vkPointer, vkExtern);
+    vkPointer, vkExtern, vkSparse);
 
   TElemType = (etBool, etInt, etReal, etComplex);
 
@@ -90,6 +90,24 @@ type
     procedure Put(K: Integer; const V: TAxValue);    // V must fit ElemType
     function Clone: TArrayObj;                       // counts in ArrayCopies
     procedure Widen(T: TElemType);                   // in place, never narrows
+  end;
+
+  { A sparse matrix in compressed sparse column form: the entries of column j
+    are ColPtr[j] .. ColPtr[j+1]-1, with strictly increasing row indices and
+    no stored zeros. Values are kept as complex numbers; IsComplex says
+    whether the matrix is complex or real. }
+  TSparseObj = class(TInterfacedObject)
+  public
+    IsComplex: Boolean;
+    Rows, Cols: Integer;
+    ColPtr: TArray<Integer>;
+    RowIdx: TArray<Integer>;
+    V: TArray<TComplex>;
+    function Nnz: Integer; inline;
+    function ValueAt(P: Integer): TAxValue;   // the value of stored entry P
+    function Find(I, J: Integer): Integer;    // entry index of (I, J) (0-based), or -1
+    function Get(I, J: Integer): TAxValue;    // element (I, J), 0-based
+    function Clone: TSparseObj;
   end;
 
   TListObj = class(TInterfacedObject)
@@ -547,6 +565,66 @@ begin
     Result.FIndex.Add(P.Key, P.Value);
 end;
 
+{ ---- sparse matrices ---- }
+
+function TSparseObj.Nnz: Integer;
+begin
+  Result := Length(RowIdx);
+end;
+
+function TSparseObj.ValueAt(P: Integer): TAxValue;
+begin
+  if IsComplex then
+    Result := ComplexValue(V[P])
+  else
+    Result := RealValue(V[P].Re);
+end;
+
+function TSparseObj.Find(I, J: Integer): Integer;
+var
+  Lo, Hi, Mid: Integer;
+begin
+  // Binary search within column J.
+  Lo := ColPtr[J];
+  Hi := ColPtr[J + 1] - 1;
+  while Lo <= Hi do
+  begin
+    Mid := (Lo + Hi) div 2;
+    if RowIdx[Mid] = I then
+      Exit(Mid);
+    if RowIdx[Mid] < I then
+      Lo := Mid + 1
+    else
+      Hi := Mid - 1;
+  end;
+  Result := -1;
+end;
+
+function TSparseObj.Get(I, J: Integer): TAxValue;
+var
+  P: Integer;
+begin
+  P := Find(I, J);
+  if P >= 0 then
+    Result := ValueAt(P)
+  else if IsComplex then
+    Result := ComplexValue2(0, 0)
+  else
+    Result := RealValue(0);
+end;
+
+function TSparseObj.Clone: TSparseObj;
+begin
+  Result := TSparseObj.Create;
+  Result.IsComplex := IsComplex;
+  Result.Rows := Rows;
+  Result.Cols := Cols;
+  Result.ColPtr := Copy(ColPtr);
+  Result.RowIdx := Copy(RowIdx);
+  Result.V := Copy(V);
+  Inc(ArrayCopies);
+end;
+
 function AsDict(const V: TAxValue): TDictObj;
 begin
   Result := TDictObj(V.Obj);
@@ -576,6 +654,7 @@ begin
       end;
     vkDict:   V.Obj := AsDict(V).Clone;
     vkArray:  V.Obj := AsArray(V).Clone;
+    vkSparse: V.Obj := TSparseObj(V.Obj).Clone;
   end;
 end;
 
@@ -645,7 +724,7 @@ function TypeName(const V: TAxValue): string;
 const
   Names: array[TValueKind] of string = ('nothing', 'bool', 'int', 'real',
     'complex', 'string', 'range', 'function', 'function', 'list', 'record', '',
-    'dict', 'type', 'module', 'pointer', 'function');
+    'dict', 'type', 'module', 'pointer', 'function', 'sparse');
 begin
   if V.Kind = vkArray then
   begin
@@ -861,6 +940,82 @@ end;
 
 function DisplayValue(const V: TAxValue; Quoted, Nested: Boolean): string; forward;
 
+{ Sparse display: a header, then one "(i, j)  value" line per stored entry. }
+function FormatSparse(S: TSparseObj): string;
+const
+  MaxShown = 20;
+  Edge = 10;
+var
+  Idx: TArray<Integer>;
+  Cols: TArray<Integer>;
+  Keys, Vals: TArray<string>;
+  K, J, P, KW, VW, N: Integer;
+  SB: TStringBuilder;
+  ElemName: string;
+begin
+  if S.IsComplex then ElemName := 'complex' else ElemName := 'real';
+  Result := Format('%d' + #$00D7 + '%d sparse{%s} with %d stored ',
+    [S.Rows, S.Cols, ElemName, S.Nnz]);
+  if S.Nnz = 1 then Result := Result + 'entry' else Result := Result + 'entries';
+  N := S.Nnz;
+  if N = 0 then
+    Exit;
+  // The column of each stored entry.
+  SetLength(Cols, N);
+  for J := 0 to S.Cols - 1 do
+    for P := S.ColPtr[J] to S.ColPtr[J + 1] - 1 do
+      Cols[P] := J;
+  if N <= MaxShown then
+  begin
+    SetLength(Idx, N);
+    for K := 0 to N - 1 do
+      Idx[K] := K;
+  end
+  else
+  begin
+    for K := 0 to Edge - 1 do
+      Idx := Idx + [K];
+    Idx := Idx + [-1];
+    for K := N - Edge to N - 1 do
+      Idx := Idx + [K];
+  end;
+  SetLength(Keys, Length(Idx));
+  SetLength(Vals, Length(Idx));
+  KW := 0;
+  VW := 0;
+  for K := 0 to High(Idx) do
+  begin
+    if Idx[K] < 0 then
+      Continue;
+    P := Idx[K];
+    Keys[K] := Format('(%d, %d)', [S.RowIdx[P] + 1, Cols[P] + 1]);
+    if S.IsComplex then
+      Vals[K] := FormatComplex(S.V[P], ArrayDigits)
+    else
+      Vals[K] := FormatReal(S.V[P].Re, ArrayDigits);
+    if Length(Keys[K]) > KW then KW := Length(Keys[K]);
+    if Length(Vals[K]) > VW then VW := Length(Vals[K]);
+  end;
+  SB := TStringBuilder.Create;
+  try
+    SB.Append(Result);
+    for K := 0 to High(Idx) do
+    begin
+      SB.Append(sLineBreak);
+      if Idx[K] < 0 then
+      begin
+        SB.Append('  ' + #$22EE);
+        Continue;
+      end;
+      SB.Append('  ').Append(Keys[K]).Append(StringOfChar(' ', KW - Length(Keys[K])))
+        .Append('  ').Append(StringOfChar(' ', VW - Length(Vals[K]))).Append(Vals[K]);
+    end;
+    Result := SB.ToString;
+  finally
+    SB.Free;
+  end;
+end;
+
 function FormatList(L: TListObj): string;
 var
   I: Integer;
@@ -930,6 +1085,12 @@ begin
     vkRecordType: Result := 'record type ' + AsRecordType(V).Name;
     vkModule: Result := 'module ' + TModuleBase(V.Obj).Name;
     vkPointer: Result := 'pointer 0x' + IntToHex(V.I, 16);
+    vkSparse:
+      if Nested then
+        Result := Format('sparse(%d' + #$00D7 + '%d, %d stored)',
+          [TSparseObj(V.Obj).Rows, TSparseObj(V.Obj).Cols, TSparseObj(V.Obj).Nnz])
+      else
+        Result := FormatSparse(TSparseObj(V.Obj));
     vkArray:
       if Nested then
         Result := FormatArrayInline(AsArray(V))

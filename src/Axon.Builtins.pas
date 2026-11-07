@@ -19,7 +19,7 @@ implementation
 
 uses
   System.Math, System.Character,
-  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Arrays, Axon.Tokens, Axon.Ffi;
+  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Arrays, Axon.Tokens, Axon.Ffi, Axon.Sparse;
 
 type
   TRealFn = function(X: Double): Double;
@@ -165,6 +165,7 @@ begin
     vkRange: Result := IntValue(AsRange(Args[0]).Count);
     vkArray: Result := IntValue(AsArray(Args[0]).Count);
     vkDict:  Result := IntValue(Length(AsDict(Args[0]).Keys));
+    vkSparse: Result := IntValue(AsSparse(Args[0]).Rows * AsSparse(Args[0]).Cols);
     vkString:
       begin
         S := AsString(Args[0]);
@@ -571,6 +572,11 @@ begin
   end
   else if Args[0].Kind = vkRange then
     R := AsRange(Args[0]).Count
+  else if Args[0].Kind = vkSparse then
+  begin
+    R := AsSparse(Args[0]).Rows;
+    C := AsSparse(Args[0]).Cols;
+  end
   else if NumRank(Args[0]) < 0 then
     RaiseFmt(TypeError, 'size is not defined for %s', [TypeName(Args[0])]);
   if Length(Args) = 1 then
@@ -685,6 +691,8 @@ var
   A: TArrayObj;
   Holder: TAxValue;
 begin
+  if Args[0].Kind = vkSparse then
+    Exit(SparseTranspose(AsSparse(Args[0]), True));
   if not IsArrayLike(Args[0]) then
     Exit(BConj(Args));
   A := ToArray(Args[0]);
@@ -697,12 +705,163 @@ begin
   Result := BoolValue(ValuesIdentical(Args[0], Args[1]));
 end;
 
+{ ---- sparse matrices (M11) ---- }
+
+{ 1-based index values (an int, or an int vector or range) as 0-based ints. }
+function IndexList(const Fn: string; const V: TAxValue): TArray<Integer>;
+var
+  A: TArrayObj;
+  Holder: TAxValue;
+  K: Integer;
+begin
+  if V.Kind = vkInt then
+  begin
+    Result := [V.I - 1];
+    Exit;
+  end;
+  if not IsArrayLike(V) then
+    RaiseFmt(TypeError, '%s needs int indices, got %s', [Fn, TypeName(V)]);
+  A := ToArray(V);
+  Holder := ArrayValue(A);
+  if (A.ElemType <> etInt) and (A.Count > 0) then
+    RaiseFmt(TypeError, '%s needs int indices, got %s elements', [Fn, ElemTypeName(A.ElemType)]);
+  SetLength(Result, A.Count);
+  for K := 0 to A.Count - 1 do
+  begin
+    if A.I[K] < 1 then
+      RaiseFmt(IndexError, '%s: index %d is below 1', [Fn, A.I[K]]);
+    Result[K] := A.I[K] - 1;
+  end;
+end;
+
+{ sparse(A), sparse(i, j, v) or sparse(i, j, v, m, n). }
+function BSparse(const Args: TAxValues): TAxValue;
+var
+  I, J: TArray<Integer>;
+  V: TArray<TComplex>;
+  Vals: TArrayObj;
+  Holder: TAxValue;
+  M, N, K: Integer;
+  Cplx: Boolean;
+begin
+  if Length(Args) = 1 then
+  begin
+    case Args[0].Kind of
+      vkSparse: Exit(Args[0]);
+      vkArray, vkRange:
+        begin
+          Vals := ToArray(Args[0]);
+          Holder := ArrayValue(Vals);
+          Exit(SparseValue(SparseFromDense(Vals)));
+        end;
+    else
+      RaiseFmt(TypeError, 'sparse needs a matrix, got %s', [TypeName(Args[0])]);
+    end;
+  end;
+  if not (Length(Args) in [3, 5]) then
+    RaiseError(ArgumentError, 'sparse takes A, (i, j, v) or (i, j, v, m, n)');
+  I := IndexList('sparse', Args[0]);
+  J := IndexList('sparse', Args[1]);
+  if Length(I) <> Length(J) then
+    RaiseFmt(DimensionError, 'sparse: %d row indices but %d column indices', [Length(I), Length(J)]);
+  SetLength(V, Length(I));
+  if IsArrayLike(Args[2]) then
+  begin
+    Vals := ToArray(Args[2]);
+    Holder := ArrayValue(Vals);
+    if Vals.Count <> Length(I) then
+      RaiseFmt(DimensionError, 'sparse: %d indices but %d values', [Length(I), Vals.Count]);
+    Cplx := Vals.ElemType = etComplex;
+    for K := 0 to Vals.Count - 1 do
+      V[K] := ToComplex(Vals.Get(K));
+  end
+  else
+  begin
+    NeedNumber('sparse', Args[2]);
+    Cplx := Args[2].Kind = vkComplex;
+    for K := 0 to High(V) do
+      V[K] := ToComplex(Args[2]);
+  end;
+  if Length(Args) = 5 then
+  begin
+    M := SizeArg('sparse', Args[3]);
+    N := SizeArg('sparse', Args[4]);
+  end
+  else
+  begin
+    M := 0;
+    N := 0;
+    for K := 0 to High(I) do
+    begin
+      M := Max(M, I[K] + 1);
+      N := Max(N, J[K] + 1);
+    end;
+  end;
+  for K := 0 to High(I) do
+    if (I[K] >= M) or (J[K] >= N) then
+      RaiseFmt(IndexError, 'sparse: index (%d, %d) is outside a %d' + #$00D7 + '%d matrix',
+        [I[K] + 1, J[K] + 1, M, N]);
+  Result := SparseValue(FromTriplets(M, N, I, J, V, Cplx));
+end;
+
+function BSpeye(const Args: TAxValues): TAxValue;
+var
+  M, N: Integer;
+begin
+  M := SizeArg('speye', Args[0]);
+  if Length(Args) = 2 then N := SizeArg('speye', Args[1]) else N := M;
+  Result := SparseIdentity(M, N);
+end;
+
+function BNnz(const Args: TAxValues): TAxValue;
+var
+  A: TArrayObj;
+  Holder: TAxValue;
+  K, N: Integer;
+  X: TComplex;
+begin
+  if Args[0].Kind = vkSparse then
+    Exit(IntValue(AsSparse(Args[0]).Nnz));
+  if NumRank(Args[0]) >= 0 then
+  begin
+    X := ToComplex(Args[0]);
+    Exit(IntValue(Ord((X.Re <> 0) or (X.Im <> 0))));
+  end;
+  if not IsArrayLike(Args[0]) then
+    RaiseFmt(TypeError, 'nnz needs a matrix, got %s', [TypeName(Args[0])]);
+  A := ToArray(Args[0]);
+  Holder := ArrayValue(A);
+  N := 0;
+  for K := 0 to A.Count - 1 do
+  begin
+    X := ToComplex(A.Get(K));
+    if (X.Re <> 0) or (X.Im <> 0) then
+      Inc(N);
+  end;
+  Result := IntValue(N);
+end;
+
+function BFull(const Args: TAxValues): TAxValue;
+begin
+  Result := Densify(Args[0]);
+end;
+
+{ splu(S): the sparse factors [L, U] with S = L * U. }
+function BSplu(const Args: TAxValues): TAxValues;
+begin
+  if Args[0].Kind <> vkSparse then
+    RaiseFmt(TypeError, 'splu needs a sparse matrix, got %s', [TypeName(Args[0])]);
+  Result := SparseLUFactors(AsSparse(Args[0]));
+end;
+
 { ---- shape helpers (M10) ---- }
 
 function BEltype(const Args: TAxValues): TAxValue;
 begin
   case Args[0].Kind of
     vkArray: Result := StringValue(ElemTypeName(AsArray(Args[0]).ElemType));
+    vkSparse:
+      if AsSparse(Args[0]).IsComplex then Result := StringValue('complex') else Result := StringValue('real');
     vkRange:
       if AsRange(Args[0]).IsInt then Result := StringValue('int') else Result := StringValue('real');
   else
@@ -876,6 +1035,11 @@ begin
   Add('keep', BKeep, 1, 1);
   Add('eltype', BEltype, 1, 1);
   Add('reshape', BReshape, 2, 3);
+  Add('sparse', BSparse, 1, 5);
+  Add('speye', BSpeye, 1, 2);
+  Add('nnz', BNnz, 1, 1);
+  Add('full', BFull, 1, 1);
+  AddMulti('splu', BSplu, 1, 1);
   Add('append', BAppend, 2, 2);
   Add('get', BGet, 3, 3);
   Add('keys', BKeys, 1, 1);

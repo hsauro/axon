@@ -24,7 +24,7 @@ This milestone sets up the repository, the build and the test runner before any 
 
 - [ ] Delphi project builds an `axon` console executable for Win64 and macOS (arm64 and x64); Linux is deferred
 - [x] Builds run from the command line (MSBuild or `dcc`), so CI and Claude Code can build without the IDE
-- [ ] C libraries (BLAS/LAPACK, UMFPACK or KLU, CVODE, and later MIR) bound through Delphi `external` declarations in one unit per library. No libffi: foreign calls use Delphi's `System.Rtti.Invoke`, and `callback` uses a pool of trampolines compiled into the interpreter (M9)
+- [ ] C libraries (BLAS/LAPACK, CVODE, and later MIR) bound through Delphi `external` declarations in one unit per library. No libffi: foreign calls use Delphi's `System.Rtti.Invoke`, and `callback` uses a pool of trampolines compiled into the interpreter (M9)
 - [x] Platform-specific code kept behind `{$IFDEF}` in a few units, so a Linux target can be added later without restructuring
 - [x] `axon test tests/` runs the three test kinds and reports results by milestone
 - [x] Local `build` and `test` scripts for Win64, runnable by you or Claude Code on the Windows machine
@@ -171,11 +171,11 @@ This milestone adds the `linalg` module, written in Axon over BLAS and LAPACK th
 
 This milestone adds the core sparse type and its solvers.
 
-- [ ] `sparse(i, j, v, m, n)`, `speye`, `nnz` and `full`, stored as CSC
-- [ ] Arithmetic stays sparse where the reference says so and becomes dense otherwise
-- [ ] Indexing and indexed assignment on sparse matrices
-- [ ] `S \ b` and sparse `lu` through UMFPACK or KLU
-- [ ] Sparse display in the REPL
+- [x] `sparse(i, j, v, m, n)`, `speye`, `nnz` and `full`, stored as CSC
+- [x] Arithmetic stays sparse where the reference says so and becomes dense otherwise
+- [x] Indexing and indexed assignment on sparse matrices
+- [x] `S \ b` and sparse `lu` through a sparse LU written in Delphi (minimum-degree ordering and Gilbert–Peierls factorisation), so no extra library is needed
+- [x] Sparse display in the REPL
 
 ## Tooling and packages
 

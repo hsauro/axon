@@ -18,12 +18,6 @@ Prebuilt native libraries shipped with Axon. A Win64 build (from the IDE or `bui
 
 Delphi bindings for these libraries already exist in `CommonCode/LAPACKE` and `CommonCode/SunDials Suite`, and serve as references. Axon calls CVODE from Axon code through `extern` (M13), so only the interpreter's own native calls (such as `dgemm` for `*`) need Delphi declarations, in `src/native`.
 
-## Not available yet
-
-| Library | Needed by | Notes |
-| --- | --- | --- |
-| KLU or UMFPACK (SuiteSparse) | M11 sparse solves | SuiteSparse builds with CMake; vcpkg has `suitesparse` |
-
 ## macOS
 
 No dylibs are shipped yet. A CVODE arm64 set already exists in `RoadRunner_Delphi_JIT/OSXARM64/Debug`. On macOS, Apple's Accelerate framework can provide BLAS and LAPACK.

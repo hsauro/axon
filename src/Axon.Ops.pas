@@ -40,7 +40,7 @@ implementation
 
 uses
   System.SysUtils, System.Math,
-  Axon.Errors, Axon.Arrays;
+  Axon.Errors, Axon.Arrays, Axon.Sparse;
 
 procedure RaiseError(const Kind, Msg: string);
 begin
@@ -294,6 +294,9 @@ function BinaryOp(Op: TTokenKind; const A, B: TAxValue): TAxValue;
 var
   Rank: Integer;
 begin
+  // Sparse operands first: they stay sparse or become dense (Axon.Sparse).
+  if (A.Kind = vkSparse) or (B.Kind = vkSparse) then
+    Exit(SparseBinaryOp(Op, A, B));
   // Arrays and ranges: elementwise with broadcasting, or the matrix product.
   if (A.Kind in [vkArray, vkRange]) or (B.Kind in [vkArray, vkRange]) then
     Exit(ArrayBinaryOp(Op, A, B));
@@ -332,6 +335,8 @@ end;
 
 function UnaryOp(Op: TTokenKind; const A: TAxValue): TAxValue;
 begin
+  if A.Kind = vkSparse then
+    Exit(SparseUnaryOp(Op, A));
   if A.Kind in [vkArray, vkRange] then
     Exit(ArrayUnaryOp(Op, A));
   case Op of

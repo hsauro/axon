@@ -302,6 +302,13 @@ For example, `A - mean(A, 1)` subtracts each column's mean, because `mean(A, 1)`
 
 A result is sparse when both operands are sparse, or when one is a scalar and the operation is `*` or `/`. Any other mix with a dense operand gives a dense result. `S'` is sparse.
 
+- **Element types.** A sparse matrix holds `real` or `complex` values; `int` and `bool` values are stored as `real`. Stored entries are never exactly zero: a construction or an operation that produces a zero drops it.
+- **Construction.** `sparse(i, j, v, m, n)` builds an m×n matrix from index vectors `i` and `j` and values `v` (a vector of the same length, or a scalar for every entry), summing the values of repeated `(i, j)` pairs. `sparse(i, j, v)` takes m and n from the largest indices, and `sparse(A)` converts a dense matrix. `speye(n)` and `speye(m, n)` are sparse identities, `nnz(S)` counts the stored entries (or the nonzeros of a dense array), and `full(S)` converts to a dense matrix.
+- **Sparse results, precisely.** `+`, `-`, `.*` and `*` between two sparse matrices, `*`, `/`, `.*` and `./` with a scalar on the appropriate side (`2*S`, `S*2`, `S/2`), unary `-`, `'` and `adjoint` give sparse results. Elementwise `./`, `.\` and `.^` between two sparse matrices, and comparisons, give dense results, since they turn zeros into other values. Elementwise functions such as `sqrt` need `full(S)`.
+- **Indexing.** `S[i, j]` with two scalars is an element and `S[k]` a linear element. Other selections with two indices give a sparse submatrix, and a single non-scalar index gives a dense vector. Indexed assignment works as for dense matrices; assigning zero removes an entry, and a complex value makes the matrix complex.
+- **Solving.** `S \ b` factorises S with a sparse LU built into the interpreter and returns a dense result shaped like `b`. The factorisation uses a minimum-degree ordering on the pattern of `S + S'` to limit fill-in, and partial pivoting with a preference for the diagonal. `S / B`, `B / S` and `S ^ k` work as for dense matrices; `S ^ k` with an integer `k >= 0` stays sparse. A singular matrix raises `SingularMatrix`.
+- **Display.** A sparse matrix displays its size, element type and number of stored entries (`3×3 sparse{real} with 4 stored entries`, or `1 stored entry`), then one line per entry in column-major order, `(i, j)  value`, with values shown as in dense arrays. Above 20 entries only the first and last 10 are shown, with `  ⋮` between. Inside a list or record it shows as `sparse(m×n, k stored)`.
+
 ### Comparison
 
 - On scalars, `==`, `!=`, `<`, `<=`, `>` and `>=` return a `bool`. On arrays they apply elementwise with broadcasting and return a `bool` array.
@@ -490,14 +497,14 @@ The first line is `Kind: message`. Each further line is one trace frame, innermo
 | `eig(A)` | The eigenvalues: a `real` vector when all are real, a `complex` vector otherwise. `eig(A, vectors=true)` returns two values, the eigenvalues and a matrix of eigenvectors |
 | `svd(A)` | Three values `U, s, V` with `A = U*S*V'` (`adjoint` for complex), `s` the vector of singular values in decreasing order and `U`, `V` square |
 | `qr(A)` | Two values `Q, R`: the thin factorisation, `Q` m×k with orthonormal columns and `R` k×n upper triangular, `k = min(m, n)` |
-| `lu(A)` | Two values `L, U` with `A = L*U`, `U` upper triangular and `L` a row permutation of a unit lower-triangular matrix |
+| `lu(A)` | Two values `L, U` with `A = L*U`, `U` upper triangular and `L` a row permutation of a unit lower-triangular matrix. For a sparse `A`, which must be square, both are sparse, and the fill-reducing column order is folded into `U`, which is then a column permutation of an upper-triangular matrix |
 | `chol(A)` | Upper-triangular `R` with `A = R'*R` (`adjoint(R)*R` for complex); `DomainError` when `A` is not positive definite |
 | `rank(A; tol)` | The number of singular values above `tol`, by default `max(m, n) * eps * max(s)` with `eps = 2.220446049250313e-16` |
 | `null(A; tol)` | An orthonormal basis of the null space, as the columns of a matrix |
 | `norm(x; p=2)` | For a vector the p-norm, with `p` a positive number or `"inf"`; for a matrix the 2-norm (largest singular value), `p=1` (largest column sum), `"inf"` (largest row sum) or `"fro"` (Frobenius) |
 | `expm(A)` | The matrix exponential, by scaling and squaring with a degree-13 Padé approximant |
 
-Decompositions that fail to converge raise `DomainError`.
+Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `solve`, the functions accept a sparse matrix by working on `full(A)`.
 
 ## Modules and foreign functions
 

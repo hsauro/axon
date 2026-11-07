@@ -34,7 +34,8 @@ uses
   Axon.Cli in 'src\Axon.Cli.pas',
   Axon.Native.Blas in 'src\native\Axon.Native.Blas.pas',
   Axon.Native.Lapack in 'src\native\Axon.Native.Lapack.pas',
-  Axon.Native.SparseSolver in 'src\native\Axon.Native.SparseSolver.pas',
+  Axon.Sparse in 'src\Axon.Sparse.pas',
+  Axon.SparseLU in 'src\Axon.SparseLU.pas',
   Axon.Native.Cvode in 'src\native\Axon.Native.Cvode.pas',
   Axon.Native.Mir in 'src\native\Axon.Native.Mir.pas';
 

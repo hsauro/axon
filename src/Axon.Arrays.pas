@@ -70,7 +70,7 @@ implementation
 
 uses
   System.Math,
-  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Linalg;
+  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Linalg, Axon.Sparse;
 
 function IsArrayLike(const V: TAxValue): Boolean;
 begin
@@ -541,6 +541,8 @@ var
   DA, DB: TDictObj;
   P: Integer;
 begin
+  if (A.Kind = vkSparse) or (B.Kind = vkSparse) then
+    Exit(ValuesIdentical(Densify(A), Densify(B)));
   if IsArrayLike(A) and IsArrayLike(B) then
   begin
     X := ArrayHold(A, HA);

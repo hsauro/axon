@@ -151,6 +151,9 @@ type
     function EvalRecord(E: TRecordExpr; Scope: TScope): TAxValue;
     function IndexString(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
     function IndexDict(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
+    function IndexSparse(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
+    procedure AssignSparseSlot(var Slot: TAxValue; Target: TIndexExpr; const V: TAxValue;
+      Scope: TScope);
     function ResolveModule(const Name: string): string;
     function LoadModule(const Name: string; Node: TNode): TAxValue;
     procedure ExecImport(S: TImportStmt; Scope: TScope);
@@ -196,6 +199,7 @@ implementation
 uses
   System.Math, System.Character, System.IOUtils,
   Axon.Packages, Axon.Source, Axon.Lexer, Axon.Parser,
+  Axon.Sparse,
   Axon.Errors, Axon.Tokens, Axon.Ops, Axon.Builtins, Axon.Complex, Axon.Arrays;
 
 function StringChars(const S: string): TArray<string>; forward;
@@ -287,8 +291,27 @@ begin
   end
   else if (N = 'list') or (N = 'record') then
     Ok := V.Kind = ValueKindOfName(N)
-  else if (N = 'sparse') or (N = 'dict') then
-    Ok := False   // no values of these types exist before M7/M11
+  else if N = 'sparse' then
+  begin
+    Ok := V.Kind = vkSparse;
+    if Ok and (T.Param <> nil) then
+    begin
+      if T.Param.Name = 'complex' then
+      begin
+        if not AsSparse(V).IsComplex then
+        begin
+          Result := SparseValue(AsSparse(V).Clone);
+          AsSparse(Result).IsComplex := True;
+        end;
+      end
+      else if T.Param.Name = 'real' then
+        Ok := not AsSparse(V).IsComplex
+      else
+        RaiseFmt(TypeError, 'the element type of %s must be real or complex', [T.ToString]);
+    end;
+  end
+  else if N = 'dict' then
+    Ok := V.Kind = vkDict
   else
     RaiseFmt(TypeError, 'unknown type "%s"', [T.ToString]);
   if not Ok then
@@ -1358,6 +1381,8 @@ begin
       Result := IndexString(T, E, Scope);
     vkDict:
       Result := IndexDict(T, E, Scope);
+    vkSparse:
+      Result := IndexSparse(T, E, Scope);
   else
     raise EAxonError.CreateAt(TypeError, Format('%s cannot be indexed', [TypeName(T)]),
       FFile, E.Line, E.Col);
@@ -1534,6 +1559,14 @@ begin
 
   E := TIndexExpr(Step);
   case Slot.Kind of
+    vkSparse:
+      begin
+        if not Last then
+          raise EAxonError.CreateAt(TypeError,
+            'sparse matrix elements are numbers, so they cannot be indexed or have fields',
+            FFile, Step.Line, Step.Col);
+        AssignSparseSlot(Slot, E, V, Scope);
+      end;
     vkRange, vkArray:
       begin
         if not Last then
@@ -2201,6 +2234,160 @@ begin
     Result := NothingValue
   else
     Result := StringValue(DisplayPath(Path));
+end;
+
+{ ---------------- sparse indexing ---------------- }
+
+{ S[i, j] is an element; other two-index selections are sparse submatrices;
+  a single non-scalar index gives a dense vector. }
+function TInterpreter.IndexSparse(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
+var
+  S: TSparseObj;
+  Sel: TSelection;
+  Pos: TArray<Integer>;
+  Values: TAxValues;
+  RI, CI, K, P: Integer;
+  TI, TJ: TArray<Integer>;
+  TV: TArray<TComplex>;
+begin
+  S := AsSparse(T);
+  Sel := ResolveSelection(S.Rows, S.Cols, False, E, Scope);
+  if not Sel.Two then
+  begin
+    if Sel.ScalarA then
+      Exit(S.Get(Sel.Lin[0] mod S.Rows, Sel.Lin[0] div S.Rows));
+    SetLength(Values, Length(Sel.Lin));
+    for K := 0 to High(Sel.Lin) do
+      Values[K] := S.Get(Sel.Lin[K] mod S.Rows, Sel.Lin[K] div S.Rows);
+    if S.IsComplex then
+      Exit(BuildArray(Length(Values), 1, True, Values, etComplex));
+    Exit(BuildArray(Length(Values), 1, True, Values, etReal));
+  end;
+  if Sel.ScalarA and Sel.ScalarB then
+    Exit(S.Get(Sel.RowPos[0], Sel.ColPos[0]));
+  Pos := nil;
+  for CI := 0 to High(Sel.ColPos) do
+    for RI := 0 to High(Sel.RowPos) do
+    begin
+      P := S.Find(Sel.RowPos[RI], Sel.ColPos[CI]);
+      if P >= 0 then
+      begin
+        TI := TI + [RI];
+        TJ := TJ + [CI];
+        TV := TV + [S.V[P]];
+      end;
+    end;
+  Result := SparseValue(FromTriplets(Length(Sel.RowPos), Length(Sel.ColPos), TI, TJ, TV,
+    S.IsComplex));
+end;
+
+{ S[idx] = V for a sparse matrix in Slot: rebuilt with the new values;
+  assigned zeros disappear and a complex value makes S complex. }
+procedure TInterpreter.AssignSparseSlot(var Slot: TAxValue; Target: TIndexExpr;
+  const V: TAxValue; Scope: TScope);
+var
+  S: TSparseObj;
+  Sel: TSelection;
+  Pos: TArray<Integer>;
+  Src: TArrayObj;
+  SrcHolder: TAxValue;
+  N, K, C, P, Idx, SelRows, SelCols, Count: Integer;
+  OneDim, Ok, Cplx: Boolean;
+  TI, TJ: TArray<Integer>;
+  TV: TArray<TComplex>;
+  Where: TDictionary<Int64, Integer>;
+  Key: Int64;
+  X: TComplex;
+begin
+  S := AsSparse(Slot);
+  Sel := ResolveSelection(S.Rows, S.Cols, False, Target, Scope);
+  S := AsSparse(Slot);
+  Pos := SelectionPositions(Sel, S.Rows);
+  N := Length(Pos);
+  OneDim := not Sel.Two or Sel.ScalarA or Sel.ScalarB;
+  SelRows := Length(Sel.RowPos);
+  SelCols := Length(Sel.ColPos);
+
+  Src := nil;
+  if V.Kind in [vkArray, vkRange, vkSparse] then
+  begin
+    SrcHolder := Densify(V);
+    if SrcHolder.Kind = vkRange then
+      SrcHolder := ArrayValue(RangeToArray(AsRange(SrcHolder)));
+    Src := AsArray(SrcHolder);
+    if OneDim then
+      Ok := (Src.Count = N) and (Src.IsVector or (Src.Rows = 1) or (Src.Cols = 1))
+    else
+      Ok := (Src.Rows = SelRows) and (Src.Cols = SelCols);
+    if not Ok then
+      raise EAxonError.CreateAt(DimensionError, Format(
+        'cannot assign %d elements to a selection of %d', [Src.Count, N]),
+        FFile, Target.Line, Target.Col);
+    Cplx := S.IsComplex or (Src.ElemType = etComplex);
+  end
+  else if NumRank(V) >= 0 then
+    Cplx := S.IsComplex or (V.Kind = vkComplex)
+  else
+    raise EAxonError.CreateAt(TypeError, Format('cannot store %s in a sparse matrix', [TypeName(V)]),
+      FFile, Target.Line, Target.Col);
+
+  // One nonzero value over an existing entry is written in place, after
+  // copy-on-write. Values are stored as complex either way, so a complex
+  // value only sets the flag.
+  if (N = 1) and (Src = nil) then
+  begin
+    X := ToComplex(V);
+    P := S.Find(Pos[0] mod S.Rows, Pos[0] div S.Rows);
+    if (P >= 0) and ((X.Re <> 0) or (X.Im <> 0)) then
+    begin
+      MakeUnique(Slot);
+      S := AsSparse(Slot);
+      S.V[P] := X;
+      if Cplx then
+        S.IsComplex := True;
+      Exit;
+    end;
+  end;
+
+  // Otherwise the matrix is rebuilt: the existing entries, then the new
+  // values on top (zeros are dropped by FromTriplets).
+  SetLength(TI, S.Nnz + N);
+  SetLength(TJ, S.Nnz + N);
+  SetLength(TV, S.Nnz + N);
+  Count := 0;
+  Where := TDictionary<Int64, Integer>.Create;
+  try
+    for C := 0 to S.Cols - 1 do
+      for P := S.ColPtr[C] to S.ColPtr[C + 1] - 1 do
+      begin
+        Where.Add(Int64(C) * S.Rows + S.RowIdx[P], Count);
+        TI[Count] := S.RowIdx[P];
+        TJ[Count] := C;
+        TV[Count] := S.V[P];
+        Inc(Count);
+      end;
+    for K := 0 to N - 1 do
+    begin
+      if Src <> nil then X := ToComplex(Src.Get(K)) else X := ToComplex(V);
+      Key := Pos[K];
+      if Where.TryGetValue(Key, Idx) then
+        TV[Idx] := X
+      else
+      begin
+        Where.Add(Key, Count);
+        TI[Count] := Pos[K] mod S.Rows;
+        TJ[Count] := Pos[K] div S.Rows;
+        TV[Count] := X;
+        Inc(Count);
+      end;
+    end;
+  finally
+    Where.Free;
+  end;
+  SetLength(TI, Count);
+  SetLength(TJ, Count);
+  SetLength(TV, Count);
+  Slot := SparseValue(FromTriplets(S.Rows, S.Cols, TI, TJ, TV, Cplx));
 end;
 
 { ---------------- foreign functions ---------------- }

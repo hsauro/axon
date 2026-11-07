@@ -92,7 +92,8 @@ xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.sci" "$(MSBuildProjectDir
         <DCCReference Include="src\Axon.Cli.pas"/>
         <DCCReference Include="src\native\Axon.Native.Blas.pas"/>
         <DCCReference Include="src\native\Axon.Native.Lapack.pas"/>
-        <DCCReference Include="src\native\Axon.Native.SparseSolver.pas"/>
+        <DCCReference Include="src\Axon.Sparse.pas"/>
+        <DCCReference Include="src\Axon.SparseLU.pas"/>
         <DCCReference Include="src\native\Axon.Native.Cvode.pas"/>
         <DCCReference Include="src\native\Axon.Native.Mir.pas"/>
         <BuildConfiguration Include="Base">
