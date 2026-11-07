@@ -19,7 +19,7 @@ implementation
 
 uses
   System.Math, System.Character,
-  Axon.Errors, Axon.Complex, Axon.Ops;
+  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Arrays, Axon.Tokens;
 
 type
   TRealFn = function(X: Double): Double;
@@ -43,6 +43,12 @@ end;
 function ApplyElementary(const Fn: string; const V: TAxValue; RF: TRealFn;
   CF: TComplexFn): TAxValue;
 begin
+  if IsArrayLike(V) then
+    Exit(MapArray(V,
+      function(const X: TAxValue): TAxValue
+      begin
+        Result := ApplyElementary(Fn, X, RF, CF);
+      end));
   NeedNumber(Fn, V);
   if V.Kind = vkComplex then
     Result := ComplexValue(CF(V.C))
@@ -147,8 +153,8 @@ begin
   Result := NothingValue;
 end;
 
-{ length of a list, a string (in characters, i.e. Unicode code points) or a
-  range. Arrays arrive in M6. }
+{ length of a list, a string (in characters, i.e. Unicode code points), a
+  range or an array (all its elements). }
 function BLength(const Args: TAxValues): TAxValue;
 var
   S: string;
@@ -157,6 +163,7 @@ begin
   case Args[0].Kind of
     vkList:  Result := IntValue(Length(AsList(Args[0]).Items));
     vkRange: Result := IntValue(AsRange(Args[0]).Count);
+    vkArray: Result := IntValue(AsArray(Args[0]).Count);
     vkString:
       begin
         S := AsString(Args[0]);
@@ -217,11 +224,10 @@ begin Result := ApplyElementary('acosh', Args[0], RAcosh, CAcosh); end;
 function BAtanh(const Args: TAxValues): TAxValue;
 begin Result := ApplyElementary('atanh', Args[0], RAtanh, CAtanh); end;
 
-function BAbs(const Args: TAxValues): TAxValue;
-var
-  V: TAxValue;
+function AbsValue(const V: TAxValue): TAxValue;
 begin
-  V := Args[0];
+  if IsArrayLike(V) then
+    Exit(MapArray(V, AbsValue));
   NeedNumber('abs', V);
   case V.Kind of
     vkBool:    Result := IntValue(Ord(V.B));
@@ -232,10 +238,21 @@ begin
   end;
 end;
 
+function BAbs(const Args: TAxValues): TAxValue;
+begin
+  Result := AbsValue(Args[0]);
+end;
+
 function RoundingFn(const Fn: string; const V: TAxValue; Mode: Integer): TAxValue;
 var
   X, F, D: Double;
 begin
+  if IsArrayLike(V) then
+    Exit(MapArray(V,
+      function(const E: TAxValue): TAxValue
+      begin
+        Result := RoundingFn(Fn, E, Mode);
+      end));
   NeedRealNumber(Fn, V);
   if V.Kind = vkBool then
     Exit(IntValue(Ord(V.B)));
@@ -267,6 +284,8 @@ begin Result := RoundingFn('round', Args[0], 3); end;
 
 function BReal(const Args: TAxValues): TAxValue;
 begin
+  if IsArrayLike(Args[0]) then
+    Exit(MapArray(Args[0], function(const X: TAxValue): TAxValue begin Result := BReal([X]) end));
   NeedNumber('real', Args[0]);
   if Args[0].Kind = vkComplex then
     Result := RealValue(Args[0].C.Re)
@@ -276,6 +295,8 @@ end;
 
 function BImag(const Args: TAxValues): TAxValue;
 begin
+  if IsArrayLike(Args[0]) then
+    Exit(MapArray(Args[0], function(const X: TAxValue): TAxValue begin Result := BImag([X]) end));
   NeedNumber('imag', Args[0]);
   if Args[0].Kind = vkComplex then
     Result := RealValue(Args[0].C.Im)
@@ -285,6 +306,8 @@ end;
 
 function BConj(const Args: TAxValues): TAxValue;
 begin
+  if IsArrayLike(Args[0]) then
+    Exit(MapArray(Args[0], function(const X: TAxValue): TAxValue begin Result := BConj([X]) end));
   NeedNumber('conj', Args[0]);
   if Args[0].Kind = vkComplex then
     Result := ComplexValue(CConj(Args[0].C))
@@ -294,12 +317,19 @@ end;
 
 function BArg(const Args: TAxValues): TAxValue;
 begin
+  if IsArrayLike(Args[0]) then
+    Exit(MapArray(Args[0], function(const X: TAxValue): TAxValue begin Result := BArg([X]) end));
   NeedNumber('arg', Args[0]);
   Result := RealValue(CArg(ToComplex(Args[0])));
 end;
 
 function BComplex(const Args: TAxValues): TAxValue;
 begin
+  if (Length(Args) = 1) and IsArrayLike(Args[0]) then
+    Exit(MapArray(Args[0], function(const X: TAxValue): TAxValue begin Result := BComplex([X]) end));
+  if (Length(Args) = 2) and (IsArrayLike(Args[0]) or IsArrayLike(Args[1])) then
+    Exit(Broadcast2(Args[0], Args[1],
+      function(const X, Y: TAxValue): TAxValue begin Result := BComplex([X, Y]) end, 'complex'));
   NeedNumber('complex', Args[0]);
   if Length(Args) = 1 then
     Exit(ComplexValue(ToComplex(Args[0])));
@@ -314,6 +344,12 @@ var
   X, Y, Q, R: Int64;
   RX, RY, RQ: Double;
 begin
+  if IsArrayLike(A) or IsArrayLike(B) then
+    Exit(Broadcast2(A, B,
+      function(const X1, Y1: TAxValue): TAxValue
+      begin
+        Result := DivMod(Fn, X1, Y1, Mode);
+      end, Fn));
   NeedRealNumber(Fn, A);
   NeedRealNumber(Fn, B);
   if (NumRank(A) <= 1) and (NumRank(B) <= 1) then
@@ -359,6 +395,12 @@ var
   IA, IB: Int64;
   TakeB: Boolean;
 begin
+  if IsArrayLike(A) or IsArrayLike(B) then
+    Exit(Broadcast2(A, B,
+      function(const X1, Y1: TAxValue): TAxValue
+      begin
+        Result := MinMax(Fn, X1, Y1, WantMax);
+      end, Fn));
   NeedRealNumber(Fn, A);
   NeedRealNumber(Fn, B);
   if (NumRank(A) <= 1) and (NumRank(B) <= 1) then
@@ -377,10 +419,42 @@ begin
   if WantMax then Result := RealValue(Max(X, Y)) else Result := RealValue(Min(X, Y));
 end;
 
+function ReduceMinMax(const Fn: string; const V: TAxValue; WantMax: Boolean): TAxValue;
+var
+  Holder: TAxValue;
+  A: TArrayObj;
+  K: Integer;
+begin
+  if not IsArrayLike(V) then
+  begin
+    NeedRealNumber(Fn, V);
+    Exit(V);
+  end;
+  A := ToArray(V);
+  Holder := ArrayValue(A);
+  if A.Count = 0 then
+    RaiseFmt(ArgumentError, '%s of an empty array', [Fn]);
+  Result := A.Get(0);
+  NeedRealNumber(Fn, Result);
+  for K := 1 to A.Count - 1 do
+    Result := MinMax(Fn, Result, A.Get(K), WantMax);
+end;
+
 function BMin(const Args: TAxValues): TAxValue;
-begin Result := MinMax('min', Args[0], Args[1], False); end;
+begin
+  if Length(Args) = 1 then
+    Result := ReduceMinMax('min', Args[0], False)
+  else
+    Result := MinMax('min', Args[0], Args[1], False);
+end;
+
 function BMax(const Args: TAxValues): TAxValue;
-begin Result := MinMax('max', Args[0], Args[1], True); end;
+begin
+  if Length(Args) = 1 then
+    Result := ReduceMinMax('max', Args[0], True)
+  else
+    Result := MinMax('max', Args[0], Args[1], True);
+end;
 
 function BFactorial(const Args: TAxValues): TAxValue;
 var
@@ -397,7 +471,254 @@ begin
   Result := IntValue(F);
 end;
 
+{ ---- array constructors and reductions (M6) ---- }
+
+function SizeArg(const Fn: string; const V: TAxValue): Integer;
+begin
+  if not (V.Kind in [vkInt, vkBool]) then
+    RaiseFmt(ArgumentError, '%s needs int sizes, got %s', [Fn, TypeName(V)]);
+  if V.Kind = vkBool then Result := Ord(V.B)
+  else
+  begin
+    if (V.I < 0) or (V.I > MaxInt div 2) then
+      RaiseFmt(ArgumentError, '%s: invalid size %d', [Fn, V.I]);
+    Result := V.I;
+  end;
+end;
+
+function Filled(const Fn: string; const Args: TAxValues; Value: Double): TAxValue;
+var
+  A: TArrayObj;
+  K: Integer;
+begin
+  if Length(Args) = 1 then
+    A := TArrayObj.Create(etReal, SizeArg(Fn, Args[0]), 1, True)
+  else
+    A := TArrayObj.Create(etReal, SizeArg(Fn, Args[0]), SizeArg(Fn, Args[1]), False);
+  Result := ArrayValue(A);
+  if Value <> 0 then
+    for K := 0 to A.Count - 1 do
+      A.R[K] := Value;
+end;
+
+function BZeros(const Args: TAxValues): TAxValue;
+begin Result := Filled('zeros', Args, 0); end;
+function BOnes(const Args: TAxValues): TAxValue;
+begin Result := Filled('ones', Args, 1); end;
+
+function BEye(const Args: TAxValues): TAxValue;
+var
+  A: TArrayObj;
+  M, N, K: Integer;
+begin
+  M := SizeArg('eye', Args[0]);
+  if Length(Args) = 2 then N := SizeArg('eye', Args[1]) else N := M;
+  A := TArrayObj.Create(etReal, M, N, False);
+  Result := ArrayValue(A);
+  for K := 0 to Min(M, N) - 1 do
+    A.R[K * M + K] := 1;
+end;
+
+function BRand(const Args: TAxValues): TAxValue;
+var
+  A: TArrayObj;
+  K: Integer;
+begin
+  if Length(Args) = 0 then
+    Exit(RealValue(Random));
+  if Length(Args) = 1 then
+    A := TArrayObj.Create(etReal, SizeArg('rand', Args[0]), 1, True)
+  else
+    A := TArrayObj.Create(etReal, SizeArg('rand', Args[0]), SizeArg('rand', Args[1]), False);
+  Result := ArrayValue(A);
+  for K := 0 to A.Count - 1 do
+    A.R[K] := Random;
+end;
+
+function BLinspace(const Args: TAxValues): TAxValue;
+var
+  A: TArrayObj;
+  Lo, Hi: Double;
+  N, K: Integer;
+begin
+  NeedRealNumber('linspace', Args[0]);
+  NeedRealNumber('linspace', Args[1]);
+  Lo := ToReal(Args[0]);
+  Hi := ToReal(Args[1]);
+  N := SizeArg('linspace', Args[2]);
+  A := TArrayObj.Create(etReal, N, 1, True);
+  Result := ArrayValue(A);
+  for K := 0 to N - 1 do
+    // The last point is exactly Hi.
+    if K = N - 1 then
+      A.R[K] := Hi
+    else
+      A.R[K] := Lo + (Hi - Lo) * K / (N - 1);
+end;
+
+{ size(A) returns two values; size(A, d) one. }
+function BSize(const Args: TAxValues): TAxValues;
+var
+  R, C: Integer;
+begin
+  R := 1;
+  C := 1;
+  if Args[0].Kind = vkArray then
+  begin
+    R := AsArray(Args[0]).Rows;
+    C := AsArray(Args[0]).Cols;
+  end
+  else if Args[0].Kind = vkRange then
+    R := AsRange(Args[0]).Count
+  else if NumRank(Args[0]) < 0 then
+    RaiseFmt(TypeError, 'size is not defined for %s', [TypeName(Args[0])]);
+  if Length(Args) = 1 then
+  begin
+    Result := [IntValue(R), IntValue(C)];
+    Exit;
+  end;
+  if (Args[1].Kind <> vkInt) or (Args[1].I < 1) or (Args[1].I > 2) then
+    RaiseError(ArgumentError, 'size(A, d) needs d = 1 or 2');
+  if Args[1].I = 1 then Result := [IntValue(R)] else Result := [IntValue(C)];
+end;
+
+function DimArg(const Fn: string; const V: TAxValue): Integer;
+begin
+  if (V.Kind <> vkInt) or (V.I < 1) or (V.I > 2) then
+    RaiseFmt(ArgumentError, '%s: the dimension must be 1 or 2', [Fn]);
+  Result := V.I;
+end;
+
+function BSum(const Args: TAxValues): TAxValue;
+begin
+  if Length(Args) = 1 then
+    Result := ReduceSum(Args[0])
+  else
+    Result := ReduceDim(Args[0], DimArg('sum', Args[1]), tkPlus);
+end;
+
+function BProd(const Args: TAxValues): TAxValue;
+begin
+  if Length(Args) = 1 then
+    Result := ReduceProd(Args[0])
+  else
+    Result := ReduceDim(Args[0], DimArg('prod', Args[1]), tkStar);
+end;
+
+function BMean(const Args: TAxValues): TAxValue;
+var
+  N, D: Integer;
+  A: TArrayObj;
+  Holder: TAxValue;
+begin
+  if not IsArrayLike(Args[0]) then
+  begin
+    NeedNumber('mean', Args[0]);
+    Exit(BinaryOp(tkSlash, Args[0], IntValue(1)));
+  end;
+  A := ToArray(Args[0]);
+  Holder := ArrayValue(A);
+  if Length(Args) = 1 then
+    Exit(BinaryOp(tkSlash, ReduceSum(Holder), IntValue(A.Count)));
+  D := DimArg('mean', Args[1]);
+  if D = 1 then N := A.Rows else N := A.Cols;
+  Result := BinaryOp(tkSlash, ReduceDim(Holder, D, tkPlus), IntValue(N));
+end;
+
+function AllAny(const Fn: string; const V: TAxValue; WantAll: Boolean): TAxValue;
+var
+  A: TArrayObj;
+  K: Integer;
+begin
+  if V.Kind = vkBool then
+    Exit(V);
+  if V.Kind <> vkArray then
+    RaiseFmt(TypeError, '%s needs a bool or a bool array, got %s', [Fn, TypeName(V)]);
+  A := AsArray(V);
+  if (A.ElemType <> etBool) and (A.Count > 0) then
+    RaiseFmt(TypeError, '%s needs bool elements, got %s', [Fn, ElemTypeName(A.ElemType)]);
+  for K := 0 to A.Count - 1 do
+    if A.B[K] <> WantAll then
+      Exit(BoolValue(not WantAll));
+  Result := BoolValue(WantAll);
+end;
+
+function BAll(const Args: TAxValues): TAxValue;
+begin Result := AllAny('all', Args[0], True); end;
+function BAny(const Args: TAxValues): TAxValue;
+begin Result := AllAny('any', Args[0], False); end;
+
+{ dot(u, v): the sum of conj(u[k]) * v[k] over two vectors of equal length. }
+function BDot(const Args: TAxValues): TAxValue;
+var
+  U, V: TArrayObj;
+  HU, HV, X: TAxValue;
+  K: Integer;
+begin
+  if not (IsArrayLike(Args[0]) and IsArrayLike(Args[1])) then
+    RaiseError(TypeError, 'dot needs two vectors');
+  U := ToArray(Args[0]);
+  HU := ArrayValue(U);
+  V := ToArray(Args[1]);
+  HV := ArrayValue(V);
+  if U.Count <> V.Count then
+    RaiseFmt(DimensionError, 'dot: lengths %d and %d differ', [U.Count, V.Count]);
+  if (U.ElemType = etComplex) or (V.ElemType = etComplex) then
+    Result := ComplexValue2(0, 0)
+  else if (U.ElemType = etReal) or (V.ElemType = etReal) then
+    Result := RealValue(0)
+  else
+    Result := IntValue(0);
+  for K := 0 to U.Count - 1 do
+  begin
+    X := U.Get(K);
+    if X.Kind = vkComplex then
+      X := ComplexValue(CConj(X.C));
+    Result := BinaryOp(tkPlus, Result, BinaryOp(tkStar, X, V.Get(K)));
+  end;
+end;
+
+{ adjoint(A): the conjugate transpose. }
+function BAdjoint(const Args: TAxValues): TAxValue;
+var
+  A: TArrayObj;
+  Holder: TAxValue;
+begin
+  if not IsArrayLike(Args[0]) then
+    Exit(BConj(Args));
+  A := ToArray(Args[0]);
+  Holder := ArrayValue(A);
+  Result := Transpose(A, True);
+end;
+
+function BIsequal(const Args: TAxValues): TAxValue;
+begin
+  Result := BoolValue(ValuesIdentical(Args[0], Args[1]));
+end;
+
+{ Test hook: the number of copy-on-write array copies made so far. }
+function BCopies(const Args: TAxValues): TAxValue;
+begin
+  Result := IntValue(ArrayCopies);
+end;
+
 procedure DefineBuiltins(const Define: TProc<string, TAxValue>);
+
+  procedure AddMulti(const Name: string; Fn: TBuiltinMultiFn; MinArgs, MaxArgs: Integer);
+  var
+    B: TBuiltinObj;
+    V: TAxValue;
+  begin
+    B := TBuiltinObj.Create;
+    B.Name := Name;
+    B.MultiFn := Fn;
+    B.MinArgs := MinArgs;
+    B.MaxArgs := MaxArgs;
+    V := NothingValue;
+    V.Kind := vkBuiltin;
+    V.Obj := B;
+    Define(Name, V);
+  end;
 
   procedure Add(const Name: string; Fn: TBuiltinFn; MinArgs, MaxArgs: Integer);
   var
@@ -416,6 +737,21 @@ procedure DefineBuiltins(const Define: TProc<string, TAxValue>);
   end;
 
 begin
+  Add('zeros', BZeros, 1, 2);
+  Add('ones', BOnes, 1, 2);
+  Add('eye', BEye, 1, 2);
+  Add('rand', BRand, 0, 2);
+  Add('linspace', BLinspace, 3, 3);
+  AddMulti('size', BSize, 1, 2);
+  Add('sum', BSum, 1, 2);
+  Add('prod', BProd, 1, 2);
+  Add('mean', BMean, 1, 2);
+  Add('all', BAll, 1, 1);
+  Add('any', BAny, 1, 1);
+  Add('dot', BDot, 2, 2);
+  Add('adjoint', BAdjoint, 1, 1);
+  Add('isequal', BIsequal, 2, 2);
+  Add('__copies', BCopies, 0, 0);
   Add('print', BPrint, 0, -1);
   Add('error', BError, 1, 2);
   Add('string', BString, 1, 1);
@@ -448,8 +784,8 @@ begin
   Add('complex', BComplex, 1, 2);
   Add('div', BDiv, 2, 2);
   Add('mod', BMod, 2, 2);
-  Add('min', BMin, 2, 2);
-  Add('max', BMax, 2, 2);
+  Add('min', BMin, 1, 2);
+  Add('max', BMax, 1, 2);
   Add('factorial', BFactorial, 1, 1);
 end;
 

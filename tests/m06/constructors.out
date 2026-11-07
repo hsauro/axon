@@ -1,0 +1,25 @@
+2×3 matrix{real}
+  0.0  0.0  0.0
+  0.0  0.0  0.0
+2-vector{real}
+  1.0
+  1.0
+2×2 matrix{real}
+  1.0  0.0
+  0.0  1.0
+2×3 matrix{real}
+  1.0  0.0  0.0
+  0.0  1.0  0.0
+5-vector{real}
+   0.0
+  0.25
+   0.5
+  0.75
+   1.0
+1-vector{real}
+  2.0 0
+3 4 true
+real 7
+3 1 4 5 10
+1 1
+0×3 matrix{real}

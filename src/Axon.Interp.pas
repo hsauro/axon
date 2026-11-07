@@ -73,6 +73,15 @@ type
 
   TSignal = (sigNone, sigBreak, sigContinue, sigReturn);
 
+  { The elements an index list selects. A single index gives Lin (linear
+    positions); two give RowPos and ColPos. A scalar index drops its
+    dimension. }
+  TSelection = record
+    Two: Boolean;
+    Lin, RowPos, ColPos: TArray<Integer>;
+    ScalarA, ScalarB: Boolean;
+  end;
+
   TInterpreter = class
   private
     FPrelude: TScope;
@@ -98,11 +107,19 @@ type
     function ExecTry(S: TTryStmt; Scope: TScope): TSignal;
     function EvalField(E: TFieldExpr; Scope: TScope): TAxValue;
     function EvalIndex(E: TIndexExpr; Scope: TScope): TAxValue;
+    function EvalMatrix(E: TMatrixExpr; Scope: TScope): TAxValue;
+    procedure EvalIndexItem(Item: TExpr; Len: Integer; Scope: TScope;
+      out Positions: TArray<Integer>; out Scalar: Boolean);
+    function ResolveSelection(Rows, Cols: Integer; IsVector: Boolean;
+      E: TIndexExpr; Scope: TScope): TSelection;
+    function IndexList(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
+    function FindCellForWrite(const Name: string; Scope: TScope): TVarCell;
+    procedure AssignIndexed(Target: TIndexExpr; const V: TAxValue; Scope: TScope);
     function MakeRange(E: TRangeExpr; Scope: TScope): TAxValue;
     function EvalLogical(E: TBinaryExpr; Scope: TScope): TAxValue;
     function EvalMulti(E: TExpr; Scope: TScope): TAxValues;
     function EvalCallMulti(E: TCallExpr; Scope: TScope): TAxValues;
-    function CallBuiltin(B: TBuiltinObj; E: TCallExpr; Scope: TScope): TAxValue;
+    function CallBuiltin(B: TBuiltinObj; E: TCallExpr; Scope: TScope): TAxValues;
     function Invoke(F: TFunctionObj; const Pos: TAxValues;
       const KwNames: TArray<string>; const KwValues: TAxValues): TAxValues;
   public
@@ -130,9 +147,43 @@ implementation
 
 uses
   System.Math,
-  Axon.Errors, Axon.Tokens, Axon.Ops, Axon.Builtins, Axon.Complex;
+  Axon.Errors, Axon.Tokens, Axon.Ops, Axon.Builtins, Axon.Complex, Axon.Arrays;
 
 { ===================== type annotations ===================== }
+
+function ValueKindOfName(const N: string): TValueKind;
+begin
+  if N = 'list' then Result := vkList else Result := vkRecord;
+end;
+
+(* matrix{T} / vector{T}: the elements must be T or widen to it. Widening
+   makes a converted copy; the original array is never changed. *)
+function CoerceElements(const V: TAxValue; T: TTypeRef; const What: string): TAxValue;
+var
+  Want: TElemType;
+  A, W: TArrayObj;
+  P: string;
+begin
+  P := T.Param.Name;
+  if P = 'bool' then Want := etBool
+  else if P = 'int' then Want := etInt
+  else if P = 'real' then Want := etReal
+  else if P = 'complex' then Want := etComplex
+  else
+  begin
+    RaiseFmt(TypeError, 'the element type of %s must be bool, int, real or complex', [T.ToString]);
+    Want := etReal;
+  end;
+  A := AsArray(V);
+  if A.ElemType = Want then
+    Exit(V);
+  if A.ElemType > Want then
+    RaiseFmt(TypeError, '%s must be %s, got %s{%s}',
+      [What, T.ToString, TypeName(V), ElemTypeName(A.ElemType)]);
+  W := A.Clone;
+  Result := ArrayValue(W);
+  W.Widen(Want);
+end;
 
 function CoerceToType(const V: TAxValue; T: TTypeRef; const What: string): TAxValue;
 var
@@ -172,9 +223,19 @@ begin
     Ok := V.Kind = vkRange
   else if N = 'function' then
     Ok := V.Kind in [vkBuiltin, vkFunction]
-  else if (N = 'vector') or (N = 'matrix') or (N = 'sparse') or (N = 'list') or
-          (N = 'record') or (N = 'dict') then
-    Ok := False   // no values of these types exist before M6/M7
+  else if (N = 'vector') or (N = 'matrix') then
+  begin
+    // A range is accepted where a vector is annotated, and becomes one.
+    if (N = 'vector') and (V.Kind = vkRange) then
+      Result := ArrayValue(RangeToArray(AsRange(V)));
+    Ok := (Result.Kind = vkArray) and (AsArray(Result).IsVector = (N = 'vector'));
+    if Ok and (T.Param <> nil) then
+      Result := CoerceElements(Result, T, What);
+  end
+  else if (N = 'list') or (N = 'record') then
+    Ok := V.Kind = ValueKindOfName(N)
+  else if (N = 'sparse') or (N = 'dict') then
+    Ok := False   // no values of these types exist before M7/M11
   else
     RaiseFmt(TypeError, 'unknown type "%s"', [T.ToString]);
   if not Ok then
@@ -423,21 +484,42 @@ var
   Iter: TAxValue;
   R: TRangeObj;
   K: Int64;
+  A: TArrayObj;
+  N: Int64;
   IterScope: TScope;
   Sig: TSignal;
 begin
   Result := sigNone;
+  // The iterated value is held for the whole loop, so assignments to the
+  // array inside the body copy it (copy-on-write) and do not affect the loop.
   Iter := Eval(S.Iter, Scope);
-  if Iter.Kind <> vkRange then
+  R := nil;
+  A := nil;
+  if Iter.Kind = vkRange then
+  begin
+    R := AsRange(Iter);
+    N := R.Count;
+  end
+  else if Iter.Kind = vkArray then
+  begin
+    A := AsArray(Iter);
+    N := A.Count;
+  end
+  else
+  begin
     RaiseFmt(TypeError, 'cannot iterate over %s', [TypeName(Iter)]);
-  R := AsRange(Iter);
+    N := 0;
+  end;
   K := 0;
-  while K < R.Count do
+  while K < N do
   begin
     // A fresh scope, and so a fresh binding of the loop variable, per iteration.
     IterScope := TScope.Create(Scope, rkNone);
     try
-      IterScope.Define(S.VarName).Value := R.ItemAt(K);
+      if R <> nil then
+        IterScope.Define(S.VarName).Value := R.ItemAt(K)
+      else
+        IterScope.Define(S.VarName).Value := A.Get(K);
       Sig := ExecBody(S.Body, IterScope);
     finally
       IterScope.Release;
@@ -501,14 +583,17 @@ var
   I: Integer;
 begin
   for I := 0 to S.Targets.Count - 1 do
-    if not (S.Targets[I] is TNameExpr) then
-      NotYet('assignment to an index or field', 'M6', S.Targets[I]);
+    if not ((S.Targets[I] is TNameExpr) or (S.Targets[I] is TIndexExpr)) then
+      NotYet('assignment to a field', 'M7', S.Targets[I]);
   Values := EvalMulti(S.Value, Scope);
   if Length(Values) <> S.Targets.Count then
     RaiseFmt(ArgumentError, 'cannot unpack %d value(s) into %d targets',
       [Length(Values), S.Targets.Count]);
   for I := 0 to S.Targets.Count - 1 do
-    Assign(TNameExpr(S.Targets[I]).Name, Values[I], Scope);
+    if S.Targets[I] is TIndexExpr then
+      AssignIndexed(TIndexExpr(S.Targets[I]), Values[I], Scope)
+    else
+      Assign(TNameExpr(S.Targets[I]).Name, Values[I], Scope);
 end;
 
 { try ... catch [name] ... end. Every Axon error raised in the try block,
@@ -567,9 +652,16 @@ begin
     else if C = TAssignStmt then
     begin
       Target := TAssignStmt(S).Target;
-      if not (Target is TNameExpr) then
-        NotYet('assignment to an index or field', 'M6', S);
       V := Eval(TAssignStmt(S).Value, Scope);
+      if Target is TIndexExpr then
+      begin
+        if TAssignStmt(S).TypeRef <> nil then
+          RaiseError(TypeError, 'only a plain variable can carry a type annotation');
+        AssignIndexed(TIndexExpr(Target), V, Scope);
+        Exit;
+      end;
+      if not (Target is TNameExpr) then
+        NotYet('assignment to a field', 'M7', S);
       if TAssignStmt(S).TypeRef <> nil then
       begin
         // x: T = e declares x in the current scope.
@@ -669,7 +761,7 @@ end;
 
 { ---------------- calls ---------------- }
 
-function TInterpreter.CallBuiltin(B: TBuiltinObj; E: TCallExpr; Scope: TScope): TAxValue;
+function TInterpreter.CallBuiltin(B: TBuiltinObj; E: TCallExpr; Scope: TScope): TAxValues;
 var
   Args: TAxValues;
   I: Integer;
@@ -696,7 +788,10 @@ begin
       RaiseFmt(ArgumentError, '%s takes %d to %d arguments, got %d',
         [B.Name, B.MinArgs, B.MaxArgs, Length(Args)]);
   end;
-  Result := B.Fn(Args);
+  if Assigned(B.MultiFn) then
+    Result := B.MultiFn(Args)
+  else
+    Result := [B.Fn(Args)];
 end;
 
 function DescribeFunction(F: TFunctionObj): string;
@@ -838,7 +933,7 @@ begin
     Callee := Eval(E.Callee, Scope);
     case Callee.Kind of
       vkBuiltin:
-        Result := [CallBuiltin(AsBuiltin(Callee), E, Scope)];
+        Result := CallBuiltin(AsBuiltin(Callee), E, Scope);
       vkFunction:
         begin
           // Arguments are evaluated left to right before the call.
@@ -945,6 +1040,13 @@ var
 begin
   Word := TokenSpelling[E.Op];
   L := Eval(E.Left, Scope);
+  // An array left operand: both operands are evaluated and combined
+  // elementwise with broadcasting.
+  if L.Kind = vkArray then
+  begin
+    R := Eval(E.Right, Scope);
+    Exit(BinaryOp(E.Op, L, R));
+  end;
   if L.Kind <> vkBool then
     RaiseFmt(TypeError, '"%s" needs bool operands, got %s', [Word, TypeName(L)]);
   // Short-circuit on a scalar left operand.
@@ -953,6 +1055,8 @@ begin
   if (E.Op = tkOr) and L.B then
     Exit(BoolValue(True));
   R := Eval(E.Right, Scope);
+  if R.Kind = vkArray then
+    Exit(BinaryOp(E.Op, L, R));
   if R.Kind <> vkBool then
     RaiseFmt(TypeError, '"%s" needs bool operands, got %s', [Word, TypeName(R)]);
   Result := R;
@@ -975,39 +1079,281 @@ begin
   Result := AsRecord(T).Values[K];
 end;
 
-{ list[k] with one integer index (or an expression using `end`). Ranges,
-  arrays and other index forms arrive in M6 and M7. }
-function TInterpreter.EvalIndex(E: TIndexExpr; Scope: TScope): TAxValue;
+function TInterpreter.EvalMatrix(E: TMatrixExpr; Scope: TScope): TAxValue;
 var
-  T, Idx: TAxValue;
-  L: TListObj;
-  N: Int64;
+  Rows: TArray<TAxValues>;
+  R, K: Integer;
 begin
-  T := Eval(E.Target, Scope);
-  if T.Kind <> vkList then
-    NotYet(Format('indexing a %s', [TypeName(T)]), 'M6', E);
-  L := AsList(T);
-  N := Length(L.Items);
-  if E.Items.Count <> 1 then
-    raise EAxonError.CreateAt(IndexError, Format('a list takes one index, got %d',
-      [E.Items.Count]), FFile, E.Line, E.Col);
-  if E.Items[0] is TColonExpr then
-    NotYet('list slices', 'M7', E);
-  FEndStack.Add(N);
+  SetLength(Rows, E.Rows.Count);
+  for R := 0 to E.Rows.Count - 1 do
+  begin
+    SetLength(Rows[R], E.Rows[R].Count);
+    for K := 0 to E.Rows[R].Count - 1 do
+      Rows[R][K] := Eval(E.Rows[R][K], Scope);
+  end;
   try
-    Idx := Eval(E.Items[0], Scope);
+    Result := ConcatLiteral(Rows);
+  except
+    on X: EAxonError do
+    begin
+      X.Locate(FFile, E.Line, E.Col);
+      raise;
+    end;
+  end;
+end;
+
+{ ---------------- indexing ---------------- }
+
+{ Positions selected by one index item along a dimension of length Len. }
+procedure TInterpreter.EvalIndexItem(Item: TExpr; Len: Integer; Scope: TScope;
+  out Positions: TArray<Integer>; out Scalar: Boolean);
+var
+  V: TAxValue;
+begin
+  if Item is TColonExpr then
+  begin
+    Positions := AllPositions(Len);
+    Scalar := False;
+    Exit;
+  end;
+  // `end` inside this item is the length of this dimension.
+  FEndStack.Add(Len);
+  try
+    V := Eval(Item, Scope);
   finally
     FEndStack.Delete(FEndStack.Count - 1);
   end;
-  if Idx.Kind = vkRange then
+  try
+    ResolveIndex(V, Len, Positions, Scalar);
+  except
+    on X: EAxonError do
+    begin
+      X.Locate(FFile, Item.Line, Item.Col);
+      raise;
+    end;
+  end;
+end;
+
+{ Resolves the index list of E against an array of the given shape. }
+function TInterpreter.ResolveSelection(Rows, Cols: Integer; IsVector: Boolean;
+  E: TIndexExpr; Scope: TScope): TSelection;
+begin
+  Result := Default(TSelection);
+  case E.Items.Count of
+    1:
+      EvalIndexItem(E.Items[0], Rows * Cols, Scope, Result.Lin, Result.ScalarA);
+    2:
+      begin
+        if IsVector then
+          raise EAxonError.CreateAt(IndexError, 'a vector takes one index, got 2',
+            FFile, E.Line, E.Col);
+        Result.Two := True;
+        EvalIndexItem(E.Items[0], Rows, Scope, Result.RowPos, Result.ScalarA);
+        EvalIndexItem(E.Items[1], Cols, Scope, Result.ColPos, Result.ScalarB);
+      end;
+  else
+    raise EAxonError.CreateAt(IndexError, Format('an array takes one or two indices, got %d',
+      [E.Items.Count]), FFile, E.Line, E.Col);
+  end;
+end;
+
+{ The positions of a selection in column-major order of the selection. }
+function SelectionPositions(const Sel: TSelection; Rows: Integer): TArray<Integer>;
+var
+  I, J, K: Integer;
+begin
+  if not Sel.Two then
+    Exit(Sel.Lin);
+  SetLength(Result, Length(Sel.RowPos) * Length(Sel.ColPos));
+  K := 0;
+  for J := 0 to High(Sel.ColPos) do
+    for I := 0 to High(Sel.RowPos) do
+    begin
+      Result[K] := Sel.ColPos[J] * Rows + Sel.RowPos[I];
+      Inc(K);
+    end;
+end;
+
+function ReadSelection(A: TArrayObj; const Sel: TSelection): TAxValue;
+var
+  Pos: TArray<Integer>;
+  Res: TArrayObj;
+  K: Integer;
+begin
+  Pos := SelectionPositions(Sel, A.Rows);
+  // A scalar index drops its dimension: all scalar gives an element, one
+  // scalar of two gives a vector, a single non-scalar index gives a vector.
+  if (not Sel.Two and Sel.ScalarA) or (Sel.Two and Sel.ScalarA and Sel.ScalarB) then
+    Exit(A.Get(Pos[0]));
+  if not Sel.Two or Sel.ScalarA or Sel.ScalarB then
+    Res := TArrayObj.Create(A.ElemType, Length(Pos), 1, True)
+  else
+    Res := TArrayObj.Create(A.ElemType, Length(Sel.RowPos), Length(Sel.ColPos), False);
+  Result := ArrayValue(Res);
+  for K := 0 to High(Pos) do
+    Res.Put(K, A.Get(Pos[K]));
+end;
+
+function TInterpreter.IndexList(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
+var
+  L: TListObj;
+  Pos: TArray<Integer>;
+  Scalar: Boolean;
+begin
+  L := AsList(T);
+  if E.Items.Count <> 1 then
+    raise EAxonError.CreateAt(IndexError, Format('a list takes one index, got %d',
+      [E.Items.Count]), FFile, E.Line, E.Col);
+  EvalIndexItem(E.Items[0], Length(L.Items), Scope, Pos, Scalar);
+  if not Scalar then
     NotYet('list slices', 'M7', E);
-  if Idx.Kind <> vkInt then
-    raise EAxonError.CreateAt(IndexError, Format('a list index must be an int, got %s',
-      [TypeName(Idx)]), FFile, E.Line, E.Col);
-  if (Idx.I < 1) or (Idx.I > N) then
-    raise EAxonError.CreateAt(IndexError, Format('index %d is out of bounds for a list of length %d',
-      [Idx.I, N]), FFile, E.Line, E.Col);
-  Result := L.Items[Idx.I - 1];
+  Result := L.Items[Pos[0]];
+end;
+
+function TInterpreter.EvalIndex(E: TIndexExpr; Scope: TScope): TAxValue;
+var
+  T: TAxValue;
+  A: TArrayObj;
+begin
+  T := Eval(E.Target, Scope);
+  case T.Kind of
+    vkList:
+      Result := IndexList(T, E, Scope);
+    vkArray, vkRange:
+      begin
+        if T.Kind = vkRange then
+          T := ArrayValue(RangeToArray(AsRange(T)));
+        A := AsArray(T);
+        Result := ReadSelection(A, ResolveSelection(A.Rows, A.Cols, A.IsVector, E, Scope));
+      end;
+    vkString:
+      NotYet('string indexing', 'M7', E);
+  else
+    raise EAxonError.CreateAt(TypeError, Format('%s cannot be indexed', [TypeName(T)]),
+      FFile, E.Line, E.Col);
+  end;
+end;
+
+{ The cell an assignment to Name writes, found as Assign finds it (rule 6
+  applies), or nil. }
+function TInterpreter.FindCellForWrite(const Name: string; Scope: TScope): TVarCell;
+var
+  S: TScope;
+begin
+  S := Scope;
+  while S <> nil do
+  begin
+    Result := S.Find(Name);
+    if Result <> nil then
+    begin
+      if Result.IsGlobalAlias then
+        Result := S.Module.Find(Name);
+      Exit;
+    end;
+    if S.Root in [rkModule, rkNamedFunction] then
+      Break;
+    S := S.Parent;
+  end;
+  Result := nil;
+end;
+
+{ A[idx] = V. The array is copied first if it is shared (copy-on-write), its
+  element type widens to hold V, and the selection never grows it. }
+procedure TInterpreter.AssignIndexed(Target: TIndexExpr; const V: TAxValue; Scope: TScope);
+var
+  Name: string;
+  Cell: TVarCell;
+  Arr, Src: TArrayObj;
+  SrcHolder: TAxValue;
+  Sel: TSelection;
+  Pos: TArray<Integer>;
+  N, K, SelRows, SelCols: Integer;
+  NewType: TElemType;
+  OneDim, Ok: Boolean;
+  Want: TElemType;
+begin
+  if not (Target.Target is TNameExpr) then
+    NotYet('assignment through a nested index or a field', 'M7', Target);
+  Name := TNameExpr(Target.Target).Name;
+  Cell := FindCellForWrite(Name, Scope);
+  if Cell = nil then
+    raise EAxonError.CreateAt(NameError, Format('"%s" is not defined here', [Name]),
+      FFile, Target.Line, Target.Col);
+  if Cell.Value.Kind = vkRange then
+    Cell.Value := ArrayValue(RangeToArray(AsRange(Cell.Value)));
+  if Cell.Value.Kind = vkList then
+    NotYet('assignment to list elements', 'M7', Target);
+  if Cell.Value.Kind <> vkArray then
+    raise EAxonError.CreateAt(TypeError, Format('"%s" is %s, which cannot be assigned through an index',
+      [Name, TypeName(Cell.Value)]), FFile, Target.Line, Target.Col);
+
+  // Resolve the selection. Index expressions may call functions, so the
+  // array is fetched again afterwards rather than held across the evaluation.
+  Arr := AsArray(Cell.Value);
+  Sel := ResolveSelection(Arr.Rows, Arr.Cols, Arr.IsVector, Target, Scope);
+  Arr := AsArray(Cell.Value);
+  Pos := SelectionPositions(Sel, Arr.Rows);
+  N := Length(Pos);
+  OneDim := not Sel.Two or Sel.ScalarA or Sel.ScalarB;
+  SelRows := Length(Sel.RowPos);
+  SelCols := Length(Sel.ColPos);
+
+  // The right-hand side: a scalar broadcast, or an array of the selected shape.
+  Src := nil;
+  if IsArrayLike(V) then
+  begin
+    if V.Kind = vkRange then SrcHolder := ArrayValue(RangeToArray(AsRange(V))) else SrcHolder := V;
+    Src := AsArray(SrcHolder);
+    if OneDim then
+      Ok := (Src.Count = N) and (Src.IsVector or (Src.Rows = 1) or (Src.Cols = 1))
+    else
+      Ok := (Src.Rows = SelRows) and (Src.Cols = SelCols);
+    if not Ok then
+    begin
+      if OneDim then
+        raise EAxonError.CreateAt(DimensionError, Format(
+          'cannot assign %d elements (%d' + #$00D7 + '%d) to a selection of %d',
+          [Src.Count, Src.Rows, Src.Cols, N]), FFile, Target.Line, Target.Col)
+      else
+        raise EAxonError.CreateAt(DimensionError, Format(
+          'cannot assign a %d' + #$00D7 + '%d array to a %d' + #$00D7 + '%d selection',
+          [Src.Rows, Src.Cols, SelRows, SelCols]), FFile, Target.Line, Target.Col);
+    end;
+    NewType := Src.ElemType;
+  end
+  else if NumRank(V) >= 0 then
+    NewType := ElemTypeOf(V)
+  else
+    raise EAxonError.CreateAt(TypeError, Format('cannot store %s in an array', [TypeName(V)]),
+      FFile, Target.Line, Target.Col);
+  if NewType < Arr.ElemType then
+    NewType := Arr.ElemType;
+
+  // A typed variable such as A: matrix{real} cannot widen past its type.
+  if (Cell.TypeRef <> nil) and (Cell.TypeRef.Param <> nil) then
+  begin
+    Want := Arr.ElemType;
+    if Cell.TypeRef.Param.Name = 'bool' then Want := etBool
+    else if Cell.TypeRef.Param.Name = 'int' then Want := etInt
+    else if Cell.TypeRef.Param.Name = 'real' then Want := etReal
+    else if Cell.TypeRef.Param.Name = 'complex' then Want := etComplex;
+    if NewType > Want then
+      raise EAxonError.CreateAt(TypeError, Format('variable "%s" must be %s; cannot store %s elements',
+        [Name, Cell.TypeRef.ToString, ElemTypeName(NewType)]), FFile, Target.Line, Target.Col);
+  end;
+
+  // Copy-on-write: another value shares this array, so write to a copy.
+  if Arr.RefCount > 1 then
+  begin
+    Arr := Arr.Clone;
+    Cell.Value := ArrayValue(Arr);
+  end;
+  Arr.Widen(NewType);
+  for K := 0 to N - 1 do
+    if Src <> nil then
+      Arr.Put(Pos[K], Src.Get(K))
+    else
+      Arr.Put(Pos[K], V);
 end;
 
 function TInterpreter.Eval(E: TExpr; Scope: TScope): TAxValue;
@@ -1063,8 +1409,10 @@ begin
       NotYet('"end" in this kind of index', 'M6', E);
     Result := IntValue(FEndStack.Last);
   end
-  else if (C = TMatrixExpr) or (C = TColonExpr) then
-    NotYet('matrices and indexing', 'M6', E)
+  else if C = TMatrixExpr then
+    Result := EvalMatrix(TMatrixExpr(E), Scope)
+  else if C = TColonExpr then
+    NotYet('":" outside an index', 'M6', E)
   else if (C = TListExpr) or (C = TRecordExpr) then
     NotYet('lists and records', 'M7', E)
   else

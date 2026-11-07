@@ -1,0 +1,21 @@
+2×2 matrix{bool}
+  false  false
+   true   true
+2×2 matrix{bool}
+  true  false
+  true  false
+2-vector{bool}
+   true
+  false
+2×2 matrix{bool}
+   true   true
+  false  false
+2×2 matrix{bool}
+  false   true
+   true  false
+2×2 matrix{bool}
+   true  false
+  false   true
+true false false true
+true true true false false
+true false

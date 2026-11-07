@@ -1,0 +1,10 @@
+A = [1, 2; 3, 4]
+print(sum(A), prod(A), mean(A), min(A), max(A))
+print(sum(A, 1))
+print(sum(A, 2))
+print(mean(A, 1))
+print(prod([1; 2; 3], 1))
+print(sum([1.5; 2.5]), mean([1; 2]), sum([]), min([3, 1, 2]), max([1.0, 0.0/0.0]))
+print(min(A, 2))
+print(max([1, 5], [3, 2]))
+print(sum([true, true, false]))

@@ -224,6 +224,12 @@ Mixed arithmetic promotes along `bool` → `int` → `real` → `complex`. Nothi
 - **Element types.** A matrix literal takes the widest element type of its entries. Any complex entry makes the whole matrix complex.
 - **Concatenation.** Entries of a matrix literal may themselves be matrices, which are concatenated as blocks. Every row must have the same total width, and each block within a row the same height, or a `DimensionError` is raised.
 - **Empty matrix.** `[]` is a 0×0 `real` matrix.
+- **Vector literals.** A literal whose rows each hold exactly one entry, every entry a scalar, a vector or a range, is a vector made by stacking them: `[5]` is a vector of length 1 and `[v; 7]` appends 7 to the vector `v`. Any other literal is a matrix built by block concatenation, in which a vector or range counts as an n×1 block and an empty `[]` block is skipped. Entries must be numbers or `bool`s; anything else raises `TypeError`.
+- **Constructors.** `zeros(m, n)` and `ones(m, n)` give m×n `real` matrices, and `zeros(n)` and `ones(n)` give vectors of length n. `eye(n)` is the n×n identity and `eye(m, n)` its m×n form. `rand()`, `rand(n)` and `rand(m, n)` give uniform reals in [0, 1). `linspace(a, b, n)` gives a `real` vector of n points from a to b inclusive. A negative or non-integer size raises `ArgumentError`.
+- **Size.** `size(A)` returns two values, the row and column counts, so it is used as `[m, n] = size(A)`; a vector has n rows and 1 column, and a scalar is 1×1. `size(A, 1)` and `size(A, 2)` return one count. `length(A)` is the total number of elements, which is also the value of `end` in a single (linear) index.
+- **Reductions.** `sum`, `prod`, `mean`, `min`, `max`, `all` and `any` on one array reduce over every element to a scalar. `sum(A, d)`, `prod(A, d)` and `mean(A, d)` reduce along dimension `d`: `mean(A, 1)` is the 1×n row of column means and `mean(A, 2)` the m×1 column of row means. `min(a, b)` and `max(a, b)` with two arguments work elementwise with broadcasting. `min` and `max` of an empty array raise `ArgumentError`; `all` of an empty array is `true` and `any` is `false`. `all` and `any` need `bool` elements.
+- **Iteration.** `for x in A` visits the elements of an array in column-major order.
+- **Not yet.** Matrix division (`A \ b`, `A / B`) and matrix powers (`A ^ k`) with a non-scalar matrix are part of the `linalg` milestone; until then they raise `TypeError` naming the operation.
 
 ### Strings
 
@@ -249,7 +255,17 @@ Output tests compare text exactly, so every value has one display form.
 | `list` | Elements in braces, separated by ", " | `{1, "S1", 2.5}`, `{}` |
 | `record` | Fields in braces as `name: value`, in definition order | `{name: "S1", init: 10.0}` |
 
-Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print(a, b, …)` writes its arguments separated by one space and ends with a newline. Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. Display of matrices and dictionaries is fixed in M6 and M7.
+Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print(a, b, …)` writes its arguments separated by one space and ends with a newline. Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. Display of dictionaries is fixed in M7.
+
+Arrays display as a header line, then one line per row with each entry right-aligned in its column and preceded by two spaces. The header is `R×C matrix{T}` or `N-vector{T}`. Elements show up to 6 significant digits, following the same rules as scalars, and complex elements show both parts that way. Above 10 rows, only the first and last 5 are shown, with a `  ⋮` line between; above 8 columns, only the first and last 4, with a `…` column between. An empty array shows only its header. At the REPL an assignment shows `A = ` before the header:
+
+```
+A = 2×2 matrix{int}
+  1  2
+  3  4
+```
+
+Inside a list or record, an array is shown inline in literal form, as in `{[1, 2; 3, 4], [1; 2]}`.
 
 ## Arithmetic, broadcasting and comparison
 
@@ -326,7 +342,7 @@ Indices are 1-based. Each position in an index list accepts one of these forms:
 
 ### Indexed assignment
 
-`A[idx] = x` requires `x` to be a scalar, which is broadcast to every selected element, or an array with exactly the selected shape. Anything else raises `DimensionError`. The element type of `A` may widen, so assigning `1i` into a real matrix makes it complex. Arrays grow only through `append(v, x)` or concatenation, both of which return a new value.
+`A[idx] = x` requires `x` to be a scalar, which is broadcast to every selected element, or an array with exactly the selected shape. When the selection is one-dimensional (a vector result, such as `A[2, :]` or `v[1:3]`), `x` may be any vector, 1×n matrix or n×1 matrix with the right number of elements. Anything else raises `DimensionError`. The element type of `A` may widen, so assigning `1i` into a real matrix makes it complex. Arrays grow only through `append(v, x)` or concatenation, both of which return a new value.
 
 ### Lists, records and dictionaries
 
@@ -340,7 +356,7 @@ Indices are 1-based. Each position in an index list accepts one of these forms:
 
 Every value has value semantics. After `B = A`, or after passing `A` as an argument, no write through one name is ever visible through the other. This holds for every type except functions, which are immutable.
 
-The implementation uses copy-on-write. Each heap value carries a reference count, and a write to a value whose count is greater than 1 first copies it. Reads never copy. Returning a value transfers it without copying.
+The implementation uses copy-on-write. Each heap value carries a reference count, and a write to a value whose count is greater than 1 first copies it. Reads never copy. Returning a value transfers it without copying. The builtin `__copies()` returns the number of array copies made so far; it exists so that tests can check that reads and argument passing never copy.
 
 ### Typed variables
 

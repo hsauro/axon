@@ -107,18 +107,18 @@ This milestone completes error handling.
 
 This milestone adds vectors and matrices in pure code, without BLAS. The matrix product is a simple triple loop, to be replaced in M10.
 
-- [ ] Matrix literals and block concatenation, with `DimensionError` for ragged rows
-- [ ] `[1; 2; 3]` as a vector, `[1, 2, 3]` as a 1×3 matrix and `[]` as 0×0, with element type taken from the widest entry
-- [ ] Constructors: `zeros`, `ones`, `eye`, `linspace`, `rand`, `size`, `length`
-- [ ] `+`, `-` and the four dot operators with broadcasting, including `A - mean(A, 1)`
-- [ ] `*` as the matrix product, including matrix times vector and `v' * w` as a scalar
-- [ ] `A'` as the plain transpose, `adjoint`, `dot`, and elementary functions applied elementwise
-- [ ] Elementwise comparisons, `isequal`, and `and`/`or`/`not` on `bool` arrays
-- [ ] Every index form, linear indexing, result shapes, and `end` binding to the innermost indexed object
-- [ ] `IndexError` out of bounds, with no growth on assignment
-- [ ] Indexed assignment with scalar broadcast, shape checks, and element-type widening
-- [ ] Copy-on-write: `B = A` then writing to `B` leaves `A` unchanged, and a read-only function call makes no copy (checked with a test hook that counts copies)
-- [ ] Aligned matrix display, with large matrices elided
+- [x] Matrix literals and block concatenation, with `DimensionError` for ragged rows
+- [x] `[1; 2; 3]` as a vector, `[1, 2, 3]` as a 1×3 matrix and `[]` as 0×0, with element type taken from the widest entry
+- [x] Constructors: `zeros`, `ones`, `eye`, `linspace`, `rand`, `size`, `length`
+- [x] `+`, `-` and the four dot operators with broadcasting, including `A - mean(A, 1)`
+- [x] `*` as the matrix product, including matrix times vector and `v' * w` as a scalar
+- [x] `A'` as the plain transpose, `adjoint`, `dot`, and elementary functions applied elementwise
+- [x] Elementwise comparisons, `isequal`, and `and`/`or`/`not` on `bool` arrays
+- [x] Every index form, linear indexing, result shapes, and `end` binding to the innermost indexed object
+- [x] `IndexError` out of bounds, with no growth on assignment
+- [x] Indexed assignment with scalar broadcast, shape checks, and element-type widening
+- [x] Copy-on-write: `B = A` then writing to `B` leaves `A` unchanged, and a read-only function call makes no copy (checked with a test hook that counts copies)
+- [x] Aligned matrix display, with large matrices elided
 
 ### M7 — Collections
 

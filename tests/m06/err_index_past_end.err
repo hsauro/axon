@@ -1,0 +1,2 @@
+IndexError: index 3 is out of bounds for a dimension of length 2
+  at err_index_past_end.sci:3:7

@@ -1,0 +1,2 @@
+DimensionError: matrix literal: row 2 has width 1, expected 2
+  at err_ragged_rows.sci:2:5

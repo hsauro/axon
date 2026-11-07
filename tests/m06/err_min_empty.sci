@@ -1,0 +1,2 @@
+#! error: ArgumentError
+x = min([])

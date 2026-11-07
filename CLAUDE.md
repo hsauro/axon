@@ -26,7 +26,9 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - `src/Axon.TestRunner.pas`: `axon test`
 - `src/Axon.Lexer.pas`, `Axon.Parser.pas`, `Axon.Ast.pas`, `Axon.AstDump.pas`: the front end
 - `src/Axon.Values.pas`: `TAxValue`, a tagged record holding scalars inline and other payloads in reference-counted objects; also the display forms
-- `src/Axon.Ops.pas`: operators, promotion, checked integer arithmetic
+- `src/Axon.Ops.pas`: operators, promotion, checked integer arithmetic. Array and range operands are passed on to `Axon.Arrays`.
+- `src/Axon.Arrays.pas`: dense arrays. `TArrayObj` (declared in `Axon.Values`) is column-major, with one typed buffer per element type. This unit holds literals, broadcasting, `MatMul`, transpose, index resolution and reductions. Elementwise operations call the scalar operators per element.
+- Copy-on-write: `AssignIndexed` clones an array when `RefCount > 1`. Never keep an extra `TAxValue` copy of the target array alive while deciding, or every write will copy. `__copies()` counts clones for tests.
 - `src/Axon.Complex.pas`: complex arithmetic and principal-value functions
 - `src/Axon.Builtins.pas`: prelude functions
 - `src/Axon.Interp.pas`: tree-walking evaluator and scopes. Constructs from later milestones raise `ENotImplemented` (exit code 2).
@@ -50,5 +52,6 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - Debug builds have range and overflow checking on. `Axon.Ops` turns overflow checking off (`{$Q-}`) because it detects integer overflow explicitly and raises `OverflowError`.
 - Floating-point exceptions are masked at start-up (`SetExceptionMask`), so real arithmetic follows IEEE 754 (Inf and NaN) instead of raising Delphi exceptions.
 - For elementary functions whose last printed digit can differ between platforms' math libraries, tests check identities against a tolerance instead of printing 15 digits.
+- Source files are UTF-8 without a byte-order mark, which Delphi reads as ANSI, so a non-ASCII character inside a string literal gets mangled. Write it as a character code instead (`#$00D7` for ×). Non-ASCII in comments is fine.
 - Delphi `{ … }` comments don't nest, so a comment that contains `{` or `}` (grammar excerpts, `matrix{T}`) must use `(* … *)`.
 - Parser ownership: a function that takes a child node frees it if it fails, so the caller must clear its own reference before the call. See `ParsePostfix`.

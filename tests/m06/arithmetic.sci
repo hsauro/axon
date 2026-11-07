@@ -1,0 +1,17 @@
+A = [1, 2; 3, 4]
+print(A + 1)
+print(A - [10, 20])
+print(A .* A)
+print(A ./ 2)
+print(2 .\ A)
+print(A .^ 2)
+print([1; 2] + [10, 20, 30])
+print(-A)
+print(A - mean(A, 1))
+print(A / 2)
+print(2 * A)
+v = [1; 2; 3]
+print(v + v)
+print(v .* 2.0)
+print((1:3) + 1)
+print(A .^ -1)

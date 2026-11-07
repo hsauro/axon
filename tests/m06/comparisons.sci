@@ -1,0 +1,10 @@
+A = [1, 2; 3, 4]
+print(A > 2)
+print(A == [1, 0; 3, 0])
+print([1; 2] != 2)
+print(not (A > 2))
+print((A > 1) and (A < 4))
+print((A < 2) or (A > 3))
+print(isequal(A, [1, 2; 3, 4]), isequal(A, [1, 2; 3, 5]), isequal([1; 2], [1, 2]), isequal([1, 2], [1.0, 2.0]))
+print(isequal(1:3, [1; 2; 3]), all(A > 0), any(A > 3), all(A > 1), any(A > 9))
+print(all([]), any([]))

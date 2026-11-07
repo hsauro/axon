@@ -19,7 +19,9 @@ uses
 
 type
   TValueKind = (vkNothing, vkBool, vkInt, vkReal, vkComplex, vkString, vkRange,
-    vkBuiltin, vkFunction, vkList, vkRecord);
+    vkBuiltin, vkFunction, vkList, vkRecord, vkArray);
+
+  TElemType = (etBool, etInt, etReal, etComplex);
 
   TAxValue = record
     Kind: TValueKind;
@@ -59,13 +61,36 @@ type
     Name: string;
   end;
 
+  TBuiltinMultiFn = function(const Args: TAxValues): TAxValues;
+
   TBuiltinObj = class(TCallableObj)
   public
     Fn: TBuiltinFn;
+    MultiFn: TBuiltinMultiFn;    // set instead of Fn for builtins returning several values
     MinArgs, MaxArgs: Integer;   // MaxArgs = -1: no limit
   end;
 
   { An ordered, heterogeneous list. Read-only until M7 adds list operations. }
+  { A dense vector or matrix, stored column-major in the array matching its
+    element type (only that one is allocated), so a real or complex buffer can
+    go to BLAS/LAPACK as-is. A vector has Cols = 1 and IsVector = True. }
+  TArrayObj = class(TInterfacedObject)
+  public
+    ElemType: TElemType;
+    Rows, Cols: Integer;
+    IsVector: Boolean;
+    B: TArray<Boolean>;
+    I: TArray<Int64>;
+    R: TArray<Double>;
+    C: TArray<TComplex>;
+    constructor Create(AType: TElemType; ARows, ACols: Integer; AIsVector: Boolean);
+    function Count: Integer; inline;
+    function Get(K: Integer): TAxValue;              // 0-based, column-major
+    procedure Put(K: Integer; const V: TAxValue);    // V must fit ElemType
+    function Clone: TArrayObj;                       // counts in ArrayCopies
+    procedure Widen(T: TElemType);                   // in place, never narrows
+  end;
+
   TListObj = class(TInterfacedObject)
   public
     Items: TAxValues;
@@ -106,8 +131,19 @@ function ErrorFromValue(const V: TAxValue): EAxonError;
 function TypeName(const V: TAxValue): string;
 
 { Real number display: up to 15 significant digits, always with a decimal
-  point, exponent form below 1e-4 or from 1e15 in magnitude. }
-function FormatReal(X: Double): string;
+  point, exponent form below 1e-4 or from 1e15 in magnitude. Arrays use
+  Digits = 6 for their elements. }
+function FormatReal(X: Double; Digits: Integer = 15): string;
+
+var
+  { Number of array copies made by copy-on-write (the __copies() test hook). }
+  ArrayCopies: Int64;
+
+function AsArray(const V: TAxValue): TArrayObj; inline;
+function ArrayValue(A: TArrayObj): TAxValue;
+function ElemTypeName(T: TElemType): string;
+{ Element type of a scalar bool/int/real/complex value. }
+function ElemTypeOf(const V: TAxValue): TElemType;
 
 { The display form of a value. Strings are quoted when Quoted is True (the
   REPL) and bare otherwise (print, string()). }
@@ -202,6 +238,142 @@ end;
 function AsList(const V: TAxValue): TListObj;
 begin
   Result := TListObj(V.Obj);
+end;
+
+{ ---- arrays ---- }
+
+constructor TArrayObj.Create(AType: TElemType; ARows, ACols: Integer; AIsVector: Boolean);
+var
+  N: Integer;
+begin
+  inherited Create;
+  ElemType := AType;
+  Rows := ARows;
+  Cols := ACols;
+  IsVector := AIsVector;
+  N := ARows * ACols;
+  case AType of
+    etBool:    SetLength(B, N);
+    etInt:     SetLength(I, N);
+    etReal:    SetLength(R, N);
+    etComplex: SetLength(C, N);
+  end;
+end;
+
+function TArrayObj.Count: Integer;
+begin
+  Result := Rows * Cols;
+end;
+
+function TArrayObj.Get(K: Integer): TAxValue;
+begin
+  case ElemType of
+    etBool:    Result := BoolValue(B[K]);
+    etInt:     Result := IntValue(I[K]);
+    etReal:    Result := RealValue(R[K]);
+  else
+    Result := ComplexValue(C[K]);
+  end;
+end;
+
+procedure TArrayObj.Put(K: Integer; const V: TAxValue);
+begin
+  case ElemType of
+    etBool: B[K] := V.B;
+    etInt:
+      if V.Kind = vkBool then I[K] := Ord(V.B) else I[K] := V.I;
+    etReal:
+      case V.Kind of
+        vkBool: R[K] := Ord(V.B);
+        vkInt:  R[K] := V.I;
+      else
+        R[K] := V.R;
+      end;
+    etComplex:
+      case V.Kind of
+        vkBool:    C[K] := Cx(Ord(V.B), 0);
+        vkInt:     C[K] := Cx(V.I, 0);
+        vkReal:    C[K] := Cx(V.R, 0);
+      else
+        C[K] := V.C;
+      end;
+  end;
+end;
+
+function TArrayObj.Clone: TArrayObj;
+begin
+  Result := TArrayObj.Create(ElemType, 0, 0, IsVector);
+  Result.Rows := Rows;
+  Result.Cols := Cols;
+  Result.B := Copy(B);
+  Result.I := Copy(I);
+  Result.R := Copy(R);
+  Result.C := Copy(C);
+  Inc(ArrayCopies);
+end;
+
+procedure TArrayObj.Widen(T: TElemType);
+var
+  K, N: Integer;
+  Old: TArrayObj;
+begin
+  if T <= ElemType then
+    Exit;
+  N := Count;
+  // Read the old elements through a temporary holder, then switch storage.
+  Old := TArrayObj.Create(ElemType, 0, 0, IsVector);
+  try
+    Old.Rows := Rows;
+    Old.Cols := Cols;
+    Old.B := B;
+    Old.I := I;
+    Old.R := R;
+    Old.C := C;
+    B := nil;
+    I := nil;
+    R := nil;
+    C := nil;
+    ElemType := T;
+    case T of
+      etInt:     SetLength(I, N);
+      etReal:    SetLength(R, N);
+      etComplex: SetLength(C, N);
+    end;
+    for K := 0 to N - 1 do
+      Put(K, Old.Get(K));
+  finally
+    Old.Free;
+  end;
+end;
+
+function AsArray(const V: TAxValue): TArrayObj;
+begin
+  Result := TArrayObj(V.Obj);
+end;
+
+function ArrayValue(A: TArrayObj): TAxValue;
+begin
+  Result := NothingValue;
+  Result.Kind := vkArray;
+  Result.Obj := A;
+end;
+
+function ElemTypeName(T: TElemType): string;
+const
+  Names: array[TElemType] of string = ('bool', 'int', 'real', 'complex');
+begin
+  Result := Names[T];
+end;
+
+function ElemTypeOf(const V: TAxValue): TElemType;
+begin
+  case V.Kind of
+    vkBool: Result := etBool;
+    vkInt:  Result := etInt;
+    vkReal: Result := etReal;
+  else
+    Result := etComplex;
+  end;
 end;
 
 function AsRecord(const V: TAxValue): TRecordObj;
@@ -305,14 +477,19 @@ end;
 function TypeName(const V: TAxValue): string;
 const
   Names: array[TValueKind] of string = ('nothing', 'bool', 'int', 'real',
-    'complex', 'string', 'range', 'function', 'function', 'list', 'record');
+    'complex', 'string', 'range', 'function', 'function', 'list', 'record', '');
 begin
-  Result := Names[V.Kind];
+  if V.Kind = vkArray then
+  begin
+    if AsArray(V).IsVector then Result := 'vector' else Result := 'matrix';
+  end
+  else
+    Result := Names[V.Kind];
 end;
 
-function FormatReal(X: Double): string;
+function FormatReal(X: Double; Digits: Integer): string;
 var
-  S, Mantissa, Digits: string;
+  S, Mantissa, Ds: string;
   P, E: Integer;
   Neg: Boolean;
 begin
@@ -325,27 +502,28 @@ begin
   Neg := (X < 0) or ((X = 0) and (PUInt64(@X)^ shr 63 = 1));
   X := Abs(X);
   if X = 0 then
-    Digits := '0'
+    Ds := '0'
   else
   begin
-    // Round to 15 significant digits: d.dddddddddddddd E+xxx
-    S := FormatFloat('0.00000000000000E+000', X, TFormatSettings.Invariant);
+    // Round to Digits significant digits: d.ddd...E+xxx
+    S := FormatFloat('0.' + StringOfChar('0', Digits - 1) + 'E+000', X,
+      TFormatSettings.Invariant);
     P := Pos('E', S);
     Mantissa := Copy(S, 1, P - 1);
     E := StrToInt(Copy(S, P + 1, MaxInt));
-    Digits := Mantissa.Replace('.', '');
+    Ds := Mantissa.Replace('.', '');
     // Drop trailing zeros, keeping at least one digit.
-    while (Length(Digits) > 1) and (Digits[Length(Digits)] = '0') do
-      Delete(Digits, Length(Digits), 1);
+    while (Length(Ds) > 1) and (Ds[Length(Ds)] = '0') do
+      Delete(Ds, Length(Ds), 1);
   end;
 
   if X = 0 then
     Result := '0.0'
   else if (E < -4) or (E >= 15) then
   begin
-    Result := Digits[1] + '.';
-    if Length(Digits) > 1 then
-      Result := Result + Copy(Digits, 2, MaxInt)
+    Result := Ds[1] + '.';
+    if Length(Ds) > 1 then
+      Result := Result + Copy(Ds, 2, MaxInt)
     else
       Result := Result + '0';
     Result := Result + 'e' + IntToStr(E);
@@ -353,28 +531,28 @@ begin
   else if E >= 0 then
   begin
     // E + 1 digits before the point.
-    if Length(Digits) <= E + 1 then
-      Result := Digits + StringOfChar('0', E + 1 - Length(Digits)) + '.0'
+    if Length(Ds) <= E + 1 then
+      Result := Ds + StringOfChar('0', E + 1 - Length(Ds)) + '.0'
     else
-      Result := Copy(Digits, 1, E + 1) + '.' + Copy(Digits, E + 2, MaxInt);
+      Result := Copy(Ds, 1, E + 1) + '.' + Copy(Ds, E + 2, MaxInt);
   end
   else
-    Result := '0.' + StringOfChar('0', -E - 1) + Digits;
+    Result := '0.' + StringOfChar('0', -E - 1) + Ds;
 
   if Neg then
     Result := '-' + Result;
 end;
 
-function FormatComplex(const C: TComplex): string;
+function FormatComplex(const C: TComplex; Digits: Integer = 15): string;
 var
   ImNeg: Boolean;
 begin
   ImNeg := (not IsNan(C.Im)) and ((C.Im < 0) or ((C.Im = 0) and (PUInt64(@C.Im)^ shr 63 = 1)));
-  Result := FormatReal(C.Re);
+  Result := FormatReal(C.Re, Digits);
   if ImNeg then
-    Result := Result + ' - ' + FormatReal(-C.Im) + 'i'
+    Result := Result + ' - ' + FormatReal(-C.Im, Digits) + 'i'
   else
-    Result := Result + ' + ' + FormatReal(C.Im) + 'i';
+    Result := Result + ' + ' + FormatReal(C.Im, Digits) + 'i';
 end;
 
 function FormatRange(R: TRangeObj): string;
@@ -390,6 +568,129 @@ begin
     Result := FormatReal(R.RStart) + ':' + FormatReal(R.RStep) + ':' + FormatReal(R.RStop);
 end;
 
+const
+  ArrayDigits = 6;     // significant digits of array elements
+  MaxRowsShown = 10;   // more rows than this are elided
+  MaxColsShown = 8;    // more columns than this are elided
+  EdgeRows = 5;
+  EdgeCols = 4;
+
+function ElementText(A: TArrayObj; K: Integer): string;
+begin
+  case A.ElemType of
+    etBool:    if A.B[K] then Result := 'true' else Result := 'false';
+    etInt:     Result := IntToStr(A.I[K]);
+    etReal:    Result := FormatReal(A.R[K], ArrayDigits);
+  else
+    Result := FormatComplex(A.C[K], ArrayDigits);
+  end;
+end;
+
+function ArrayHeader(A: TArrayObj): string;
+begin
+  if A.IsVector then
+    Result := Format('%d-vector{%s}', [A.Rows, ElemTypeName(A.ElemType)])
+  else
+    Result := Format('%d' + #$00D7 + '%d matrix{%s}', [A.Rows, A.Cols, ElemTypeName(A.ElemType)]);
+end;
+
+{ Indices shown along a dimension of length N: all of them, or the first and
+  last Edge with -1 marking the elision. }
+function ShownIndices(N, MaxShown, Edge: Integer): TArray<Integer>;
+var
+  K: Integer;
+begin
+  Result := nil;
+  if N <= MaxShown then
+  begin
+    SetLength(Result, N);
+    for K := 0 to N - 1 do
+      Result[K] := K;
+  end
+  else
+  begin
+    for K := 0 to Edge - 1 do
+      Result := Result + [K];
+    Result := Result + [-1];
+    for K := N - Edge to N - 1 do
+      Result := Result + [K];
+  end;
+end;
+
+{ The multi-line display: header, then right-aligned columns. }
+function FormatArrayBlock(A: TArrayObj): string;
+var
+  RowIdx, ColIdx: TArray<Integer>;
+  Cells: array of array of string;
+  Widths: TArray<Integer>;
+  RI, CI, W: Integer;
+  SB: TStringBuilder;
+  S: string;
+begin
+  Result := ArrayHeader(A);
+  if A.Count = 0 then
+    Exit;
+  RowIdx := ShownIndices(A.Rows, MaxRowsShown, EdgeRows);
+  ColIdx := ShownIndices(A.Cols, MaxColsShown, EdgeCols);
+  SetLength(Cells, Length(RowIdx), Length(ColIdx));
+  SetLength(Widths, Length(ColIdx));
+  for RI := 0 to High(RowIdx) do
+    for CI := 0 to High(ColIdx) do
+    begin
+      if (RowIdx[RI] < 0) or (ColIdx[CI] < 0) then
+        S := '' + #$2026 + ''
+      else
+        S := ElementText(A, ColIdx[CI] * A.Rows + RowIdx[RI]);
+      Cells[RI][CI] := S;
+      if (RowIdx[RI] >= 0) and (Length(S) > Widths[CI]) then
+        Widths[CI] := Length(S);
+    end;
+  SB := TStringBuilder.Create;
+  try
+    SB.Append(Result);
+    for RI := 0 to High(RowIdx) do
+    begin
+      SB.Append(sLineBreak);
+      if RowIdx[RI] < 0 then
+      begin
+        SB.Append('  ' + #$22EE + '');
+        Continue;
+      end;
+      for CI := 0 to High(ColIdx) do
+      begin
+        W := Widths[CI];
+        S := Cells[RI][CI];
+        SB.Append('  ').Append(StringOfChar(' ', W - Length(S))).Append(S);
+      end;
+    end;
+    Result := SB.ToString;
+  finally
+    SB.Free;
+  end;
+end;
+
+{ The inline display used inside lists and records: literal syntax. }
+function FormatArrayInline(A: TArrayObj): string;
+var
+  RI, CI: Integer;
+begin
+  Result := '[';
+  for RI := 0 to A.Rows - 1 do
+  begin
+    if RI > 0 then
+      Result := Result + '; ';
+    for CI := 0 to A.Cols - 1 do
+    begin
+      if CI > 0 then
+        Result := Result + ', ';
+      Result := Result + ElementText(A, CI * A.Rows + RI);
+    end;
+  end;
+  Result := Result + ']';
+end;
+
+function DisplayValue(const V: TAxValue; Quoted, Nested: Boolean): string; forward;
+
 function FormatList(L: TListObj): string;
 var
   I: Integer;
@@ -399,8 +700,8 @@ begin
   begin
     if I > 0 then
       Result := Result + ', ';
-    // Strings inside containers are always quoted.
-    Result := Result + Display(L.Items[I], True);
+    // Strings inside containers are always quoted; arrays are inline.
+    Result := Result + DisplayValue(L.Items[I], True, True);
   end;
   Result := Result + '}';
 end;
@@ -414,12 +715,12 @@ begin
   begin
     if I > 0 then
       Result := Result + ', ';
-    Result := Result + R.Names[I] + ': ' + Display(R.Values[I], True);
+    Result := Result + R.Names[I] + ': ' + DisplayValue(R.Values[I], True, True);
   end;
   Result := Result + '}';
 end;
 
-function Display(const V: TAxValue; Quoted: Boolean): string;
+function DisplayValue(const V: TAxValue; Quoted, Nested: Boolean): string;
 begin
   case V.Kind of
     vkNothing: Result := 'nothing';
@@ -440,9 +741,19 @@ begin
         Result := 'function';
     vkList:    Result := FormatList(AsList(V));
     vkRecord:  Result := FormatRecord(AsRecord(V));
+    vkArray:
+      if Nested then
+        Result := FormatArrayInline(AsArray(V))
+      else
+        Result := FormatArrayBlock(AsArray(V));
   else
     Result := '<value>';
   end;
+end;
+
+function Display(const V: TAxValue; Quoted: Boolean): string;
+begin
+  Result := DisplayValue(V, Quoted, False);
 end;
 
 end.

@@ -1,0 +1,18 @@
+print([1, 2; 3, 4])
+print([1; 2; 3])
+print([1, 2, 3])
+print([])
+print([5])
+print([1, 2.5])
+print([1, 1i])
+print([true, false])
+A = [1, 2; 3, 4]
+print([A, A])
+print([A; [5, 6]])
+v = [1; 2]
+print([v; 3])
+print([v, v])
+print([1:3])
+print([1:3, 4:6])
+print([[], 1, 2])
+print(typeof([5]), typeof([1, 2]), typeof([]))

@@ -40,7 +40,7 @@ implementation
 
 uses
   System.SysUtils, System.Math,
-  Axon.Errors;
+  Axon.Errors, Axon.Arrays;
 
 procedure RaiseError(const Kind, Msg: string);
 begin
@@ -291,6 +291,9 @@ function BinaryOp(Op: TTokenKind; const A, B: TAxValue): TAxValue;
 var
   Rank: Integer;
 begin
+  // Arrays and ranges: elementwise with broadcasting, or the matrix product.
+  if (A.Kind in [vkArray, vkRange]) or (B.Kind in [vkArray, vkRange]) then
+    Exit(ArrayBinaryOp(Op, A, B));
   case Op of
     tkEqEq:  Exit(BoolValue(ValuesEqual(A, B)));
     tkNotEq: Exit(BoolValue(not ValuesEqual(A, B)));
@@ -326,6 +329,8 @@ end;
 
 function UnaryOp(Op: TTokenKind; const A: TAxValue): TAxValue;
 begin
+  if A.Kind in [vkArray, vkRange] then
+    Exit(ArrayUnaryOp(Op, A));
   case Op of
     tkNot:
       begin
