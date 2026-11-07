@@ -20,3 +20,6 @@ __recovery/
 *.dproj.local
 *.res
 *.tvsconfig
+
+# Native test library built by build.cmd
+/tests/m09/bin/

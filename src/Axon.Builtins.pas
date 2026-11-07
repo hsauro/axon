@@ -19,7 +19,7 @@ implementation
 
 uses
   System.Math, System.Character,
-  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Arrays, Axon.Tokens;
+  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Arrays, Axon.Tokens, Axon.Ffi;
 
 type
   TRealFn = function(X: Double): Double;
@@ -771,6 +771,12 @@ begin
   Result := DictValue(TDictObj.Create);
 end;
 
+{ keep(f): f's callback trampolines outlive the extern call (M9). }
+function BKeep(const Args: TAxValues): TAxValue;
+begin
+  Result := KeepCallback(Args[0]);
+end;
+
 { Test hook: the number of copy-on-write array copies made so far. }
 function BCopies(const Args: TAxValues): TAxValue;
 begin
@@ -828,6 +834,7 @@ begin
   Add('isequal', BIsequal, 2, 2);
   Add('__copies', BCopies, 0, 0);
   Add('__native_library', BCopies, 1, 1);   // handled by the interpreter
+  Add('keep', BKeep, 1, 1);
   Add('append', BAppend, 2, 2);
   Add('get', BGet, 3, 3);
   Add('keys', BKeys, 1, 1);

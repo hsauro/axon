@@ -1,0 +1,3 @@
+UserError: bad callback
+  at err_callback_error.sci:6:3 in bad
+  at err_callback_error.sci:8:5

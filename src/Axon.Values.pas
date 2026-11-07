@@ -19,7 +19,8 @@ uses
 
 type
   TValueKind = (vkNothing, vkBool, vkInt, vkReal, vkComplex, vkString, vkRange,
-    vkBuiltin, vkFunction, vkList, vkRecord, vkArray, vkDict, vkRecordType, vkModule);
+    vkBuiltin, vkFunction, vkList, vkRecord, vkArray, vkDict, vkRecordType, vkModule,
+    vkPointer, vkExtern);
 
   TElemType = (etBool, etInt, etReal, etComplex);
 
@@ -644,7 +645,7 @@ function TypeName(const V: TAxValue): string;
 const
   Names: array[TValueKind] of string = ('nothing', 'bool', 'int', 'real',
     'complex', 'string', 'range', 'function', 'function', 'list', 'record', '',
-    'dict', 'type', 'module');
+    'dict', 'type', 'module', 'pointer', 'function');
 begin
   if V.Kind = vkArray then
   begin
@@ -918,7 +919,7 @@ begin
       else
         Result := AsString(V);
     vkRange:   Result := FormatRange(AsRange(V));
-    vkBuiltin, vkFunction:
+    vkBuiltin, vkFunction, vkExtern:
       if TCallableObj(V.Obj).Name <> '' then
         Result := 'function ' + TCallableObj(V.Obj).Name
       else
@@ -928,6 +929,7 @@ begin
     vkDict:    Result := FormatDict(AsDict(V));
     vkRecordType: Result := 'record type ' + AsRecordType(V).Name;
     vkModule: Result := 'module ' + TModuleBase(V.Obj).Name;
+    vkPointer: Result := 'pointer 0x' + IntToHex(V.I, 16);
     vkArray:
       if Nested then
         Result := FormatArrayInline(AsArray(V))

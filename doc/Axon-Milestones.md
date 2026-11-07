@@ -24,7 +24,7 @@ This milestone sets up the repository, the build and the test runner before any 
 
 - [ ] Delphi project builds an `axon` console executable for Win64 and macOS (arm64 and x64); Linux is deferred
 - [x] Builds run from the command line (MSBuild or `dcc`), so CI and Claude Code can build without the IDE
-- [ ] C libraries (libffi, BLAS/LAPACK, UMFPACK or KLU, CVODE, and later MIR) bound through Delphi `external` declarations in one unit per library; libffi provides the closures for `callback`
+- [ ] C libraries (BLAS/LAPACK, UMFPACK or KLU, CVODE, and later MIR) bound through Delphi `external` declarations in one unit per library. No libffi: foreign calls use Delphi's `System.Rtti.Invoke`, and `callback` uses a pool of trampolines compiled into the interpreter (M9)
 - [x] Platform-specific code kept behind `{$IFDEF}` in a few units, so a Linux target can be added later without restructuring
 - [x] `axon test tests/` runs the three test kinds and reports results by milestone
 - [x] Local `build` and `test` scripts for Win64, runnable by you or Claude Code on the Windows machine
@@ -146,15 +146,16 @@ This milestone adds multi-file programs.
 
 ### M9 — Foreign function interface
 
-This milestone adds `extern`, built on libffi. Tests use a small C test library built alongside the interpreter.
+This milestone adds `extern` without libffi. Calls go through Delphi's `System.Rtti.Invoke`, and callbacks through a fixed pool of trampolines compiled into the interpreter: Win64 assembly stubs, and on macOS Pascal functions that receive the whole register file. Tests use a small test library written in Delphi and built alongside the interpreter, so no C compiler is needed.
 
-- [ ] Library resolution through `package.toml` and then the system path; `ForeignError` for a missing library or symbol
-- [ ] By-value scalars, with `TypeError` for values that do not fit the C type
-- [ ] `ref T` writing back into the argument variable
-- [ ] `ptr T` passing a matrix buffer with no copy, made unique first when it is shared
-- [ ] `cstring` and `name "..."` symbol binding
-- [ ] `callback` trampolines, `keep(cb)`, and an error raised inside a callback re-raised after the native call returns
-- [ ] A callback invoked from another thread raises `ForeignError`
+- [x] Library resolution through `package.toml` and then the system path; `ForeignError` for a missing library or symbol
+- [x] By-value scalars, with `TypeError` for values that do not fit the C type
+- [x] `ref T` writing back into the argument variable
+- [x] `ptr T` passing a matrix buffer with no copy, made unique first when it is shared
+- [x] `cstring` and `name "..."` symbol binding
+- [x] `callback` trampolines, `keep(cb)`, and an error raised inside a callback re-raised after the native call returns
+- [x] Callback arguments in every register position and on the stack (Win64), and the pool limit
+- [x] A callback invoked from another thread raises `ForeignError`
 
 ### M10 — Linear algebra
 

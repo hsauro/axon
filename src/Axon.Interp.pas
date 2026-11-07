@@ -25,7 +25,7 @@ interface
 
 uses
   System.SysUtils, System.Generics.Collections,
-  Axon.Ast, Axon.Values;
+  Axon.Ast, Axon.Values, Axon.Ffi;
 
 type
   { A construct that a later milestone implements. }
@@ -51,6 +51,7 @@ type
     FRefCount: Integer;
     FVars: TObjectDictionary<string, TVarCell>;   // created on first use
   public
+    CTypes: TCTypeAliases;    // named C types from extern blocks (module roots)
     Parent: TScope;
     Root: TRootKind;
     Module: TScope;           // the module root this scope belongs to
@@ -111,6 +112,7 @@ type
     FReturn: TAxValues;                       // values of the last `return`
     FHoisted: TDictionary<TFunctionDecl, Boolean>;
     FHoistedRecords: TDictionary<TRecordStmt, Boolean>;
+    FHoistedExterns: TDictionary<TExternStmt, Boolean>;
     FEndStack: TList<Int64>;                  // values of `end` in nested indexing
     procedure NotYet(const What, Milestone: string; Node: TNode);
     function FunctionValue(Decl: TFunctionDecl; Scope: TScope; IsClosure: Boolean): TAxValue;
@@ -154,6 +156,12 @@ type
     procedure ExecImport(S: TImportStmt; Scope: TScope);
     function ModuleMember(const V: TAxValue; E: TFieldExpr): TAxValue;
     function NativeLibraryHook(E: TCallExpr; Scope: TScope): TAxValue;
+    procedure ExecExtern(S: TExternStmt; Scope: TScope);
+    function CallExternValue(F: TExternFuncObj; E: TCallExpr; Scope: TScope): TAxValue;
+  public
+    { Calls any function value with positional arguments (used for callbacks). }
+    function CallValue(const Fn: TAxValue; const Args: TAxValues): TAxValue;
+  private
     function MakeRange(E: TRangeExpr; Scope: TScope): TAxValue;
     function EvalLogical(E: TBinaryExpr; Scope: TScope): TAxValue;
     function EvalMulti(E: TExpr; Scope: TScope): TAxValues;
@@ -265,7 +273,9 @@ begin
   else if N = 'range' then
     Ok := V.Kind = vkRange
   else if N = 'function' then
-    Ok := V.Kind in [vkBuiltin, vkFunction]
+    Ok := V.Kind in [vkBuiltin, vkFunction, vkExtern]
+  else if N = 'pointer' then
+    Ok := V.Kind = vkPointer
   else if (N = 'vector') or (N = 'matrix') then
   begin
     // A range is accepted where a vector is annotated, and becomes one.
@@ -304,6 +314,7 @@ end;
 destructor TScope.Destroy;
 begin
   FVars.Free;
+  CTypes.Free;
   if Parent <> nil then
     Parent.Release;
   inherited;
@@ -375,6 +386,7 @@ begin
   FGlobals := TScope.Create(FPrelude, rkModule);
   FHoisted := TDictionary<TFunctionDecl, Boolean>.Create;
   FHoistedRecords := TDictionary<TRecordStmt, Boolean>.Create;
+  FHoistedExterns := TDictionary<TExternStmt, Boolean>.Create;
   FEndStack := TList<Int64>.Create;
   FCurrentPath := TPath.GetFullPath(FileName);
   FModules := TDictionary<string, TAxValue>.Create;
@@ -386,6 +398,7 @@ destructor TInterpreter.Destroy;
 begin
   FHoisted.Free;
   FHoistedRecords.Free;
+  FHoistedExterns.Free;
   FEndStack.Free;
   FModules.Free;
   FLoadStack.Free;
@@ -835,7 +848,10 @@ begin
     else if C = TImportStmt then
       ExecImport(TImportStmt(S), Scope)
     else if C = TExternStmt then
-      NotYet('extern', 'M9', S)
+    begin
+      if not FHoistedExterns.ContainsKey(TExternStmt(S)) then
+        ExecExtern(TExternStmt(S), Scope);
+    end
     else
       NotYet(S.ClassName, 'a later milestone', S);
   except
@@ -1036,6 +1052,8 @@ begin
           Result := CallBuiltin(AsBuiltin(Callee), E, Scope);
       vkRecordType:
         Result := [ConstructRecord(Callee, E, Scope)];
+      vkExtern:
+        Result := [CallExternValue(TExternFuncObj(Callee.Obj), E, Scope)];
       vkFunction:
         begin
           // Arguments are evaluated left to right before the call.
@@ -1632,7 +1650,7 @@ begin
   Result := (N = 'bool') or (N = 'int') or (N = 'real') or (N = 'complex') or
     (N = 'string') or (N = 'nothing') or (N = 'range') or (N = 'function') or
     (N = 'vector') or (N = 'matrix') or (N = 'sparse') or (N = 'list') or
-    (N = 'record') or (N = 'dict');
+    (N = 'record') or (N = 'dict') or (N = 'pointer');
 end;
 
 { Checks V against an annotation; declared record types are looked up from
@@ -2185,6 +2203,148 @@ begin
     Result := StringValue(DisplayPath(Path));
 end;
 
+{ ---------------- foreign functions ---------------- }
+
+{ An extern block: its named C types go into the module's alias table, and
+  each function is bound in the outermost scope of the enclosing function or
+  module. The library itself loads at the first call. }
+procedure TInterpreter.ExecExtern(S: TExternStmt; Scope: TScope);
+var
+  Item: TExternItem;
+  Root, Module: TScope;
+  Cell: TVarCell;
+begin
+  Root := FunctionRootOf(Scope);
+  Module := Scope.Module;
+  if Module.CTypes = nil then
+    Module.CTypes := TCTypeAliases.Create;
+  for Item in S.Items do
+    try
+      if Item is TExternType then
+        Module.CTypes.AddOrSetValue(TExternType(Item).Name,
+          ResolveCType(TExternType(Item).CType, Module.CTypes,
+            Format('extern type %s', [TExternType(Item).Name])))
+      else
+      begin
+        Cell := Root.Define(TExternFunc(Item).Name);
+        if Cell.ReadOnly then
+          RaiseFmt(NameError, '"%s" is imported and cannot be redefined', [TExternFunc(Item).Name]);
+        Cell.TypeRef := nil;
+        Cell.IsGlobalAlias := False;
+        Cell.Value := ExternFunctionValue(TExternFunc(Item), S.LibName,
+          ExtractFileDir(FCurrentPath), Module.CTypes);
+      end;
+    except
+      on E: EAxonError do
+      begin
+        E.Locate(FFile, Item.Line, Item.Col);
+        raise;
+      end;
+    end;
+end;
+
+function TInterpreter.CallValue(const Fn: TAxValue; const Args: TAxValues): TAxValue;
+var
+  Vals, RefOut: TAxValues;
+  B: TBuiltinObj;
+begin
+  case Fn.Kind of
+    vkFunction:
+      begin
+        Vals := Invoke(TFunctionObj(Fn.Obj), Args, nil, nil);
+        if Length(Vals) = 0 then Result := NothingValue else Result := Vals[0];
+      end;
+    vkBuiltin:
+      begin
+        B := AsBuiltin(Fn);
+        if (Length(Args) < B.MinArgs) or ((B.MaxArgs >= 0) and (Length(Args) > B.MaxArgs)) then
+          RaiseFmt(ArgumentError, '%s cannot take %d argument(s)', [B.Name, Length(Args)]);
+        if Assigned(B.MultiFn) then
+        begin
+          Vals := B.MultiFn(Args);
+          if Length(Vals) = 0 then Result := NothingValue else Result := Vals[0];
+        end
+        else
+          Result := B.Fn(Args);
+      end;
+    vkExtern:
+      Result := CallExtern(TExternFuncObj(Fn.Obj), Args, RefOut,
+        function(const F: TAxValue; const A: TAxValues): TAxValue
+        begin
+          Result := CallValue(F, A);
+        end);
+  else
+    RaiseFmt(TypeError, '%s is not callable', [TypeName(Fn)]);
+    Result := NothingValue;
+  end;
+end;
+
+{ A call to an extern function. ref arguments must be variables, which get
+  the new values afterwards; an array variable passed to a ptr parameter is
+  made unique first, so native writes reach only that variable. }
+function TInterpreter.CallExternValue(F: TExternFuncObj; E: TCallExpr; Scope: TScope): TAxValue;
+var
+  Args, RefOut: TAxValues;
+  RefNames: TArray<string>;
+  K: Integer;
+  A: TArg;
+  Cell: TVarCell;
+  Name: string;
+begin
+  if E.Args.Count <> Length(F.Params) then
+    RaiseFmt(ArgumentError, '%s takes %d argument(s), got %d',
+      [F.Name, Length(F.Params), E.Args.Count]);
+  SetLength(Args, E.Args.Count);
+  SetLength(RefNames, E.Args.Count);
+  for K := 0 to E.Args.Count - 1 do
+  begin
+    A := E.Args[K];
+    if A.Kind <> akPositional then
+      RaiseFmt(ArgumentError, 'extern function %s takes positional arguments only', [F.Name]);
+    case F.Params[K].Kind of
+      ckRef:
+        begin
+          if not (A.Value is TNameExpr) then
+            RaiseFmt(TypeError, 'argument "%s" of %s is a ref, so it must be a variable',
+              [F.ParamNames[K], F.Name]);
+          RefNames[K] := TNameExpr(A.Value).Name;
+          Args[K] := Eval(A.Value, Scope);
+        end;
+      ckPtr:
+        begin
+          Cell := nil;
+          if A.Value is TNameExpr then
+            Cell := FindCellForWrite(TNameExpr(A.Value).Name, Scope);
+          if (Cell <> nil) and (Cell.Value.Kind in [vkArray, vkRange]) then
+          begin
+            if Cell.ReadOnly then
+              RaiseFmt(NameError, '"%s" is imported and cannot be passed to a ptr parameter',
+                [TNameExpr(A.Value).Name]);
+            if Cell.Value.Kind = vkRange then
+              Cell.Value := ArrayValue(RangeToArray(AsRange(Cell.Value)));
+            MakeUnique(Cell.Value);
+            Args[K] := Cell.Value;
+          end
+          else
+            Args[K] := Eval(A.Value, Scope);
+        end;
+    else
+      Args[K] := Eval(A.Value, Scope);
+    end;
+  end;
+  Result := CallExtern(F, Args, RefOut,
+    function(const Fn: TAxValue; const CallArgs: TAxValues): TAxValue
+    begin
+      Result := CallValue(Fn, CallArgs);
+    end);
+  for K := 0 to High(RefNames) do
+    if RefNames[K] <> '' then
+    begin
+      Name := RefNames[K];
+      Assign(Name, RefOut[K], Scope);
+    end;
+end;
+
 { ---------------- entry points ---------------- }
 
 procedure TInterpreter.Hoist(P: TProgram);
@@ -2210,6 +2370,11 @@ begin
     begin
       Globals.Define(TRecordStmt(S).Name).Value := RecordTypeValue(TRecordStmt(S));
       FHoistedRecords.AddOrSetValue(TRecordStmt(S), True);
+    end
+    else if S is TExternStmt then
+    begin
+      ExecExtern(TExternStmt(S), Globals);
+      FHoistedExterns.AddOrSetValue(TExternStmt(S), True);
     end;
 end;
 

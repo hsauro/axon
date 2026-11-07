@@ -22,7 +22,6 @@ Delphi bindings for these libraries already exist in `CommonCode/LAPACKE` and `C
 
 | Library | Needed by | Notes |
 | --- | --- | --- |
-| libffi | M9 (`extern`, `callback`) | Prebuilt Win64 DLLs come with MSYS2 (`mingw-w64-x86_64-libffi`) and vcpkg |
 | KLU or UMFPACK (SuiteSparse) | M11 sparse solves | SuiteSparse builds with CMake; vcpkg has `suitesparse` |
 
 ## macOS

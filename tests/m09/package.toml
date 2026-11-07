@@ -1,0 +1,9 @@
+# The M9 tests call the native test library built by build.cmd.
+[package]
+name = "m09tests"
+version = "0.1.0"
+
+[native.axontest]
+windows = "bin/axontest.dll"
+macos = "bin/axontest.dylib"
+linux = "bin/axontest.so"

@@ -38,9 +38,12 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
   - A function stored in the scope it closes over forms a cycle that is never freed. That's accepted for now.
 - `src/Axon.Repl.pas`: the basic REPL (`axon` with no arguments)
 - `src/Axon.Packages.pas`: reads `package.toml` (a TOML subset, cached per directory) and resolves module files. `Axon.Interp` loads modules (`LoadModule`, `ExecImport`). Each `TModuleObj` has its own module-root scope, and functions remember their file, so calls switch `FFile`/`FCurrentPath` for error reports and nested imports.
+- `src/Axon.Ffi.pas`: `extern`. Calls go through `System.Rtti.Invoke` (no libffi), with argument and result conversion and `ref`/`ptr`/`cstring` handling. Callback errors are held as pending and raised after the native call returns.
+- `src/native/Axon.Native.Callbacks.pas` and the generated `Axon.Native.Trampolines.pas`: a fixed pool of callback trampolines (32 per return kind). Regenerate the trampolines with `bash tools/gen_trampolines.sh`; never edit them by hand. Win64 uses inline-assembly stubs that spill the registers into the caller's home area; macOS uses Pascal functions taking 8 integers and 8 doubles.
+- `tests/m09/native/axontest.dpr`: the native test library, written in Delphi. `build.cmd` builds it into `tests/m09/bin` (gitignored).
 - Module tests: `tests/m08` holds fixture modules next to the tests. A `stdlib/` folder inside a milestone folder becomes `AXON_STDLIB` for that folder's tests.
 - `src/native/Axon.Native.*.pas`: one unit per C library. Declarations are added in the milestone that first uses the library.
-- `lib/win64/`: shipped DLLs (OpenBLAS with its MinGW runtime, SUNDIALS CVODE). A post-build step in `axon.dproj` copies them next to `axon.exe`. See `lib/README.md` for where they came from and what's missing (libffi, KLU).
+- `lib/win64/`: shipped DLLs (OpenBLAS with its MinGW runtime, SUNDIALS CVODE). A post-build step in `axon.dproj` copies them next to `axon.exe`. See `lib/README.md` for where they came from and what is missing (KLU).
 - `tests/mNN/`: tests for milestone NN
 
 ## Conventions

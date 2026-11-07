@@ -13,6 +13,11 @@ procedure InitConsole;
   an empty Value removes it. }
 procedure SetEnv(const Name, Value: string);
 
+{ Loads a native library; returns 0 if it cannot be loaded. }
+function LoadNativeLibrary(const Path: string): NativeUInt;
+{ The address of a symbol in a loaded library, or nil. }
+function NativeSymbol(Lib: NativeUInt; const Name: string): Pointer;
+
 { Runs Exe with Args in WorkDir, capturing stdout and stderr as UTF-8 text.
   Returns the exit code. If the process runs longer than TimeoutMs it is
   killed, TimedOut is set and the result is -1.
@@ -28,7 +33,7 @@ uses
   Winapi.Windows,
 {$ENDIF}
 {$IFDEF POSIX}
-  Posix.Stdlib, Posix.SysWait,
+  Posix.Stdlib, Posix.SysWait, Posix.Dlfcn,
 {$ENDIF}
   System.SysUtils, System.Classes, System.IOUtils, System.Math;
 
@@ -42,6 +47,34 @@ begin
   SetTextCodePage(Output, CP_UTF8);
   SetTextCodePage(ErrOutput, CP_UTF8);
 end;
+
+function LoadNativeLibrary(const Path: string): NativeUInt;
+{$IFDEF MSWINDOWS}
+begin
+  Result := Winapi.Windows.LoadLibrary(PChar(Path));
+end;
+{$ENDIF}
+{$IFDEF POSIX}
+var
+  M: TMarshaller;
+begin
+  Result := NativeUInt(dlopen(M.AsUtf8(Path).ToPointer, RTLD_NOW));
+end;
+{$ENDIF}
+
+function NativeSymbol(Lib: NativeUInt; const Name: string): Pointer;
+{$IFDEF MSWINDOWS}
+begin
+  Result := Winapi.Windows.GetProcAddress(HMODULE(Lib), PChar(Name));
+end;
+{$ENDIF}
+{$IFDEF POSIX}
+var
+  M: TMarshaller;
+begin
+  Result := dlsym(Lib, M.AsUtf8(Name).ToPointer);
+end;
+{$ENDIF}
 
 procedure SetEnv(const Name, Value: string);
 {$IFDEF MSWINDOWS}
