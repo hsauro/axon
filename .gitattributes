@@ -1,0 +1,6 @@
+# Test inputs and expected outputs are compared byte for byte (some inputs
+# deliberately contain CR or CRLF line ends), so Git must not convert them.
+tests/** -text
+
+*.dll binary
+*.dylib binary

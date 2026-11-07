@@ -1,0 +1,2 @@
+SyntaxError: unexpected character "é" (U+00E9)
+  at err_non_ascii_ident.sci:2:1

@@ -1,0 +1,22 @@
+# Delphi build output
+/Win32/
+/Win64/
+/OSX64/
+/OSXARM64/
+/Linux64/
+*.dcu
+*.exe
+*.map
+*.rsm
+*.drc
+
+# IDE state
+__history/
+__recovery/
+*.local
+*.identcode
+*.dsk
+*.stat
+*.dproj.local
+*.res
+*.tvsconfig

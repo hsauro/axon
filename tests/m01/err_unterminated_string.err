@@ -1,0 +1,2 @@
+SyntaxError: unterminated string (strings cannot span lines)
+  at err_unterminated_string.sci:2:1

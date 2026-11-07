@@ -1,0 +1,19 @@
+1:1 STRING "plain"
+1:8 NEWLINE
+2:1 STRING "tab\there"
+2:12 NEWLINE
+3:1 STRING "line\nbreak"
+3:14 NEWLINE
+4:1 STRING "quote \" and backslash \\"
+4:28 NEWLINE
+5:1 STRING "Aα😀"
+5:25 NEWLINE
+6:1 STRING "é"
+6:5 IDENT x
+6:6 NEWLINE
+7:1 STRING "😀"
+7:5 IDENT y
+7:6 NEWLINE
+8:1 STRING ""
+8:3 NEWLINE
+9:1 EOF

@@ -1,0 +1,2 @@
+SyntaxError: a real literal needs a digit after the decimal point (write 1.0, not 1.)
+  at err_trailing_dot.sci:2:6
