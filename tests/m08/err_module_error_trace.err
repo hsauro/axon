@@ -1,0 +1,3 @@
+ValueBad: boom in module
+  at failing.sci:2:3 in boom
+  at err_module_error_trace.sci:3:1

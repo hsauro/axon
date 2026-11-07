@@ -1,0 +1,13 @@
+# Manifest for the M8 tests.
+[package]
+name = "m08tests"
+version = "0.1.0"
+
+[dependencies]
+mathpkg = "deps/mathpkg"   # a package root, relative to this file
+dup = "deps/dup"
+
+[native.testlib]
+windows = "win/testlib.dll"
+macos = "mac/libtestlib.dylib"
+linux = "linux/libtestlib.so"

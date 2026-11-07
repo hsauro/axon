@@ -19,7 +19,7 @@ uses
 
 type
   TValueKind = (vkNothing, vkBool, vkInt, vkReal, vkComplex, vkString, vkRange,
-    vkBuiltin, vkFunction, vkList, vkRecord, vkArray, vkDict, vkRecordType);
+    vkBuiltin, vkFunction, vkList, vkRecord, vkArray, vkDict, vkRecordType, vkModule);
 
   TElemType = (etBool, etInt, etReal, etComplex);
 
@@ -94,6 +94,13 @@ type
   TListObj = class(TInterfacedObject)
   public
     Items: TAxValues;
+  end;
+
+  { A module or a namespace (a directory of modules). The class that holds
+    its contents, TModuleObj, lives in Axon.Interp. }
+  TModuleBase = class(TInterfacedObject)
+  public
+    Name: string;
   end;
 
   { A declared record type (`record T … end`). Calling it builds a record. }
@@ -637,7 +644,7 @@ function TypeName(const V: TAxValue): string;
 const
   Names: array[TValueKind] of string = ('nothing', 'bool', 'int', 'real',
     'complex', 'string', 'range', 'function', 'function', 'list', 'record', '',
-    'dict', 'type');
+    'dict', 'type', 'module');
 begin
   if V.Kind = vkArray then
   begin
@@ -920,6 +927,7 @@ begin
     vkRecord:  Result := FormatRecord(AsRecord(V));
     vkDict:    Result := FormatDict(AsDict(V));
     vkRecordType: Result := 'record type ' + AsRecordType(V).Name;
+    vkModule: Result := 'module ' + TModuleBase(V.Obj).Name;
     vkArray:
       if Nested then
         Result := FormatArrayInline(AsArray(V))

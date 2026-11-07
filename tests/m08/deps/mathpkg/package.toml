@@ -1,0 +1,8 @@
+[package]
+name = "mathpkg"
+version = "1.0.0"
+
+[native.blas]
+windows = "bin/blas.bin"
+macos = "bin/blas.bin"
+linux = "bin/blas.bin"

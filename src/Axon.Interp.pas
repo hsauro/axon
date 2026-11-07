@@ -43,6 +43,7 @@ type
     Value: TAxValue;
     TypeRef: TTypeRef;        // annotation (owned by the AST); nil if untyped
     IsGlobalAlias: Boolean;   // declared `global` inside a function
+    ReadOnly: Boolean;        // an imported name
   end;
 
   TScope = class
@@ -67,7 +68,22 @@ type
     Decl: TFunctionDecl;
     Closure: TScope;
     IsClosure: Boolean;       // lambda or nested function: rule 5 reaches outward
+    FileName: string;         // the module file it was defined in (for errors)
+    FilePath: string;         // its full path (for imports made while it runs)
     constructor Create(ADecl: TFunctionDecl; AClosure: TScope; AIsClosure: Boolean);
+    destructor Destroy; override;
+  end;
+
+  { A module loaded from a file, or a namespace made by import a.b.c. Globals
+    is nil for a namespace. }
+  TModuleObj = class(TModuleBase)
+  public
+    FilePath: string;
+    Globals: TScope;
+    ExportNames: TList<string>;
+    Children: TDictionary<string, TAxValue>;
+    Loading: Boolean;
+    constructor Create(const AName: string);
     destructor Destroy; override;
   end;
 
@@ -87,6 +103,10 @@ type
     FPrelude: TScope;
     FGlobals: TScope;
     FFile: string;
+    FCurrentPath: string;                     // full path of the running module's file
+    FModules: TDictionary<string, TAxValue>;  // file key -> loaded module
+    FLoadStack: TList<string>;                // modules being loaded, for cycle reports
+    FPrograms: TObjectList<TProgram>;         // syntax trees of imported modules
     FCallDepth: Integer;
     FReturn: TAxValues;                       // values of the last `return`
     FHoisted: TDictionary<TFunctionDecl, Boolean>;
@@ -129,6 +149,11 @@ type
     function EvalRecord(E: TRecordExpr; Scope: TScope): TAxValue;
     function IndexString(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
     function IndexDict(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
+    function ResolveModule(const Name: string): string;
+    function LoadModule(const Name: string; Node: TNode): TAxValue;
+    procedure ExecImport(S: TImportStmt; Scope: TScope);
+    function ModuleMember(const V: TAxValue; E: TFieldExpr): TAxValue;
+    function NativeLibraryHook(E: TCallExpr; Scope: TScope): TAxValue;
     function MakeRange(E: TRangeExpr; Scope: TScope): TAxValue;
     function EvalLogical(E: TBinaryExpr; Scope: TScope): TAxValue;
     function EvalMulti(E: TExpr; Scope: TScope): TAxValues;
@@ -142,7 +167,8 @@ type
     function Eval(E: TExpr; Scope: TScope): TAxValue;
     { Binds a program's top-level named functions, so they can be called
       before their definition. Run does this itself. }
-    procedure Hoist(P: TProgram);
+    procedure Hoist(P: TProgram); overload;
+    procedure Hoist(P: TProgram; Globals: TScope); overload;
     procedure Run(P: TProgram);
     { Runs one top-level statement (the REPL). Shown receives the values to
       display: an expression's values, or the new value of an assigned name
@@ -160,7 +186,8 @@ function CoerceToType(const V: TAxValue; T: TTypeRef; const What: string): TAxVa
 implementation
 
 uses
-  System.Math, System.Character,
+  System.Math, System.Character, System.IOUtils,
+  Axon.Packages, Axon.Source, Axon.Lexer, Axon.Parser,
   Axon.Errors, Axon.Tokens, Axon.Ops, Axon.Builtins, Axon.Complex, Axon.Arrays;
 
 function StringChars(const S: string): TArray<string>; forward;
@@ -349,6 +376,10 @@ begin
   FHoisted := TDictionary<TFunctionDecl, Boolean>.Create;
   FHoistedRecords := TDictionary<TRecordStmt, Boolean>.Create;
   FEndStack := TList<Int64>.Create;
+  FCurrentPath := TPath.GetFullPath(FileName);
+  FModules := TDictionary<string, TAxValue>.Create;
+  FLoadStack := TList<string>.Create;
+  FPrograms := TObjectList<TProgram>.Create;
 end;
 
 destructor TInterpreter.Destroy;
@@ -356,10 +387,13 @@ begin
   FHoisted.Free;
   FHoistedRecords.Free;
   FEndStack.Free;
+  FModules.Free;
+  FLoadStack.Free;
   // Functions stored in the globals refer back to them, so the globals may
   // stay alive in a cycle; that memory goes when the process ends.
   FGlobals.Release;
   FPrelude.Release;
+  FPrograms.Free;
   inherited;
 end;
 
@@ -381,10 +415,15 @@ end;
 
 function TInterpreter.FunctionValue(Decl: TFunctionDecl; Scope: TScope;
   IsClosure: Boolean): TAxValue;
+var
+  F: TFunctionObj;
 begin
   Result := NothingValue;
   Result.Kind := vkFunction;
-  Result.Obj := TFunctionObj.Create(Decl, Scope, IsClosure);
+  F := TFunctionObj.Create(Decl, Scope, IsClosure);
+  F.FileName := FFile;
+  F.FilePath := FCurrentPath;
+  Result.Obj := F;
 end;
 
 { The outermost scope of the function (or module) that Scope is in. }
@@ -422,6 +461,8 @@ end;
 
 procedure TInterpreter.Store(Cell: TVarCell; const V: TAxValue; const Name: string; Scope: TScope);
 begin
+  if Cell.ReadOnly then
+    RaiseFmt(NameError, '"%s" is imported and cannot be assigned', [Name]);
   if Cell.TypeRef <> nil then
     Cell.Value := Coerce(V, Cell.TypeRef, Format('variable "%s"', [Name]), Scope)
   else
@@ -585,6 +626,8 @@ begin
   begin
     // local x [: T] [= e]: a new variable in the innermost scope.
     C := Scope.Define(S.Name);
+    if C.ReadOnly then
+      RaiseFmt(NameError, '"%s" is imported and cannot be redeclared here', [S.Name]);
     C.IsGlobalAlias := False;
     C.TypeRef := S.TypeRef;
     Store(C, V, S.Name, Scope);
@@ -782,13 +825,15 @@ begin
       begin
         Root := FunctionRootOf(Scope);
         Cell := Root.Define(TRecordStmt(S).Name);
+        if Cell.ReadOnly then
+          RaiseFmt(NameError, '"%s" is imported and cannot be redefined', [TRecordStmt(S).Name]);
         Cell.IsGlobalAlias := False;
         Cell.TypeRef := nil;
         Cell.Value := RecordTypeValue(TRecordStmt(S));
       end;
     end
     else if C = TImportStmt then
-      NotYet('import', 'M8', S)
+      ExecImport(TImportStmt(S), Scope)
     else if C = TExternStmt then
       NotYet('extern', 'M9', S)
     else
@@ -850,6 +895,7 @@ end;
 function TInterpreter.Invoke(F: TFunctionObj; const Pos: TAxValues;
   const KwNames: TArray<string>; const KwValues: TAxValues): TAxValues;
 var
+  SavedFile, SavedPath: string;
   D: TFunctionDecl;
   P: TParam;
   Fn: string;
@@ -900,6 +946,10 @@ begin
       [Fn, NPos, Length(Pos)]);
 
   Inc(FCallDepth);
+  SavedFile := FFile;
+  SavedPath := FCurrentPath;
+  FFile := F.FileName;
+  FCurrentPath := F.FilePath;
   try
     if FCallDepth > MaxCallDepth then
       RaiseFmt(RecursionError, 'calls nested more than %d deep (in %s)', [MaxCallDepth, Fn]);
@@ -962,6 +1012,8 @@ begin
     end;
   finally
     Dec(FCallDepth);
+    FFile := SavedFile;
+    FCurrentPath := SavedPath;
   end;
 end;
 
@@ -978,6 +1030,8 @@ begin
       vkBuiltin:
         if AsBuiltin(Callee).Name = 'dict' then
           Result := [BuildDict(E, Scope)]
+        else if AsBuiltin(Callee).Name = '__native_library' then
+          Result := [NativeLibraryHook(E, Scope)]
         else
           Result := CallBuiltin(AsBuiltin(Callee), E, Scope);
       vkRecordType:
@@ -1117,6 +1171,8 @@ var
   K: Integer;
 begin
   T := Eval(E.Target, Scope);
+  if T.Kind = vkModule then
+    Exit(ModuleMember(T, E));
   if T.Kind <> vkRecord then
     raise EAxonError.CreateAt(TypeError, Format('%s has no fields (accessing ".%s")',
       [TypeName(T), E.Name]), FFile, E.Line, E.Col);
@@ -1560,6 +1616,9 @@ begin
   if Cell = nil then
     raise EAxonError.CreateAt(NameError, Format('"%s" is not defined here', [Name]),
       FFile, Node.Line, Node.Col);
+  if Cell.ReadOnly then
+    raise EAxonError.CreateAt(NameError, Format('"%s" is imported and cannot be modified', [Name]),
+      FFile, Node.Line, Node.Col);
   SetIn(Cell.Value, Steps, 0, V, Cell, Name, Scope);
   // The variable's own annotation still holds (for example a record type).
   if (Cell.TypeRef <> nil) and not (Cell.Value.Kind = vkArray) then
@@ -1877,9 +1936,263 @@ begin
     NotYet(E.ClassName, 'a later milestone', E);
 end;
 
+{ ---------------- modules ---------------- }
+
+constructor TModuleObj.Create(const AName: string);
+begin
+  inherited Create;
+  Name := AName;
+  ExportNames := TList<string>.Create;
+  Children := TDictionary<string, TAxValue>.Create;
+end;
+
+destructor TModuleObj.Destroy;
+begin
+  ExportNames.Free;
+  Children.Free;
+  if Globals <> nil then
+    Globals.Release;
+  inherited;
+end;
+
+function ModuleValue(M: TModuleObj): TAxValue;
+begin
+  Result := NothingValue;
+  Result.Kind := vkModule;
+  Result.Obj := M;
+end;
+
+{ The file for module Name, searched in the importing file's directory, then
+  the packages of the nearest package.toml, then the standard library. }
+function TInterpreter.ResolveModule(const Name: string): string;
+var
+  Dir, First, Rest, Root, StdLib: string;
+  Manifest: TManifest;
+  P: Integer;
+begin
+  Dir := ExtractFileDir(FCurrentPath);
+  Result := ModuleFileIn(Dir, Name);
+  if Result <> '' then
+    Exit;
+
+  Manifest := FindManifest(Dir);
+  if Manifest <> nil then
+  begin
+    P := Pos('.', Name);
+    if P > 0 then
+    begin
+      First := Copy(Name, 1, P - 1);
+      Rest := Copy(Name, P + 1, MaxInt);
+    end
+    else
+    begin
+      First := Name;
+      Rest := Name;   // a package's main module is named after the package
+    end;
+    if Manifest.Dependencies.TryGetValue(First, Root) then
+    begin
+      Result := ModuleFileIn(Root, Rest);
+      if Result <> '' then
+        Exit;
+    end;
+  end;
+
+  StdLib := GetEnvironmentVariable('AXON_STDLIB');
+  if StdLib = '' then
+    StdLib := ExtractFilePath(ParamStr(0)) + 'stdlib';
+  Result := ModuleFileIn(StdLib, Name);
+end;
+
+{ Loads module Name once per program and returns it. }
+function TInterpreter.LoadModule(const Name: string; Node: TNode): TAxValue;
+var
+  Path, Key, Display, Chain, SavedFile, SavedPath: string;
+  M: TModuleObj;
+  Prog: TProgram;
+  S: TStmt;
+  I, Start: Integer;
+begin
+  Path := ResolveModule(Name);
+  if Path = '' then
+    raise EAxonError.CreateAt(ImportError, Format('module "%s" not found', [Name]),
+      FFile, Node.Line, Node.Col);
+  Key := FileKey(Path);
+  if FModules.TryGetValue(Key, Result) then
+  begin
+    M := TModuleObj(Result.Obj);
+    if M.Loading then
+    begin
+      // An import cycle: report the chain from the module's first appearance.
+      Start := FLoadStack.IndexOf(M.Name);
+      Chain := '';
+      for I := Start to FLoadStack.Count - 1 do
+        Chain := Chain + FLoadStack[I] + ' -> ';
+      raise EAxonError.CreateAt(ImportError, 'import cycle: ' + Chain + M.Name,
+        FFile, Node.Line, Node.Col);
+    end;
+    Exit;
+  end;
+
+  M := TModuleObj.Create(Name);
+  Result := ModuleValue(M);
+  M.FilePath := Path;
+  M.Loading := True;
+  Display := DisplayPath(Path);
+  FModules.Add(Key, Result);
+  FLoadStack.Add(Name);
+  SavedFile := FFile;
+  SavedPath := FCurrentPath;
+  try
+    try
+      Prog := ParseProgram(Tokenize(LoadSourceFile(Path), Display), Display);
+      FPrograms.Add(Prog);
+      for S in Prog.Body do
+        if (S is TFunctionStmt) and TFunctionStmt(S).Func.Exported then
+          M.ExportNames.Add(TFunctionStmt(S).Func.Name)
+        else if (S is TRecordStmt) and TRecordStmt(S).Exported then
+          M.ExportNames.Add(TRecordStmt(S).Name);
+      M.Globals := TScope.Create(FPrelude, rkModule);
+      FFile := Display;
+      FCurrentPath := Path;
+      Hoist(Prog, M.Globals);
+      for S in Prog.Body do
+        ExecStmt(S, M.Globals);
+      M.Loading := False;
+    except
+      on E: Exception do
+      begin
+        // A module that failed to load is forgotten, so it is not half-used.
+        FModules.Remove(Key);
+        // Close the module's trace frame, so the import site is reported too.
+        if E is EAxonError then
+          EAxonError(E).LeaveFunction('');
+        raise;
+      end;
+    end;
+  finally
+    FFile := SavedFile;
+    FCurrentPath := SavedPath;
+    FLoadStack.Delete(FLoadStack.Count - 1);
+  end;
+end;
+
+{ Binds an imported value: read-only in the importing scope. }
+procedure BindImport(Root: TScope; const Name: string; const V: TAxValue);
+var
+  C: TVarCell;
+begin
+  C := Root.Define(Name);
+  C.Value := V;
+  C.TypeRef := nil;
+  C.IsGlobalAlias := False;
+  C.ReadOnly := True;
+end;
+
+procedure TInterpreter.ExecImport(S: TImportStmt; Scope: TScope);
+var
+  ModV, NsV, ChildV: TAxValue;
+  M, Ns, Child: TModuleObj;
+  Root: TScope;
+  Parts: TArray<string>;
+  Name: string;
+  C: TVarCell;
+  I: Integer;
+begin
+  ModV := LoadModule(S.Module, S);
+  M := TModuleObj(ModV.Obj);
+  Root := FunctionRootOf(Scope);
+
+  if S.IsFrom then
+  begin
+    for Name in S.Names do
+    begin
+      if not M.ExportNames.Contains(Name) then
+        raise EAxonError.CreateAt(ImportError, Format('module "%s" does not export "%s"',
+          [S.Module, Name]), FFile, S.Line, S.Col);
+      BindImport(Root, Name, M.Globals.Find(Name).Value);
+    end;
+    Exit;
+  end;
+
+  if S.Alias <> '' then
+  begin
+    BindImport(Root, S.Alias, ModV);
+    Exit;
+  end;
+
+  Parts := S.Module.Split(['.']);
+  if Length(Parts) = 1 then
+  begin
+    BindImport(Root, Parts[0], ModV);
+    Exit;
+  end;
+
+  // import a.b.c binds a, through which the module is a.b.c.
+  C := Root.Find(Parts[0]);
+  if (C <> nil) and (C.Value.Kind = vkModule) then
+    NsV := C.Value
+  else
+    NsV := ModuleValue(TModuleObj.Create(Parts[0]));
+  Ns := TModuleObj(NsV.Obj);
+  for I := 1 to High(Parts) - 1 do
+  begin
+    if not (Ns.Children.TryGetValue(Parts[I], ChildV) and (ChildV.Kind = vkModule)) then
+    begin
+      ChildV := ModuleValue(TModuleObj.Create(Ns.Name + '.' + Parts[I]));
+      Ns.Children.AddOrSetValue(Parts[I], ChildV);
+    end;
+    Child := TModuleObj(ChildV.Obj);
+    Ns := Child;
+  end;
+  Ns.Children.AddOrSetValue(Parts[High(Parts)], ModV);
+  BindImport(Root, Parts[0], NsV);
+end;
+
+{ m.name: a sub-module, or an exported function or record type. }
+function TInterpreter.ModuleMember(const V: TAxValue; E: TFieldExpr): TAxValue;
+var
+  M: TModuleObj;
+begin
+  M := TModuleObj(V.Obj);
+  if M.Children.TryGetValue(E.Name, Result) then
+    Exit;
+  if (M.Globals <> nil) and M.ExportNames.Contains(E.Name) then
+    Exit(M.Globals.Find(E.Name).Value);
+  raise EAxonError.CreateAt(ImportError, Format('module "%s" has no exported name "%s"',
+    [M.Name, E.Name]), FFile, E.Line, E.Col);
+end;
+
+{ __native_library(name): test hook for M8, the file a native library
+  resolves to through the nearest package.toml, or nothing. }
+function TInterpreter.NativeLibraryHook(E: TCallExpr; Scope: TScope): TAxValue;
+var
+  V: TAxValue;
+  Manifest: TManifest;
+  Path: string;
+begin
+  if (E.Args.Count <> 1) or (E.Args[0].Kind <> akPositional) then
+    RaiseError(ArgumentError, '__native_library takes one library name');
+  V := Eval(E.Args[0].Value, Scope);
+  if V.Kind <> vkString then
+    RaiseError(TypeError, '__native_library needs a string');
+  Manifest := FindManifest(ExtractFileDir(FCurrentPath));
+  Path := '';
+  if Manifest <> nil then
+    Path := Manifest.NativePath(AsString(V));
+  if Path = '' then
+    Result := NothingValue
+  else
+    Result := StringValue(DisplayPath(Path));
+end;
+
 { ---------------- entry points ---------------- }
 
 procedure TInterpreter.Hoist(P: TProgram);
+begin
+  Hoist(P, FGlobals);
+end;
+
+procedure TInterpreter.Hoist(P: TProgram; Globals: TScope);
 var
   S: TStmt;
   Decl: TFunctionDecl;
@@ -1890,12 +2203,12 @@ begin
     if S is TFunctionStmt then
     begin
       Decl := TFunctionStmt(S).Func;
-      FGlobals.Define(Decl.Name).Value := FunctionValue(Decl, FGlobals, False);
+      Globals.Define(Decl.Name).Value := FunctionValue(Decl, Globals, False);
       FHoisted.AddOrSetValue(Decl, True);
     end
     else if S is TRecordStmt then
     begin
-      FGlobals.Define(TRecordStmt(S).Name).Value := RecordTypeValue(TRecordStmt(S));
+      Globals.Define(TRecordStmt(S).Name).Value := RecordTypeValue(TRecordStmt(S));
       FHoistedRecords.AddOrSetValue(TRecordStmt(S), True);
     end;
 end;
@@ -1903,10 +2216,23 @@ end;
 procedure TInterpreter.Run(P: TProgram);
 var
   S: TStmt;
+  M: TModuleObj;
+  Key: string;
 begin
+  // Register the main program as a module being loaded, so that a module
+  // importing it is reported as a cycle.
+  M := TModuleObj.Create(ChangeFileExt(ExtractFileName(FCurrentPath), ''));
+  M.FilePath := FCurrentPath;
+  M.Loading := True;
+  M.Globals := FGlobals;
+  FGlobals.AddRef;
+  Key := FileKey(FCurrentPath);
+  FModules.AddOrSetValue(Key, ModuleValue(M));
+  FLoadStack.Add(M.Name);
   Hoist(P);
   for S in P.Body do
     ExecStmt(S, FGlobals);
+  M.Loading := False;
 end;
 
 function TInterpreter.ExecTopLevel(S: TStmt; out Shown: TAxValues; out ShownName: string): Boolean;

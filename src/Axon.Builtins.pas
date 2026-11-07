@@ -827,6 +827,7 @@ begin
   Add('adjoint', BAdjoint, 1, 1);
   Add('isequal', BIsequal, 2, 2);
   Add('__copies', BCopies, 0, 0);
+  Add('__native_library', BCopies, 1, 1);   // handled by the interpreter
   Add('append', BAppend, 2, 2);
   Add('get', BGet, 3, 3);
   Add('keys', BKeys, 1, 1);

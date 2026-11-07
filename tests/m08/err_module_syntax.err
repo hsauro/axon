@@ -1,0 +1,3 @@
+SyntaxError: expected an expression, found end of file
+  at broken.sci:2:1
+  at err_module_syntax.sci:2:1

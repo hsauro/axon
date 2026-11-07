@@ -1,0 +1,3 @@
+ImportError: badpkg/package.toml:2: expected "key = value"
+  at badpkg/user.sci:1:1
+  at err_bad_manifest.sci:2:1

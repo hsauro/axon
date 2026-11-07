@@ -137,12 +137,12 @@ This milestone adds lists, records and dictionaries.
 
 This milestone adds multi-file programs.
 
-- [ ] `import m`, `import m as x`, `from m import a, b`, and dotted names for directories
-- [ ] Only `export`ed names are visible, and imported names are read-only
-- [ ] The search order: the importing file's directory, then `package.toml` packages, then the standard library
-- [ ] Each module loads once, functions are bound before top-level statements run, and a cycle raises `ImportError` naming the chain
-- [ ] `package.toml` parsing, including `[native.*]` entries per platform
-- [ ] Tests use a fixture tree of small modules and packages under `tests/m08/`
+- [x] `import m`, `import m as x`, `from m import a, b`, and dotted names for directories
+- [x] Only `export`ed names are visible, and imported names are read-only
+- [x] The search order: the importing file's directory, then `package.toml` packages, then the standard library
+- [x] Each module loads once, functions are bound before top-level statements run, and a cycle raises `ImportError` naming the chain
+- [x] `package.toml` parsing, including `[native.*]` entries per platform
+- [x] Tests use a fixture tree of small modules and packages under `tests/m08/`
 
 ### M9 — Foreign function interface
 

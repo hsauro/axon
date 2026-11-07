@@ -244,6 +244,7 @@ end;
 
 function RunCase(const C: TTestCase; out Detail: string): Boolean;
 var
+  StdLib: string;
   Args: TArray<string>;
   StdOut, StdErr, Expected, Actual, Kind: string;
   Code: Integer;
@@ -257,6 +258,13 @@ begin
     Args := [ExtractFileName(C.Source)];
   end;
 
+  // A milestone folder with a stdlib subfolder stands in for the standard
+  // library, so the module search order can be tested.
+  StdLib := TPath.Combine(ExtractFileDir(C.Source), 'stdlib');
+  if TDirectory.Exists(StdLib) then
+    SetEnv('AXON_STDLIB', StdLib)
+  else
+    SetEnv('AXON_STDLIB', '');
   Code := RunProcess(ParamStr(0), Args, ExtractFileDir(C.Source), TestTimeoutMs,
     StdOut, StdErr, TimedOut);
   if TimedOut then

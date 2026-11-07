@@ -9,6 +9,10 @@ interface
 { Switches stdout and stderr to UTF-8. Call once at start-up. }
 procedure InitConsole;
 
+{ Sets an environment variable for this process and the processes it starts;
+  an empty Value removes it. }
+procedure SetEnv(const Name, Value: string);
+
 { Runs Exe with Args in WorkDir, capturing stdout and stderr as UTF-8 text.
   Returns the exit code. If the process runs longer than TimeoutMs it is
   killed, TimedOut is set and the result is -1.
@@ -38,6 +42,26 @@ begin
   SetTextCodePage(Output, CP_UTF8);
   SetTextCodePage(ErrOutput, CP_UTF8);
 end;
+
+procedure SetEnv(const Name, Value: string);
+{$IFDEF MSWINDOWS}
+begin
+  if Value = '' then
+    SetEnvironmentVariable(PChar(Name), nil)
+  else
+    SetEnvironmentVariable(PChar(Name), PChar(Value));
+end;
+{$ENDIF}
+{$IFDEF POSIX}
+var
+  M: TMarshaller;
+begin
+  if Value = '' then
+    Posix.Stdlib.unsetenv(M.AsUtf8(Name).ToPointer)
+  else
+    Posix.Stdlib.setenv(M.AsUtf8(Name).ToPointer, M.AsUtf8(Value).ToPointer, 1);
+end;
+{$ENDIF}
 
 {$IFDEF MSWINDOWS}
 

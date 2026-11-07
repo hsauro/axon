@@ -283,7 +283,7 @@ begin
         (Display(A) = Display(B));
     vkBuiltin, vkFunction: Result := A.Obj = B.Obj;
     vkList, vkRecord, vkDict: Result := ValuesIdentical(A, B);
-    vkRecordType: Result := A.Obj = B.Obj;
+    vkRecordType, vkModule: Result := A.Obj = B.Obj;
   else
     Result := False;
   end;

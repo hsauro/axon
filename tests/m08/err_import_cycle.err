@@ -1,0 +1,4 @@
+ImportError: import cycle: cycle_a -> cycle_b -> cycle_a
+  at cycle_b.sci:1:1
+  at cycle_a.sci:1:1
+  at err_import_cycle.sci:2:1

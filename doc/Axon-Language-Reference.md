@@ -478,11 +478,17 @@ The first line is `Kind: message`. Each further line is one trace frame, innermo
 ### Modules
 
 - **Naming.** Each source file is a module named after its file stem. A directory of files is a namespace, so `ode/stiff.sci` is imported as `ode.stiff`.
+- **Files.** A module name `a.b.c` stands for the file `a/b/c.sci` (or `a/b/c.txt`) below a search root.
 - **Search path.** `import m` looks first in the importing file's directory, then in the packages listed in the nearest `package.toml`, then in the installed standard library. If none contains `m`, it raises `ImportError`.
+  - **Packages.** The nearest `package.toml` is found by searching upward from the importing file's directory. Its `[dependencies]` table maps package names to package root directories, relative to the manifest's own directory: `ode = "../packages/ode"`. When the first part of a module name is a dependency, `import ode` loads `<root>/ode.sci`, the package's main module, and `import ode.stiff` loads `<root>/stiff.sci`.
+  - **Standard library.** The standard library is the `stdlib` directory next to the interpreter, or the directory named by the environment variable `AXON_STDLIB` when it is set.
+- **Bindings.** `import a.b.c` binds `a`, through which the module is reached as `a.b.c`. `import a.b.c as x` binds `x` to the module itself. `from m import f, g` binds `f` and `g` to the exported values. Imports bind in the outermost scope of the enclosing function or module, like a named function definition.
 - **Loading.** A module is loaded at most once per program. Loading binds all its named functions and records, then runs its top-level statements in order. Later imports reuse the loaded module.
 - **Cycles.** An import cycle raises `ImportError` that names the chain.
-- **Exports.** Only names declared with `export` are visible to importers. `from m import x` with an unexported `x` raises `ImportError`.
-- **Imported names.** Imported names are read-only in the importing module. Assigning to one raises `NameError`.
+- **Exports.** Only names declared with `export` (functions and record types) are visible to importers. `from m import x` with an unexported `x` raises `ImportError`, and so does reading `m.x`. A module value displays as `module m` and its `typeof` is `"module"`.
+- **Imported names.** Imported names are read-only in the importing module. Assigning to one raises `NameError`. This covers the module name bound by `import` as well as names bound by `from … import`.
+- **File names in errors.** Errors in a module report its path relative to the working directory, with `/` as the separator, so reports read the same on every platform.
+- **Manifests.** `package.toml` uses a subset of TOML: `[section]` and `[section.sub]` headers, `key = value` lines where the value is a double-quoted string, a number or `true`/`false`, and `#` comments. Anything else raises `ImportError` naming the file and line. `[package]` holds `name` and `version`, `[dependencies]` the package paths, and each `[native.lib]` table the library file for each platform under the keys `windows`, `macos` and `linux`, relative to the manifest's directory.
 
 ### Foreign functions
 
