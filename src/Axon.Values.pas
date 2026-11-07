@@ -15,11 +15,11 @@ interface
 
 uses
   System.SysUtils,
-  Axon.Complex;
+  Axon.Complex, Axon.Errors;
 
 type
   TValueKind = (vkNothing, vkBool, vkInt, vkReal, vkComplex, vkString, vkRange,
-    vkBuiltin);
+    vkBuiltin, vkFunction, vkList, vkRecord);
 
   TAxValue = record
     Kind: TValueKind;
@@ -52,11 +52,31 @@ type
 
   TBuiltinFn = function(const Args: TAxValues): TAxValue;
 
-  TBuiltinObj = class(TInterfacedObject)
+  { Anything callable: a builtin, or a function written in Axon (whose class,
+    TFunctionObj, lives in Axon.Interp). Name is empty for a lambda. }
+  TCallableObj = class(TInterfacedObject)
   public
     Name: string;
+  end;
+
+  TBuiltinObj = class(TCallableObj)
+  public
     Fn: TBuiltinFn;
     MinArgs, MaxArgs: Integer;   // MaxArgs = -1: no limit
+  end;
+
+  { An ordered, heterogeneous list. Read-only until M7 adds list operations. }
+  TListObj = class(TInterfacedObject)
+  public
+    Items: TAxValues;
+  end;
+
+  { A record: named fields in definition order. Read-only until M7. }
+  TRecordObj = class(TInterfacedObject)
+  public
+    Names: TArray<string>;
+    Values: TAxValues;
+    function IndexOf(const Name: string): Integer;
   end;
 
 function NothingValue: TAxValue; inline;
@@ -70,6 +90,17 @@ function StringValue(const S: string): TAxValue;
 function AsString(const V: TAxValue): string; inline;
 function AsRange(const V: TAxValue): TRangeObj; inline;
 function AsBuiltin(const V: TAxValue): TBuiltinObj; inline;
+function AsList(const V: TAxValue): TListObj; inline;
+function AsRecord(const V: TAxValue): TRecordObj; inline;
+function ListValue(const Items: TAxValues): TAxValue;
+function RecordValue(const Names: TArray<string>; const Values: TAxValues): TAxValue;
+
+{ The err record for a caught error: kind, message and trace (a list of
+  records with file, line and function). }
+function ErrorToValue(E: EAxonError): TAxValue;
+{ The error that error(err) re-raises: same kind, message and trace. Returns
+  nil if V is not an error record. }
+function ErrorFromValue(const V: TAxValue): EAxonError;
 
 { Type name as used in messages and by typeof: "int", "real", ... }
 function TypeName(const V: TAxValue): string;
@@ -168,10 +199,113 @@ begin
   Result := TBuiltinObj(V.Obj);
 end;
 
+function AsList(const V: TAxValue): TListObj;
+begin
+  Result := TListObj(V.Obj);
+end;
+
+function AsRecord(const V: TAxValue): TRecordObj;
+begin
+  Result := TRecordObj(V.Obj);
+end;
+
+function TRecordObj.IndexOf(const Name: string): Integer;
+begin
+  for Result := 0 to High(Names) do
+    if Names[Result] = Name then
+      Exit;
+  Result := -1;
+end;
+
+function ListValue(const Items: TAxValues): TAxValue;
+var
+  L: TListObj;
+begin
+  L := TListObj.Create;
+  L.Items := Items;
+  Result := NothingValue;
+  Result.Kind := vkList;
+  Result.Obj := L;
+end;
+
+function RecordValue(const Names: TArray<string>; const Values: TAxValues): TAxValue;
+var
+  R: TRecordObj;
+begin
+  R := TRecordObj.Create;
+  R.Names := Names;
+  R.Values := Values;
+  Result := NothingValue;
+  Result.Kind := vkRecord;
+  Result.Obj := R;
+end;
+
+function ErrorToValue(E: EAxonError): TAxValue;
+var
+  Frames: TAxValues;
+  I: Integer;
+  T: TTraceEntry;
+  Tr: TArray<TTraceEntry>;
+begin
+  Tr := E.Trace;
+  SetLength(Frames, Length(Tr));
+  for I := 0 to High(Tr) do
+  begin
+    T := Tr[I];
+    Frames[I] := RecordValue(['file', 'line', 'col', 'function'],
+      [StringValue(T.FileName), IntValue(T.Line), IntValue(T.Col), StringValue(T.FunctionName)]);
+  end;
+  Result := RecordValue(['kind', 'message', 'trace'],
+    [StringValue(E.Kind), StringValue(E.Message), ListValue(Frames)]);
+end;
+
+function ErrorFromValue(const V: TAxValue): EAxonError;
+var
+  R, F: TRecordObj;
+  K, M, T, I: Integer;
+  Frames: TListObj;
+  Trace: TArray<TTraceEntry>;
+  Fi: Integer;
+begin
+  Result := nil;
+  if V.Kind <> vkRecord then
+    Exit;
+  R := AsRecord(V);
+  K := R.IndexOf('kind');
+  M := R.IndexOf('message');
+  T := R.IndexOf('trace');
+  if (K < 0) or (M < 0) or (R.Values[K].Kind <> vkString) or
+     (R.Values[M].Kind <> vkString) then
+    Exit;
+  if (T >= 0) and (R.Values[T].Kind = vkList) then
+  begin
+    Frames := AsList(R.Values[T]);
+    for I := 0 to High(Frames.Items) do
+      if Frames.Items[I].Kind = vkRecord then
+      begin
+        F := AsRecord(Frames.Items[I]);
+        SetLength(Trace, Length(Trace) + 1);
+        Fi := F.IndexOf('file');
+        if (Fi >= 0) and (F.Values[Fi].Kind = vkString) then
+          Trace[High(Trace)].FileName := AsString(F.Values[Fi]);
+        Fi := F.IndexOf('line');
+        if (Fi >= 0) and (F.Values[Fi].Kind = vkInt) then
+          Trace[High(Trace)].Line := F.Values[Fi].I;
+        Fi := F.IndexOf('col');
+        if (Fi >= 0) and (F.Values[Fi].Kind = vkInt) then
+          Trace[High(Trace)].Col := F.Values[Fi].I;
+        Fi := F.IndexOf('function');
+        if (Fi >= 0) and (F.Values[Fi].Kind = vkString) then
+          Trace[High(Trace)].FunctionName := AsString(F.Values[Fi]);
+      end;
+  end;
+  Result := EAxonError.CreateFrozen(AsString(R.Values[K]), AsString(R.Values[M]), Trace);
+end;
+
 function TypeName(const V: TAxValue): string;
 const
   Names: array[TValueKind] of string = ('nothing', 'bool', 'int', 'real',
-    'complex', 'string', 'range', 'function');
+    'complex', 'string', 'range', 'function', 'function', 'list', 'record');
 begin
   Result := Names[V.Kind];
 end;
@@ -256,6 +390,35 @@ begin
     Result := FormatReal(R.RStart) + ':' + FormatReal(R.RStep) + ':' + FormatReal(R.RStop);
 end;
 
+function FormatList(L: TListObj): string;
+var
+  I: Integer;
+begin
+  Result := '{';
+  for I := 0 to High(L.Items) do
+  begin
+    if I > 0 then
+      Result := Result + ', ';
+    // Strings inside containers are always quoted.
+    Result := Result + Display(L.Items[I], True);
+  end;
+  Result := Result + '}';
+end;
+
+function FormatRecord(R: TRecordObj): string;
+var
+  I: Integer;
+begin
+  Result := '{';
+  for I := 0 to High(R.Names) do
+  begin
+    if I > 0 then
+      Result := Result + ', ';
+    Result := Result + R.Names[I] + ': ' + Display(R.Values[I], True);
+  end;
+  Result := Result + '}';
+end;
+
 function Display(const V: TAxValue; Quoted: Boolean): string;
 begin
   case V.Kind of
@@ -270,7 +433,13 @@ begin
       else
         Result := AsString(V);
     vkRange:   Result := FormatRange(AsRange(V));
-    vkBuiltin: Result := 'function ' + AsBuiltin(V).Name;
+    vkBuiltin, vkFunction:
+      if TCallableObj(V.Obj).Name <> '' then
+        Result := 'function ' + TCallableObj(V.Obj).Name
+      else
+        Result := 'function';
+    vkList:    Result := FormatList(AsList(V));
+    vkRecord:  Result := FormatRecord(AsRecord(V));
   else
     Result := '<value>';
   end;

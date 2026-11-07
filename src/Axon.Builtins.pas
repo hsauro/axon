@@ -18,7 +18,7 @@ procedure DefineBuiltins(const Define: TProc<string, TAxValue>);
 implementation
 
 uses
-  System.Math,
+  System.Math, System.Character,
   Axon.Errors, Axon.Complex, Axon.Ops;
 
 type
@@ -123,17 +123,57 @@ begin
 end;
 
 function BError(const Args: TAxValues): TAxValue;
+var
+  Reraised: EAxonError;
 begin
   if Length(Args) = 1 then
   begin
+    // error(err): re-raise a caught error with its kind, message and trace.
+    if Args[0].Kind = vkRecord then
+    begin
+      Reraised := ErrorFromValue(Args[0]);
+      if Reraised = nil then
+        RaiseError(TypeError, 'error(err) needs an error record with kind and message fields');
+      raise Reraised;
+    end;
     if Args[0].Kind <> vkString then
-      RaiseFmt(TypeError, 'error needs a message string, got %s', [TypeName(Args[0])]);
+      RaiseFmt(TypeError, 'error needs a message string or an error record, got %s',
+        [TypeName(Args[0])]);
     RaiseError(UserError, AsString(Args[0]));
   end;
   if (Args[0].Kind <> vkString) or (Args[1].Kind <> vkString) then
     RaiseError(TypeError, 'error(kind, message) needs two strings');
   RaiseError(AsString(Args[0]), AsString(Args[1]));
   Result := NothingValue;
+end;
+
+{ length of a list, a string (in characters, i.e. Unicode code points) or a
+  range. Arrays arrive in M6. }
+function BLength(const Args: TAxValues): TAxValue;
+var
+  S: string;
+  I, N: Integer;
+begin
+  case Args[0].Kind of
+    vkList:  Result := IntValue(Length(AsList(Args[0]).Items));
+    vkRange: Result := IntValue(AsRange(Args[0]).Count);
+    vkString:
+      begin
+        S := AsString(Args[0]);
+        N := 0;
+        I := 1;
+        while I <= Length(S) do
+        begin
+          if S[I].IsHighSurrogate and (I < Length(S)) then
+            Inc(I);
+          Inc(I);
+          Inc(N);
+        end;
+        Result := IntValue(N);
+      end;
+  else
+    RaiseFmt(TypeError, 'length is not defined for %s', [TypeName(Args[0])]);
+  end;
 end;
 
 function BString(const Args: TAxValues): TAxValue;
@@ -379,6 +419,7 @@ begin
   Add('print', BPrint, 0, -1);
   Add('error', BError, 1, 2);
   Add('string', BString, 1, 1);
+  Add('length', BLength, 1, 1);
   Add('typeof', BTypeof, 1, 1);
   Add('sqrt', BSqrt, 1, 1);
   Add('exp', BExp, 1, 1);

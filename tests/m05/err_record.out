@@ -1,0 +1,8 @@
+NameError
+"missing_name" is not defined
+record list 3
+err_record.sci 2 14 inner
+err_record.sci 5 10 outer
+err_record.sci 8 3 true
+{kind: "NameError", message: "\"missing_name\" is not defined", trace: {{file: "err_record.sci", line: 2, col: 14, function: "inner"}, {file: "err_record.sci", line: 5, col: 10, function: "outer"}, {file: "err_record.sci", line: 8, col: 3, function: ""}}}
+anonymous function 20

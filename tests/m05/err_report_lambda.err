@@ -1,0 +1,4 @@
+TypeError: operator + is not defined for string and int
+  at err_report_lambda.sci:3:18 in anonymous function
+  at err_report_lambda.sci:2:28 in anonymous function
+  at err_report_lambda.sci:3:1

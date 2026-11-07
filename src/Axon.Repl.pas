@@ -35,7 +35,8 @@ var
   Prog: TProgram;
   Line, Buffer, Name: string;
   S: TStmt;
-  Shown: TAxValue;
+  Shown: TAxValues;
+  V: TAxValue;
   FirstLine: Boolean;
 begin
   FirstLine := True;
@@ -80,14 +81,16 @@ begin
       if Prog = nil then
         Continue;
       Programs.Add(Prog);
+      Interp.Hoist(Prog);
 
       for S in Prog.Body do
         try
           if Interp.ExecTopLevel(S, Shown, Name) and not S.Silent then
             if Name <> '' then
-              Writeln(Name, ' = ', Display(Shown, True))
+              Writeln(Name, ' = ', Display(Shown[0], True))
             else
-              Writeln(Display(Shown, True));
+              for V in Shown do
+                Writeln(Display(V, True));
         except
           on E: EAxonError do
           begin

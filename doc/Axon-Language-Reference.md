@@ -158,7 +158,8 @@ brace_lit    = "{" [ expression { "," expression } ] "}"
 ### Parsing notes
 
 - **Destructuring.** A statement starting with `[` is a destructuring assignment if the matching `]` is followed by `=`. Otherwise it is a matrix literal expression.
-- **Braces.** A brace literal is a record if its first element has the form `IDENT ":"`, and a list otherwise. `{}` is the empty list. So `{a:b}` is a record with field `a`; a list holding the range `a:b` is written `{(a:b)}`.
+- **Field names.** Wherever the grammar takes a field name (after `.`, before `:` in a record literal, and in a `record` declaration), any keyword is accepted as well as an identifier, so `err.trace[1].function` and `{end: 3}` are valid. A `record` declaration cannot have a field named `end`, which would close it.
+- **Braces.** A brace literal is a record if its first element has the form `name ":"` (a field name, see above), and a list otherwise. `{}` is the empty list. So `{a:b}` is a record with field `a`; a list holding the range `a:b` is written `{(a:b)}`.
 - **Typed assignment.** A statement starting with `IDENT ":"` may be a typed assignment (`x: real = 0.0`) or an expression (`x:n`). The parser first tries to read a type followed by `=`; if that fails, it rewinds and parses an expression.
 - **Optional terminator.** The last statement of a block needs no terminator before `end`, `elseif`, `else` or `catch`, as the final `[ statement ]` in `block` shows.
 - **One-line headers.** The terminator after an `if`, `elseif`, `while` or `for` header is optional, so `if x > 0 return 1 end` is valid. The condition is the longest expression that parses, so a body that begins with `(`, `[`, `-`, `+` or `'` continues the condition. In `if f (x) end`, `f (x)` is a call; write `if f; (x) end` or use a new line. `catch` still needs a terminator after its name, because in `catch err x = 1` the name and the statement could not be told apart.
@@ -245,8 +246,10 @@ Output tests compare text exactly, so every value has one display form.
 | `bool` | Words | `true`, `false` |
 | `nothing` | Word | `nothing` |
 | `string` | Without quotes from `print`; with quotes at the REPL | `S1` / `"S1"` |
+| `list` | Elements in braces, separated by ", " | `{1, "S1", 2.5}`, `{}` |
+| `record` | Fields in braces as `name: value`, in definition order | `{name: "S1", init: 10.0}` |
 
-Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print(a, b, …)` writes its arguments separated by one space and ends with a newline. Display of matrices, lists, records and dictionaries is fixed in M6 and M7.
+Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print(a, b, …)` writes its arguments separated by one space and ends with a newline. Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. Display of matrices and dictionaries is fixed in M6 and M7.
 
 ## Arithmetic, broadcasting and comparison
 
@@ -343,6 +346,10 @@ The implementation uses copy-on-write. Each heap value carries a reference count
 
 `x: T = e` declares `x` with type `T` in the current scope. Every later assignment to `x` is checked against `T`, and a mismatch raises `TypeError`. An untyped variable may hold values of any type over its lifetime.
 
+- **Widening.** Wherever an annotation is checked (variables, parameters and return values), a value of type `T` is accepted, and so is a value that promotes to `T` along `bool` → `int` → `real` → `complex`, which is then converted. `x: real = 0` stores `0.0`, and `f(2)` is accepted by `function f(x: real)`. Narrowing is never implicit: a `real` where `int` is annotated raises `TypeError`.
+- **Type names.** The annotation types are those of the data-types table (`bool`, `int`, `real`, `complex`, `string`, `nothing`, `range`, `function`, `vector`, `matrix`, `sparse`, `list`, `record`, `dict`) and declared record types. Any other name raises `TypeError`.
+- **Declarations without a value.** `local x` binds `x` to `nothing`. `local x: T` without a value raises `TypeError` unless `nothing` satisfies `T`.
+
 ### Scopes
 
 Scopes are created by function bodies and by the bodies of `if`, `for`, `while` and `try` blocks. Name resolution follows these rules, in order:
@@ -352,8 +359,10 @@ Scopes are created by function bodies and by the bodies of `if`, `for`, `while` 
 3. The loop variable of a `for` is local to the loop body, and a fresh binding is made on each iteration.
 4. The name bound by `catch err` is local to the catch block.
 5. Plain assignment `x = e` refers to the nearest enclosing `x` within the same function, or within enclosing functions for a closure. If none exists, it creates `x` in the function's outermost scope, so a variable first assigned inside an `if` is still visible after the `end`.
-6. A named top-level function cannot see or assign script or module variables through rule 5. It can read module-level names (functions, imported modules, constants) but must declare `global x` to assign to one.
+6. A named top-level function cannot assign script or module variables through rule 5: there, rule 5 stops at the function's own outermost scope, so a plain assignment creates a local. The function can still read every module-level name (variables, functions, imported modules), and it must declare `global x` to assign to a module variable. After `global x`, both reads and assignments of `x` in that function refer to the module variable, which an assignment creates if needed.
 7. A name that resolves nowhere raises `NameError` when read.
+
+A named function definition binds its name in the outermost scope of the function or module that contains it, even when it appears inside an `if` or a loop. A named function nested inside another function, and every anonymous function, is a closure and follows rule 5 into its enclosing scopes. Named functions at the top level of a module, including inside a top-level `if` or loop, follow rule 6.
 
 ### Closures
 
@@ -384,8 +393,9 @@ Positional parameters cannot be passed by keyword, and keyword parameters cannot
 Arguments have value semantics (see Assignment, copy semantics and scoping), and there are no out parameters.
 
 - `return` with no value returns `nothing`, as does reaching the final `end`.
-- `return a, b` returns several values. The caller must unpack them with `[x, y] = f()`, and the number of targets must match the number of values, or `ArgumentError` is raised.
-- A function annotated `: T` has its return value checked against `T`.
+- `return a, b` returns several values. The caller must unpack them with `[x, y] = f()`, and the number of targets must match the number of values, or `ArgumentError` is raised. Using such a call where one value is expected, as in `x = f()` or `f() + 1`, also raises `ArgumentError`. A call used as a statement on its own discards its values.
+- A function annotated `: T` has its return value checked against `T`; a function that returns several values cannot carry a return annotation.
+- Calls may nest up to 10,000 deep. A deeper call raises `RecursionError`.
 
 ### Overloading
 
@@ -399,7 +409,7 @@ Axon has no overloading by type. A name refers to one function, and redefining i
 
 ## Errors
 
-An error is a record with the fields `kind` (a string), `message` (a string) and `trace` (a list of records holding `file`, `line` and `function`). `error("text")` raises an error of kind `"UserError"`, `error(kind, "text")` raises one of the given kind, and `error(err)` re-raises a caught error unchanged.
+An error is a record with the fields `kind` (a string), `message` (a string) and `trace` (a list of records holding `file`, `line`, `col` and `function`). The trace runs from the innermost frame, where the error was raised, outward to the top level. `function` is the name of the function the frame is in, `"anonymous function"` for a lambda, or `""` at the top level. `error("text")` raises an error of kind `"UserError"`, `error(kind, "text")` raises one of the given kind, and `error(err)` re-raises a caught error unchanged.
 
 `try … catch err … end` catches every error raised in the `try` block, including errors raised in functions it calls and in FFI callbacks. Code that handles only some kinds re-raises the rest:
 
@@ -426,12 +436,21 @@ end
 | `KeyError` | A dictionary key is missing |
 | `NameError` | A name is read before it is bound |
 | `OverflowError` | Integer arithmetic exceeds 64 bits |
+| `RecursionError` | Function calls nest more than 10,000 deep |
 | `SingularMatrix` | A solve or inverse meets a singular matrix |
 | `SyntaxError` | Source text cannot be lexed or parsed; the message gives the file, line and column and what was expected |
 | `TypeError` | A value has the wrong type for an operation, annotation or condition |
 | `UserError` | Raised by `error("text")` |
 
-An uncaught error stops the program and prints its kind, message and trace. At the REPL it prints the same report and returns to the prompt with the session's variables intact.
+An uncaught error stops the program and prints its kind, message and trace to standard error, then exits with status 1:
+
+```
+IndexError: index 5 is out of bounds for a list of length 3
+  at prog.sci:3:10 in lookup
+  at prog.sci:7:1
+```
+
+The first line is `Kind: message`. Each further line is one trace frame, innermost first, giving the file, line and column, followed by `in name` for a frame inside a function. `error(err)` keeps the original trace. At the REPL it prints the same report and returns to the prompt with the session's variables intact.
 
 ## Modules and foreign functions
 

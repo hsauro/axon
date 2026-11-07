@@ -1,0 +1,2 @@
+TypeError: argument "x" of f must be real, got string
+  at err_param_type.sci:3:1

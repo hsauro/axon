@@ -4,6 +4,11 @@ program axon;
 
 {$APPTYPE CONSOLE}
 
+// The tree-walking evaluator recurses on the native stack for every Axon
+// call, so reserve room for MaxCallDepth (10,000) nested calls. This reserves
+// address space only; memory is committed as the stack grows.
+{$MAXSTACKSIZE $10000000}
+
 uses
   Axon.Version in 'src\Axon.Version.pas',
   Axon.Errors in 'src\Axon.Errors.pas',

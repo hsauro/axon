@@ -1,0 +1,5 @@
+module local module
+changed by global
+42
+changed by lambda
+2

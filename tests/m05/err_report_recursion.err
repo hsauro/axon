@@ -1,0 +1,22 @@
+RecursionError: calls nested more than 10000 deep (in f)
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  ... 9981 more frames ...
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:2:22 in f
+  at err_report_recursion.sci:3:1

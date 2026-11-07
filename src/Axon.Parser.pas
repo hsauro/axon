@@ -55,6 +55,7 @@ type
     function Accept(Kind: TTokenKind): Boolean;
     function Expect(Kind: TTokenKind; const What: string = ''): TToken;
     function ExpectIdent(const What: string): TToken;
+    function ExpectFieldName(const What: string): TToken;
     procedure ExpectTerminator(const After: string);
     procedure Error(const Msg: string; const At: TToken);
     procedure ErrorExpected(const What: string);
@@ -234,6 +235,15 @@ end;
 function TParser.ExpectIdent(const What: string): TToken;
 begin
   Result := Expect(tkIdent, What);
+end;
+
+(* A field name: an identifier or any keyword, so a record can have a field
+   such as `function` or `end` (reference, "Field names"). *)
+function TParser.ExpectFieldName(const What: string): TToken;
+begin
+  if not ((CurKind = tkIdent) or IsKeyword(CurKind)) then
+    ErrorExpected(What);
+  Result := Advance;
 end;
 
 procedure TParser.ExpectTerminator(const After: string);
@@ -729,7 +739,7 @@ begin
       if CurKind = tkEOF then
         Error(Format('expected "end" to close "record" from line %d, found end of file',
           [Opener.Line]), Cur);
-      NameTok := ExpectIdent('a field name or "end"');
+      NameTok := ExpectFieldName('a field name or "end"');
       for F in S.Fields do
         if F.Name = NameTok.Text then
           Error(Format('duplicate field "%s"', [NameTok.Text]), NameTok);
@@ -1345,7 +1355,7 @@ begin
             F.Col := Result.Col;
             F.Target := Result;
             Result := F;
-            F.Name := ExpectIdent('a field name after "."').Text;
+            F.Name := ExpectFieldName('a field name after "."').Text;
           end;
         tkQuote:
           begin
@@ -1516,14 +1526,14 @@ begin
   FSkipNL := True;
   Result := nil;
   try
-    if (CurKind = tkIdent) and (PeekKind(1) = tkColon) then
+    if ((CurKind = tkIdent) or IsKeyword(CurKind)) and (PeekKind(1) = tkColon) then
     begin
       R := TRecordExpr.Create;
       Result := R;
       R.SetPos(Open);
       repeat
         SkipLayout;
-        NameTok := ExpectIdent('a field name ("name: value") in the record');
+        NameTok := ExpectFieldName('a field name ("name: value") in the record');
         if R.Names.Contains(NameTok.Text) then
           Error(Format('duplicate field "%s"', [NameTok.Text]), NameTok);
         Expect(tkColon, '":" after the field name');

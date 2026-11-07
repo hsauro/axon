@@ -1,0 +1,2 @@
+ArgumentError: "a" is a positional parameter of f and cannot be passed by keyword
+  at err_positional_by_keyword.sci:3:1

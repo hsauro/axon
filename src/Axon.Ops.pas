@@ -281,7 +281,7 @@ begin
       Result := (AsRange(A).IsInt = AsRange(B).IsInt) and
         (AsRange(A).Count = AsRange(B).Count) and
         (Display(A) = Display(B));
-    vkBuiltin: Result := A.Obj = B.Obj;
+    vkBuiltin, vkFunction: Result := A.Obj = B.Obj;
   else
     Result := False;
   end;

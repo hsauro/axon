@@ -1,0 +1,3 @@
+UserError: original
+  at err_report_reraised.sci:3:3 in origin
+  at err_report_reraised.sci:6:3

@@ -1,0 +1,7 @@
+UserError plain text
+SingularMatrix matrix is singular
+MyOwnKind
+DomainError deep problem 2
+19 fails 23
+handled DomainError
+propagated TypeError

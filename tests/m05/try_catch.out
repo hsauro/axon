@@ -1,0 +1,12 @@
+2.0
+caught: negative input
+after
+1
+inner caught inner
+outer caught outer
+second, from the handler
+b none
+loop 1
+loop 3
+3 DomainError
+1

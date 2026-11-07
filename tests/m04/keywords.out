@@ -1,0 +1,7 @@
+bdf 1.0e-6 1.0e-9
+bdf 1.0e-8 1.0e-11
+rk45 1.0e-6 0.5
+1 2 100 3
+10
+50
+hello world! hello Axon?

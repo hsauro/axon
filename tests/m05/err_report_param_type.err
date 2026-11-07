@@ -1,0 +1,3 @@
+TypeError: argument "x" of f must be int, got string
+  at err_report_param_type.sci:6:10 in g
+  at err_report_param_type.sci:8:1

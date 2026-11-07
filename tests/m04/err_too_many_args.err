@@ -1,0 +1,2 @@
+ArgumentError: f takes 1 positional argument(s), got 2
+  at err_too_many_args.sci:3:1

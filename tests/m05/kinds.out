@@ -1,0 +1,10 @@
+ArgumentError
+DomainError
+FieldError
+IndexError
+NameError
+OverflowError
+RecursionError
+TypeError
+UserError
+no error

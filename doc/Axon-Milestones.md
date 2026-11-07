@@ -81,24 +81,25 @@ A tree-walking evaluator runs scripts that use scalars, strings and control flow
 
 This milestone adds named functions, anonymous functions and the full scoping rules.
 
-- [ ] Named and anonymous functions, recursion, and calls before the definition within a file
-- [ ] Keyword parameters with defaults evaluated at each call; every `ArgumentError` case in the reference
-- [ ] Multiple returns and destructuring, with count mismatch as an error
-- [ ] Value semantics for every argument, and `nothing` returned when there is no `return` value
-- [ ] Scope rules 1 to 7, each with its own test, including the `if`-body assignment that stays visible after `end`
-- [ ] Closures capturing by reference, the `count`/`tick` example giving 2, and the `local` version giving 0
-- [ ] Top-level functions needing `global` to assign module variables
-- [ ] Type annotations on parameters, returns and variables checked at run time
+- [x] Named and anonymous functions, recursion, and calls before the definition within a file
+- [x] Keyword parameters with defaults evaluated at each call; every `ArgumentError` case in the reference
+- [x] Multiple returns and destructuring, with count mismatch as an error
+- [x] Value semantics for every argument, and `nothing` returned when there is no `return` value
+- [x] Scope rules 1 to 7, each with its own test, including the `if`-body assignment that stays visible after `end` (rule 4, the `catch` name, is tested in M5 with `try`)
+- [x] Closures capturing by reference, the `count`/`tick` example giving 2, and the `local` version giving 0
+- [x] Top-level functions needing `global` to assign module variables
+- [x] Type annotations on parameters, returns and variables checked at run time
 
 ### M5 — Errors
 
 This milestone completes error handling.
 
-- [ ] `try … catch err … end`, catching errors raised in called functions
-- [ ] The `err` record's `kind`, `message` and `trace` fields
-- [ ] `error("text")`, `error(kind, "text")` and re-raising with `error(err)`
-- [ ] At least one error test for every kind in the reference's [error table](Axon-Language-Reference.md#errors) that is reachable so far
-- [ ] The uncaught-error report format
+- [x] `try … catch err … end`, catching errors raised in called functions
+- [x] Scope rule 4: the name bound by `catch err` is local to the catch block
+- [x] The `err` record's `kind`, `message` and `trace` fields
+- [x] `error("text")`, `error(kind, "text")` and re-raising with `error(err)`
+- [x] At least one error test for every kind in the reference's [error table](Axon-Language-Reference.md#errors) that is reachable so far
+- [x] The uncaught-error report format
 
 ## Data
 

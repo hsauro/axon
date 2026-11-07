@@ -1,0 +1,5 @@
+DomainError: from level 3
+  at err_report_nested.sci:3:3 in level3
+  at err_report_nested.sci:5:26 in level2
+  at err_report_nested.sci:7:10 in level1
+  at err_report_nested.sci:9:1

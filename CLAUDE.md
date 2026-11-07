@@ -30,6 +30,9 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - `src/Axon.Complex.pas`: complex arithmetic and principal-value functions
 - `src/Axon.Builtins.pas`: prelude functions
 - `src/Axon.Interp.pas`: tree-walking evaluator and scopes. Constructs from later milestones raise `ENotImplemented` (exit code 2).
+  - Scopes are reference-counted by hand (`AddRef`/`Release`), because closures keep their defining scope alive.
+  - Variables are `TVarCell`s, which carry the type annotation and the `global` marker.
+  - A function stored in the scope it closes over forms a cycle that is never freed. That's accepted for now.
 - `src/Axon.Repl.pas`: the basic REPL (`axon` with no arguments)
 - `src/native/Axon.Native.*.pas`: one unit per C library. Declarations are added in the milestone that first uses the library.
 - `lib/win64/`: shipped DLLs (OpenBLAS with its MinGW runtime, SUNDIALS CVODE). A post-build step in `axon.dproj` copies them next to `axon.exe`. See `lib/README.md` for where they came from and what's missing (libffi, KLU).
@@ -37,7 +40,8 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 
 ## Conventions
 
-- An uncaught error prints `Kind: message` on the first line of stderr, followed by trace lines, and exits with code 1. The test runner relies on that first line.
+- An uncaught error prints `Kind: message` on the first line of stderr, followed by trace lines (`  at file:line:col in function`, innermost first), and exits with code 1. The test runner relies on that first line.
+- Traces are built as an error propagates: `EAxonError.Locate` records the innermost position in the current frame, and `LeaveFunction` (called in `Invoke` as an error leaves a body) names and closes the frame. An error raised with a node position should use `CreateAt`; errors without one are located by the enclosing call or statement.
 - Exit codes: 0 ok, 1 uncaught Axon error, 2 usage or unimplemented feature, 3 internal error.
 - Tests: `name.sci` plus `name.out`, `name.tokens` or `name.ast`; or a first line `#! error: Kind`, with an optional `name.err` that stderr must match exactly. Only `.sci` files directly in `tests/mNN/` are tests; subfolders hold fixtures.
 - Write expected files (`.out`, `.tokens`, `.err`) from the reference by hand, not by recording the interpreter's output, so a test can catch a real bug.
