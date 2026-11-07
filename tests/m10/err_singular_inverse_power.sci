@@ -1,0 +1,2 @@
+#! error: SingularMatrix
+x = [1, 2; 2, 4] ^ -1

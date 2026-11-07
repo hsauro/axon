@@ -70,7 +70,7 @@ implementation
 
 uses
   System.Math,
-  Axon.Errors, Axon.Complex, Axon.Ops;
+  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Linalg;
 
 function IsArrayLike(const V: TAxValue): Boolean;
 begin
@@ -398,15 +398,17 @@ begin
         Exit(MatMul(A, B));
     tkSlash:
       if not ScalarB then
-        RaiseError(TypeError,
-          'matrix right division A / B is part of linalg (M10); use ./ for elementwise division');
+        Exit(SolveRight(A, B));
     tkBackslash:
       if not ScalarA then
-        RaiseError(TypeError,
-          'solving A \ b is part of linalg (M10); use .\ for elementwise left division');
+        Exit(SolveLeft(A, B));
     tkCaret:
-      RaiseError(TypeError,
-        'matrix power ^ is part of linalg (M10); use .^ for elementwise power');
+      begin
+        if ScalarA or not ScalarB then
+          RaiseError(TypeError,
+            '^ raises a square matrix to a scalar power; use .^ for elementwise powers');
+        Exit(MatrixPower(A, B));
+      end;
   end;
   if Op in [tkEqEq, tkNotEq, tkLess, tkLessEq, tkGreater, tkGreaterEq, tkAnd, tkOr] then
     EmptyType := etBool
@@ -468,6 +470,15 @@ begin
   else
     Res := TArrayObj.Create(T, RA, CB, Y.IsVector);
   Result := ArrayValue(Res);
+
+  // Real and complex products go to BLAS (dgemm/zgemm) when it is available.
+  if BlasProduct(X, Y, T, Res) then
+  begin
+    if Y.IsVector and not X.IsVector and (RA = 1) then
+      Result := Res.Get(0);
+    Exit;
+  end;
+
 
   for J := 0 to CB - 1 do
     for I := 0 to RA - 1 do

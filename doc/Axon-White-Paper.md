@@ -404,7 +404,7 @@ The core ships linear algebra, the elementary functions and complex arithmetic. 
 
 | Component | Where | Contents |
 | --- | --- | --- |
-| Prelude | Core, no import | Arithmetic, `exp`, `log`, `sin` … `atanh`, `sqrt`, `abs`, `floor`, `round`, `div`, `mod`, `factorial`, `sum`, `prod`, `mean`, `min`, `max`, `all`, `any`, `zeros`, `ones`, `eye`, `linspace`, `rand`, `size`, `length`, `adjoint`, `dot`, `isequal`, `int`, `real`, `complex`, `string`, `typeof`, `isa`, `append`, `dict`, `get`, `keys`, `haskey`, `keep`, `print`, `error` |
+| Prelude | Core, no import | Arithmetic, `exp`, `log`, `sin` … `atanh`, `sqrt`, `abs`, `floor`, `round`, `div`, `mod`, `factorial`, `sum`, `prod`, `mean`, `min`, `max`, `all`, `any`, `zeros`, `ones`, `eye`, `linspace`, `rand`, `size`, `length`, `adjoint`, `dot`, `isequal`, `int`, `real`, `complex`, `string`, `typeof`, `isa`, `append`, `dict`, `get`, `keys`, `haskey`, `keep`, `reshape`, `eltype`, `print`, `error` |
 | Complex basics | Core, prelude | `complex` type, `real`, `imag`, `conj`, `arg`, `abs` |
 | Sparse basics | Core, prelude | Sparse matrix type, `sparse`, `speye`, `nnz`, `full` |
 | `complex` | Core module | `polar`, `cis`, principal-branch and branch-specified `log` and `sqrt`, `isreal` |

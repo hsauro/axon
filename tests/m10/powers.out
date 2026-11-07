@@ -1,0 +1,11 @@
+2×2 matrix{int}
+  89  55
+  55  34 2×2 matrix{int}
+  1  0
+  0  1
+int real
+true
+real true
+true
+complex true
+true

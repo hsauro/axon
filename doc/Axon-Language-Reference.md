@@ -227,9 +227,9 @@ Mixed arithmetic promotes along `bool` → `int` → `real` → `complex`. Nothi
 - **Vector literals.** A literal whose rows each hold exactly one entry, every entry a scalar, a vector or a range, is a vector made by stacking them: `[5]` is a vector of length 1 and `[v; 7]` appends 7 to the vector `v`. Any other literal is a matrix built by block concatenation, in which a vector or range counts as an n×1 block and an empty `[]` block is skipped. Entries must be numbers or `bool`s; anything else raises `TypeError`.
 - **Constructors.** `zeros(m, n)` and `ones(m, n)` give m×n `real` matrices, and `zeros(n)` and `ones(n)` give vectors of length n. `eye(n)` is the n×n identity and `eye(m, n)` its m×n form. `rand()`, `rand(n)` and `rand(m, n)` give uniform reals in [0, 1). `linspace(a, b, n)` gives a `real` vector of n points from a to b inclusive. A negative or non-integer size raises `ArgumentError`.
 - **Size.** `size(A)` returns two values, the row and column counts, so it is used as `[m, n] = size(A)`; a vector has n rows and 1 column, and a scalar is 1×1. `size(A, 1)` and `size(A, 2)` return one count. `length(A)` is the total number of elements, which is also the value of `end` in a single (linear) index.
+- **Shape helpers.** `reshape(A, m, n)` returns an m×n matrix holding the elements of `A` in column-major order, and `reshape(A, n)` a vector; the element count must match, or `DimensionError` is raised. `eltype(A)` gives the element type of an array (`"bool"`, `"int"`, `"real"` or `"complex"`), or the type of a scalar number.
 - **Reductions.** `sum`, `prod`, `mean`, `min`, `max`, `all` and `any` on one array reduce over every element to a scalar. `sum(A, d)`, `prod(A, d)` and `mean(A, d)` reduce along dimension `d`: `mean(A, 1)` is the 1×n row of column means and `mean(A, 2)` the m×1 column of row means. `min(a, b)` and `max(a, b)` with two arguments work elementwise with broadcasting. `min` and `max` of an empty array raise `ArgumentError`; `all` of an empty array is `true` and `any` is `false`. `all` and `any` need `bool` elements.
 - **Iteration.** `for x in A` visits the elements of an array in column-major order.
-- **Not yet.** Matrix division (`A \ b`, `A / B`) and matrix powers (`A ^ k`) with a non-scalar matrix are part of the `linalg` milestone; until then they raise `TypeError` naming the operation.
 
 ### Strings
 
@@ -283,6 +283,10 @@ Inside a list or record, an array is shown inline in literal form, as in `{[1, 2
 For complex data, `adjoint(A)` gives the conjugate transpose and `dot(u, v)` gives the inner product with `u` conjugated. For real vectors `u' * v` and `dot(u, v)` are equal.
 
 A shape mismatch raises `DimensionError`. A singular or near-singular system in `\` or `/` raises `SingularMatrix`.
+
+- **Implementation.** `*`, `\`, `/` and `^` are core operators that call BLAS and LAPACK (OpenBLAS) directly. Real and complex products use `dgemm` and `zgemm`. A product of `int` (or `bool`) matrices stays an exact, overflow-checked `int` computation. When OpenBLAS cannot be loaded, `*` falls back to a plain loop, and `\`, `/` and non-integer powers raise `ForeignError`.
+- **Solving.** For square `A`, `A \ b` factorises `A` and raises `SingularMatrix` when it is singular or when its reciprocal condition number is below machine epsilon. For non-square `A` it returns the minimum-norm least-squares solution. The result is a vector when `b` is a vector and a matrix otherwise, and it is `real` unless either operand is complex. `A / B` is computed as `(B' \ A')'`.
+- **Powers.** For an integer `k`, `A ^ k` multiplies by repeated squaring; `A ^ 0` is the identity and a negative `k` uses the inverse. An `int` matrix with `k >= 0` gives an `int` result. For any other scalar `k`, `A ^ k` is computed as `V diag(λ^k) V⁻¹` from the eigendecomposition. It raises `SingularMatrix` when `A` is not diagonalisable, and the result is real when `A` is real and the imaginary parts are negligible. A scalar raised to a matrix power raises `TypeError`.
 
 ### Broadcasting
 
@@ -472,6 +476,28 @@ IndexError: index 5 is out of bounds for a list of length 3
 ```
 
 The first line is `Kind: message`. Each further line is one trace frame, innermost first, giving the file, line and column, followed by `in name` for a frame inside a function. `error(err)` keeps the original trace. At the REPL it prints the same report and returns to the prompt with the session's variables intact.
+
+### The linalg module
+
+`linalg` is a standard-library module written in Axon over OpenBLAS's LAPACKE interface. Every function accepts `bool`, `int`, `real` or `complex` matrices, works in `real` arithmetic unless the input is complex, and raises `DimensionError` when it needs a square matrix and gets another shape.
+
+| Function | Result |
+| --- | --- |
+| `solve(A, b)` | `A \ b` for square `A` |
+| `lstsq(A, b)` | The minimum-norm least-squares solution, for any shape, including rank-deficient `A` |
+| `det(A)` | The determinant, from the LU factorisation |
+| `inv(A)` | The inverse; `SingularMatrix` when singular |
+| `eig(A)` | The eigenvalues: a `real` vector when all are real, a `complex` vector otherwise. `eig(A, vectors=true)` returns two values, the eigenvalues and a matrix of eigenvectors |
+| `svd(A)` | Three values `U, s, V` with `A = U*S*V'` (`adjoint` for complex), `s` the vector of singular values in decreasing order and `U`, `V` square |
+| `qr(A)` | Two values `Q, R`: the thin factorisation, `Q` m×k with orthonormal columns and `R` k×n upper triangular, `k = min(m, n)` |
+| `lu(A)` | Two values `L, U` with `A = L*U`, `U` upper triangular and `L` a row permutation of a unit lower-triangular matrix |
+| `chol(A)` | Upper-triangular `R` with `A = R'*R` (`adjoint(R)*R` for complex); `DomainError` when `A` is not positive definite |
+| `rank(A; tol)` | The number of singular values above `tol`, by default `max(m, n) * eps * max(s)` with `eps = 2.220446049250313e-16` |
+| `null(A; tol)` | An orthonormal basis of the null space, as the columns of a matrix |
+| `norm(x; p=2)` | For a vector the p-norm, with `p` a positive number or `"inf"`; for a matrix the 2-norm (largest singular value), `p=1` (largest column sum), `"inf"` (largest row sum) or `"fro"` (Frobenius) |
+| `expm(A)` | The matrix exponential, by scaling and squaring with a degree-13 Padé approximant |
+
+Decompositions that fail to converge raise `DomainError`.
 
 ## Modules and foreign functions
 

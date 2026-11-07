@@ -161,11 +161,11 @@ This milestone adds `extern` without libffi. Calls go through Delphi's `System.R
 
 This milestone adds the `linalg` module, written in Axon over BLAS and LAPACK through `extern`, and switches `*` to BLAS.
 
-- [ ] `*` uses `dgemm`/`zgemm`, with results matching M6's tests
-- [ ] `\`, `/`, `solve` and `lstsq`, with `SingularMatrix` for a singular system
-- [ ] `det`, `inv`, `eig`, `svd`, `qr`, `lu`, `chol`, `rank`, `null`, `norm` and `expm`, for real and complex input
-- [ ] Matrix powers `A ^ k`
-- [ ] Results checked against reference values to a stated tolerance, with a tolerance-aware comparison helper in the test library
+- [x] `*` uses `dgemm`/`zgemm`, with results matching M6's tests
+- [x] `\`, `/`, `solve` and `lstsq`, with `SingularMatrix` for a singular system
+- [x] `det`, `inv`, `eig`, `svd`, `qr`, `lu`, `chol`, `rank`, `null`, `norm` and `expm`, for real and complex input
+- [x] Matrix powers `A ^ k`
+- [x] Results checked against reference values to a stated tolerance, with a tolerance-aware comparison helper in the test library
 
 ### M11 — Sparse matrices
 

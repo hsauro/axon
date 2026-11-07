@@ -27,6 +27,7 @@ uses
   Axon.Repl in 'src\Axon.Repl.pas',
   Axon.Packages in 'src\Axon.Packages.pas',
   Axon.Ffi in 'src\Axon.Ffi.pas',
+  Axon.Linalg in 'src\Axon.Linalg.pas',
   Axon.Native.Callbacks in 'src\native\Axon.Native.Callbacks.pas',
   Axon.Native.Trampolines in 'src\native\Axon.Native.Trampolines.pas',
   Axon.TestRunner in 'src\Axon.TestRunner.pas',

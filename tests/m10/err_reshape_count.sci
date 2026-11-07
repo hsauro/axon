@@ -1,0 +1,2 @@
+#! error: DimensionError
+x = reshape([1, 2, 3], 2, 2)

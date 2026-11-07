@@ -697,6 +697,45 @@ begin
   Result := BoolValue(ValuesIdentical(Args[0], Args[1]));
 end;
 
+{ ---- shape helpers (M10) ---- }
+
+function BEltype(const Args: TAxValues): TAxValue;
+begin
+  case Args[0].Kind of
+    vkArray: Result := StringValue(ElemTypeName(AsArray(Args[0]).ElemType));
+    vkRange:
+      if AsRange(Args[0]).IsInt then Result := StringValue('int') else Result := StringValue('real');
+  else
+    if NumRank(Args[0]) < 0 then
+      RaiseFmt(TypeError, 'eltype needs an array or a number, got %s', [TypeName(Args[0])]);
+    Result := StringValue(TypeName(Args[0]));
+  end;
+end;
+
+{ reshape(A, m, n) and reshape(A, n): the same elements, column-major. }
+function BReshape(const Args: TAxValues): TAxValue;
+var
+  A, R: TArrayObj;
+  Holder: TAxValue;
+  M, N, K: Integer;
+  IsVec: Boolean;
+begin
+  if not IsArrayLike(Args[0]) then
+    RaiseFmt(TypeError, 'reshape needs an array, got %s', [TypeName(Args[0])]);
+  A := ToArray(Args[0]);
+  Holder := ArrayValue(A);
+  M := SizeArg('reshape', Args[1]);
+  IsVec := Length(Args) = 2;
+  if IsVec then N := 1 else N := SizeArg('reshape', Args[2]);
+  if M * N <> A.Count then
+    RaiseFmt(DimensionError, 'reshape: cannot arrange %d elements as %d' + #$00D7 + '%d',
+      [A.Count, M, N]);
+  R := TArrayObj.Create(A.ElemType, M, N, IsVec);
+  Result := ArrayValue(R);
+  for K := 0 to A.Count - 1 do
+    R.Put(K, A.Get(K));
+end;
+
 { ---- collections (M7) ---- }
 
 { append(list, x) and append(vector, x): a new value with x added. }
@@ -835,6 +874,8 @@ begin
   Add('__copies', BCopies, 0, 0);
   Add('__native_library', BCopies, 1, 1);   // handled by the interpreter
   Add('keep', BKeep, 1, 1);
+  Add('eltype', BEltype, 1, 1);
+  Add('reshape', BReshape, 2, 3);
   Add('append', BAppend, 2, 2);
   Add('get', BGet, 3, 3);
   Add('keys', BKeys, 1, 1);
