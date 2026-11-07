@@ -66,16 +66,16 @@ The parser builds the syntax tree for the full grammar, and `axon --ast` prints 
 
 A tree-walking evaluator runs scripts that use scalars, strings and control flow. `print` and raising errors with a kind exist from this milestone onward, because later tests depend on them.
 
-- [ ] `bool`, `int`, `real`, `complex` and `string` values, and `nothing`
-- [ ] Arithmetic with promotion along `bool` → `int` → `real` → `complex`; `int / int` gives a `real`; `div` and `mod`
-- [ ] `OverflowError` on 64-bit integer overflow, and NaN for `sqrt(-1.0)` and `log(-1.0)`
-- [ ] Elementary functions on scalars, with principal values for complex arguments
-- [ ] Comparisons, with NaN behaviour and `TypeError` for ordering complex numbers
-- [ ] `and`, `or` and `not` with short-circuiting, verified by a side effect in the right operand
-- [ ] `if`, `while`, `for` over ranges (including real steps and `0:0.1:1` having 11 elements), `break` and `continue`
-- [ ] Conditions must be scalar `bool`, else `TypeError`
-- [ ] String `+`, `string(x)`, `print`, and every display form in the reference's [Display](Axon-Language-Reference.md#display) table
-- [ ] `NameError` for an unbound name
+- [x] `bool`, `int`, `real`, `complex` and `string` values, and `nothing`
+- [x] Arithmetic with promotion along `bool` → `int` → `real` → `complex`; `int / int` gives a `real`; `div` and `mod`
+- [x] `OverflowError` on 64-bit integer overflow, and NaN for `sqrt(-1.0)` and `log(-1.0)`
+- [x] Elementary functions on scalars, with principal values for complex arguments
+- [x] Comparisons, with NaN behaviour and `TypeError` for ordering complex numbers
+- [x] `and`, `or` and `not` with short-circuiting, verified by a side effect in the right operand
+- [x] `if`, `while`, `for` over ranges (including real steps and `0:0.1:1` having 11 elements), `break` and `continue`
+- [x] Conditions must be scalar `bool`, else `TypeError`
+- [x] String `+`, `string(x)`, `print`, and every display form in the reference's [Display](Axon-Language-Reference.md#display) table
+- [x] `NameError` for an unbound name
 
 ### M4 — Functions and scoping
 

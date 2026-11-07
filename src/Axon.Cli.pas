@@ -20,7 +20,9 @@ implementation
 uses
   System.SysUtils, System.IOUtils,
   Axon.Version, Axon.Errors, Axon.Platform, Axon.Source, Axon.TestRunner,
-  Axon.Tokens, Axon.Lexer, Axon.Ast, Axon.Parser, Axon.AstDump;
+  System.Math,
+  Axon.Tokens, Axon.Lexer, Axon.Ast, Axon.Parser, Axon.AstDump, Axon.Interp,
+  Axon.Repl;
 
 procedure PrintUsage;
 begin
@@ -61,19 +63,24 @@ function RunFile(const FileName: string): Integer;
 var
   Source: string;
   Prog: TProgram;
+  Interp: TInterpreter;
 begin
   if not LoadProgram(FileName, Source) then
     Exit(ExitUsage);
-  // Parsing first means syntax errors are reported even before evaluation exists.
+  // The whole file is parsed before anything runs, so a syntax error anywhere
+  // stops the program before it has any effect.
   Prog := ParseProgram(Tokenize(Source, FileName), FileName);
   try
-    // A program with no statements does nothing, at every milestone.
-    if Prog.Body.Count = 0 then
-      Exit(ExitOk);
+    Interp := TInterpreter.Create(FileName);
+    try
+      Interp.Run(Prog);
+    finally
+      Interp.Free;
+    end;
   finally
     Prog.Free;
   end;
-  Result := NotYet('running programs', 'M3');
+  Result := ExitOk;
 end;
 
 function FrontEndDump(const Option, FileName: string): Integer;
@@ -112,7 +119,7 @@ var
   Cmd, Arg1: string;
 begin
   if Length(Args) = 0 then
-    Exit(NotYet('the REPL', 'M3'));
+    Exit(RunRepl);
 
   Cmd := Args[0];
   if Length(Args) > 1 then Arg1 := Args[1] else Arg1 := '';
@@ -147,6 +154,8 @@ var
   I: Integer;
 begin
   InitConsole;
+  // IEEE 754 semantics: 1.0/0.0 is Inf and 0.0/0.0 is NaN, never an exception.
+  SetExceptionMask(exAllArithmeticExceptions);
   SetLength(Args, ParamCount);
   for I := 1 to ParamCount do
     Args[I - 1] := ParamStr(I);
@@ -157,6 +166,14 @@ begin
     begin
       Writeln(ErrOutput, E.Report);
       Result := ExitUncaughtError;
+    end;
+    on E: ENotImplemented do
+    begin
+      if E.Line > 0 then
+        Writeln(ErrOutput, Format('axon: %s:%d:%d: %s', [E.FileName, E.Line, E.Col, E.Message]))
+      else
+        Writeln(ErrOutput, 'axon: ', E.Message);
+      Result := ExitUsage;
     end;
     on E: EInOutError do
     begin

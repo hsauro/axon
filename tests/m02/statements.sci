@@ -7,11 +7,15 @@ A[1, 2] = 3
 r.f = 4
 r.f[2].g = 5
 [p, q] = f()
-return
-return 1
-return 1, 2
-break
-continue
+function rf()
+  return
+  return 1
+  return 1, 2
+end
+while true
+  break
+  continue
+end
 if a
   b = 1
 elseif c

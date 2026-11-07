@@ -32,7 +32,9 @@ procedure InitConsole;
 begin
 {$IFDEF MSWINDOWS}
   SetConsoleOutputCP(CP_UTF8);
+  SetConsoleCP(CP_UTF8);
 {$ENDIF}
+  SetTextCodePage(Input, CP_UTF8);
   SetTextCodePage(Output, CP_UTF8);
   SetTextCodePage(ErrOutput, CP_UTF8);
 end;

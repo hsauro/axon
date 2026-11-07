@@ -53,6 +53,10 @@ type
     constructor CreateAt(const AKind, AMessage, AFileName: string;
       ALine, ACol: Integer);
     function Report: string;
+    { Records where the error happened, unless a location is already set
+      (the innermost location wins). }
+    procedure Locate(const AFileName: string; ALine, ACol: Integer);
+    function HasLocation: Boolean;
     property Kind: string read FKind;
     property FileName: string read FFileName;
     property Line: Integer read FLine;
@@ -74,6 +78,20 @@ begin
   FFileName := AFileName;
   FLine := ALine;
   FCol := ACol;
+end;
+
+procedure EAxonError.Locate(const AFileName: string; ALine, ACol: Integer);
+begin
+  if HasLocation then
+    Exit;
+  FFileName := AFileName;
+  FLine := ALine;
+  FCol := ACol;
+end;
+
+function EAxonError.HasLocation: Boolean;
+begin
+  Result := FLine > 0;
 end;
 
 function EAxonError.Report: string;

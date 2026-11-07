@@ -211,6 +211,10 @@ Mixed arithmetic promotes along `bool` → `int` → `real` → `complex`. Nothi
 - **Overflow.** `int` arithmetic that overflows 64 bits raises `OverflowError`.
 - **Domain errors.** Real-valued functions outside their domain return NaN: `sqrt(-1.0)` and `log(-1.0)` are NaN, never complex. A complex argument gives the principal value.
 - **Integer powers.** `int ^ int` with a non-negative exponent is `int`. A negative exponent gives a `real`.
+- **Floored division.** `div(a, b)` is `floor(a / b)` and `mod(a, b)` is `a - div(a, b)*b`, so `mod` takes the sign of `b` and `a == div(a, b)*b + mod(a, b)` always holds: `div(-7, 2)` is `-4` and `mod(-7, 2)` is `1`. Both give an `int` for `int` arguments and a `real` otherwise. An `int` divisor of zero raises `DomainError`; a `real` divisor of zero gives NaN.
+- **Rounding to integers.** `floor`, `ceil`, `round` and `int` return an `int`. `round` rounds halves away from zero, so `round(2.5)` is `3` and `round(-2.5)` is `-3`, and `int` truncates toward zero. A NaN argument raises `DomainError`, and a value outside the 64-bit range raises `OverflowError`.
+- **Minimum and maximum.** `min(a, b)` and `max(a, b)` on scalars promote like arithmetic and return NaN if either argument is NaN. Complex arguments raise `TypeError`.
+- **Floating-point exceptions.** Real arithmetic follows IEEE 754 and never raises: `1.0/0.0` is `Inf`, `0.0/0.0` is NaN, and overflow gives `Inf`.
 
 ### Vectors and matrices
 
@@ -278,6 +282,7 @@ A result is sparse when both operands are sparse, or when one is a scalar and th
 ### Comparison
 
 - On scalars, `==`, `!=`, `<`, `<=`, `>` and `>=` return a `bool`. On arrays they apply elementwise with broadcasting and return a `bool` array.
+- `==` and `!=` accept values of any two types. Values of unrelated types (a string and a number, or `nothing` and anything else) are unequal, so `"1" == 1` is `false`. Numbers of different types compare after promotion, so `1 == 1.0` and `1 == 1.0 + 0i` are `true`.
 - `isequal(a, b)` compares whole values and returns one `bool`. Arrays are equal when shapes and all elements are equal, and records when field names and values are equal.
 - The order comparisons apply to real numbers and strings. Complex numbers have no ordering and raise `TypeError`.
 - Comparisons involving NaN are false, except `!=`, which is true.
@@ -389,6 +394,7 @@ Axon has no overloading by type. A name refers to one function, and redefining i
 ### Recursion and evaluation order
 
 - Functions may call themselves and each other. Named functions in a module are bound before its top-level statements run, so they may be called before their definition in the file.
+- `return` outside a function, and `break` or `continue` outside a loop, is a `SyntaxError`. A function body starts a new context, so a `break` inside a function inside a loop is still an error.
 - Arguments are evaluated left to right before the call. Operands of binary operators are evaluated left to right, except that `and` and `or` skip their right operand when a scalar left operand decides the result.
 
 ## Errors

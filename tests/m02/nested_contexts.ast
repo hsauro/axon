@@ -1,0 +1,6 @@
+(for i (: 1 3)
+  (= f (lambda ()
+    (while true
+      (break))
+    (return i)))
+  (continue))

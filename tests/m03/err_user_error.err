@@ -1,0 +1,2 @@
+UserError: boom
+  at err_user_error.sci:3:1

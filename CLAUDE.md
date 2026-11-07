@@ -24,6 +24,13 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - `src/Axon.Errors.pas`: `EAxonError` with error kinds, and the process exit codes
 - `src/Axon.Platform.pas`: the only place for `{$IFDEF MSWINDOWS}`/`POSIX` code, apart from `src/native`
 - `src/Axon.TestRunner.pas`: `axon test`
+- `src/Axon.Lexer.pas`, `Axon.Parser.pas`, `Axon.Ast.pas`, `Axon.AstDump.pas`: the front end
+- `src/Axon.Values.pas`: `TAxValue`, a tagged record holding scalars inline and other payloads in reference-counted objects; also the display forms
+- `src/Axon.Ops.pas`: operators, promotion, checked integer arithmetic
+- `src/Axon.Complex.pas`: complex arithmetic and principal-value functions
+- `src/Axon.Builtins.pas`: prelude functions
+- `src/Axon.Interp.pas`: tree-walking evaluator and scopes. Constructs from later milestones raise `ENotImplemented` (exit code 2).
+- `src/Axon.Repl.pas`: the basic REPL (`axon` with no arguments)
 - `src/native/Axon.Native.*.pas`: one unit per C library. Declarations are added in the milestone that first uses the library.
 - `lib/win64/`: shipped DLLs (OpenBLAS with its MinGW runtime, SUNDIALS CVODE). A post-build step in `axon.dproj` copies them next to `axon.exe`. See `lib/README.md` for where they came from and what's missing (libffi, KLU).
 - `tests/mNN/`: tests for milestone NN
@@ -36,6 +43,8 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - Write expected files (`.out`, `.tokens`, `.err`) from the reference by hand, not by recording the interpreter's output, so a test can catch a real bug.
 - `--tokens` prints one token per line as `LINE:COL KIND [VALUE]`. The kinds are EOF, NEWLINE, IDENT, INT (decimal value), REAL and IMAG (literal without `_`), STRING and DOCSTRING (quoted and re-escaped), KEYWORD and OP. See `src/Axon.Tokens.pas`.
 - `--ast` prints S-expressions, one statement per line, with block bodies on indented lines. The full format is in the header of `src/Axon.AstDump.pas`.
-- Debug builds have range and overflow checking on.
+- Debug builds have range and overflow checking on. `Axon.Ops` turns overflow checking off (`{$Q-}`) because it detects integer overflow explicitly and raises `OverflowError`.
+- Floating-point exceptions are masked at start-up (`SetExceptionMask`), so real arithmetic follows IEEE 754 (Inf and NaN) instead of raising Delphi exceptions.
+- For elementary functions whose last printed digit can differ between platforms' math libraries, tests check identities against a tolerance instead of printing 15 digits.
 - Delphi `{ … }` comments don't nest, so a comment that contains `{` or `}` (grammar excerpts, `matrix{T}`) must use `(* … *)`.
 - Parser ownership: a function that takes a child node frees it if it fails, so the caller must clear its own reference before the call. See `ParsePostfix`.

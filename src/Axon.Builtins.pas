@@ -1,0 +1,415 @@
+unit Axon.Builtins;
+
+(* Prelude functions on scalars (M3).
+
+   Elementary functions are type-stable: a real argument gives a real result
+   (NaN outside the real domain), and only a complex argument gives a complex
+   result. Array forms arrive in M6. *)
+
+interface
+
+uses
+  System.SysUtils,
+  Axon.Values;
+
+{ Calls Define once for every prelude function. }
+procedure DefineBuiltins(const Define: TProc<string, TAxValue>);
+
+implementation
+
+uses
+  System.Math,
+  Axon.Errors, Axon.Complex, Axon.Ops;
+
+type
+  TRealFn = function(X: Double): Double;
+  TComplexFn = function(const Z: TComplex): TComplex;
+
+{ ---- argument helpers ---- }
+
+procedure NeedNumber(const Fn: string; const V: TAxValue);
+begin
+  if NumRank(V) < 0 then
+    RaiseFmt(TypeError, '%s needs a number, got %s', [Fn, TypeName(V)]);
+end;
+
+procedure NeedRealNumber(const Fn: string; const V: TAxValue);
+begin
+  NeedNumber(Fn, V);
+  if V.Kind = vkComplex then
+    RaiseFmt(TypeError, '%s needs a real number, got complex', [Fn]);
+end;
+
+function ApplyElementary(const Fn: string; const V: TAxValue; RF: TRealFn;
+  CF: TComplexFn): TAxValue;
+begin
+  NeedNumber(Fn, V);
+  if V.Kind = vkComplex then
+    Result := ComplexValue(CF(V.C))
+  else
+    Result := RealValue(RF(ToReal(V)));
+end;
+
+{ Converts a whole-valued double to Int64, raising on NaN or overflow. }
+function DoubleToInt(const Fn: string; X: Double): Int64;
+const
+  TwoPow63 = 9223372036854775808.0;
+begin
+  if IsNan(X) then
+    RaiseFmt(DomainError, '%s of NaN has no int value', [Fn]);
+  if (X >= TwoPow63) or (X < -TwoPow63) then
+    RaiseFmt(OverflowError, '%s: %s is outside the int range', [Fn, FormatReal(X)]);
+  Result := Trunc(X);
+end;
+
+{ ---- real versions of the elementary functions ---- }
+
+function RSqrt(X: Double): Double; begin Result := Sqrt(X); end;
+function RExp(X: Double): Double; begin Result := Exp(X); end;
+function RLog(X: Double): Double;
+begin
+  if X < 0 then Result := NaN else Result := Ln(X);
+end;
+function RSin(X: Double): Double; begin Result := Sin(X); end;
+function RCos(X: Double): Double; begin Result := Cos(X); end;
+function RTan(X: Double): Double; begin Result := Tan(X); end;
+function RAsin(X: Double): Double;
+begin
+  if Abs(X) > 1 then Result := NaN else Result := ArcSin(X);
+end;
+function RAcos(X: Double): Double;
+begin
+  if Abs(X) > 1 then Result := NaN else Result := ArcCos(X);
+end;
+function RAtan(X: Double): Double; begin Result := ArcTan(X); end;
+function RSinh(X: Double): Double; begin Result := Sinh(X); end;
+function RCosh(X: Double): Double; begin Result := Cosh(X); end;
+function RTanh(X: Double): Double;
+begin
+  // Math.Tanh overflows for large |X|; the limit is +-1.
+  if X > 20 then Result := 1
+  else if X < -20 then Result := -1
+  else Result := Tanh(X);
+end;
+function RAsinh(X: Double): Double; begin Result := ArcSinh(X); end;
+function RAcosh(X: Double): Double;
+begin
+  if X < 1 then Result := NaN else Result := ArcCosh(X);
+end;
+function RAtanh(X: Double): Double;
+begin
+  if Abs(X) > 1 then Result := NaN
+  else if X = 1 then Result := Infinity
+  else if X = -1 then Result := NegInfinity
+  else Result := ArcTanh(X);
+end;
+
+{ ---- the builtins ---- }
+
+function BPrint(const Args: TAxValues): TAxValue;
+var
+  I: Integer;
+  S: string;
+begin
+  S := '';
+  for I := 0 to High(Args) do
+  begin
+    if I > 0 then
+      S := S + ' ';
+    S := S + Display(Args[I]);
+  end;
+  Writeln(S);
+  Result := NothingValue;
+end;
+
+function BError(const Args: TAxValues): TAxValue;
+begin
+  if Length(Args) = 1 then
+  begin
+    if Args[0].Kind <> vkString then
+      RaiseFmt(TypeError, 'error needs a message string, got %s', [TypeName(Args[0])]);
+    RaiseError(UserError, AsString(Args[0]));
+  end;
+  if (Args[0].Kind <> vkString) or (Args[1].Kind <> vkString) then
+    RaiseError(TypeError, 'error(kind, message) needs two strings');
+  RaiseError(AsString(Args[0]), AsString(Args[1]));
+  Result := NothingValue;
+end;
+
+function BString(const Args: TAxValues): TAxValue;
+begin
+  Result := StringValue(Display(Args[0]));
+end;
+
+function BTypeof(const Args: TAxValues): TAxValue;
+begin
+  Result := StringValue(TypeName(Args[0]));
+end;
+
+function BSqrt(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('sqrt', Args[0], RSqrt, CSqrt); end;
+function BExp(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('exp', Args[0], RExp, CExp); end;
+function BLog(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('log', Args[0], RLog, CLog); end;
+function BSin(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('sin', Args[0], RSin, CSin); end;
+function BCos(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('cos', Args[0], RCos, CCos); end;
+function BTan(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('tan', Args[0], RTan, CTan); end;
+function BAsin(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('asin', Args[0], RAsin, CAsin); end;
+function BAcos(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('acos', Args[0], RAcos, CAcos); end;
+function BAtan(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('atan', Args[0], RAtan, CAtan); end;
+function BSinh(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('sinh', Args[0], RSinh, CSinh); end;
+function BCosh(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('cosh', Args[0], RCosh, CCosh); end;
+function BTanh(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('tanh', Args[0], RTanh, CTanh); end;
+function BAsinh(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('asinh', Args[0], RAsinh, CAsinh); end;
+function BAcosh(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('acosh', Args[0], RAcosh, CAcosh); end;
+function BAtanh(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('atanh', Args[0], RAtanh, CAtanh); end;
+
+function BAbs(const Args: TAxValues): TAxValue;
+var
+  V: TAxValue;
+begin
+  V := Args[0];
+  NeedNumber('abs', V);
+  case V.Kind of
+    vkBool:    Result := IntValue(Ord(V.B));
+    vkInt:     if V.I < 0 then Result := IntValue(CheckedNeg(V.I, 'abs')) else Result := V;
+    vkReal:    Result := RealValue(Abs(V.R));
+  else
+    Result := RealValue(CAbs(V.C));
+  end;
+end;
+
+function RoundingFn(const Fn: string; const V: TAxValue; Mode: Integer): TAxValue;
+var
+  X, F, D: Double;
+begin
+  NeedRealNumber(Fn, V);
+  if V.Kind = vkBool then
+    Exit(IntValue(Ord(V.B)));
+  if V.Kind = vkInt then
+    Exit(V);
+  X := V.R;
+  F := Int(X);  // truncated toward zero, as a double
+  case Mode of
+    0: ; // int: truncate
+    1: if F > X then F := F - 1;                        // floor
+    2: if F < X then F := F + 1;                        // ceil
+    3: begin                                            // round, halves away from zero
+         D := X - F;
+         if D >= 0.5 then F := F + 1
+         else if D <= -0.5 then F := F - 1;
+       end;
+  end;
+  Result := IntValue(DoubleToInt(Fn, F));
+end;
+
+function BInt(const Args: TAxValues): TAxValue;
+begin Result := RoundingFn('int', Args[0], 0); end;
+function BFloor(const Args: TAxValues): TAxValue;
+begin Result := RoundingFn('floor', Args[0], 1); end;
+function BCeil(const Args: TAxValues): TAxValue;
+begin Result := RoundingFn('ceil', Args[0], 2); end;
+function BRound(const Args: TAxValues): TAxValue;
+begin Result := RoundingFn('round', Args[0], 3); end;
+
+function BReal(const Args: TAxValues): TAxValue;
+begin
+  NeedNumber('real', Args[0]);
+  if Args[0].Kind = vkComplex then
+    Result := RealValue(Args[0].C.Re)
+  else
+    Result := RealValue(ToReal(Args[0]));
+end;
+
+function BImag(const Args: TAxValues): TAxValue;
+begin
+  NeedNumber('imag', Args[0]);
+  if Args[0].Kind = vkComplex then
+    Result := RealValue(Args[0].C.Im)
+  else
+    Result := RealValue(0);
+end;
+
+function BConj(const Args: TAxValues): TAxValue;
+begin
+  NeedNumber('conj', Args[0]);
+  if Args[0].Kind = vkComplex then
+    Result := ComplexValue(CConj(Args[0].C))
+  else
+    Result := Args[0];
+end;
+
+function BArg(const Args: TAxValues): TAxValue;
+begin
+  NeedNumber('arg', Args[0]);
+  Result := RealValue(CArg(ToComplex(Args[0])));
+end;
+
+function BComplex(const Args: TAxValues): TAxValue;
+begin
+  NeedNumber('complex', Args[0]);
+  if Length(Args) = 1 then
+    Exit(ComplexValue(ToComplex(Args[0])));
+  NeedRealNumber('complex', Args[0]);
+  NeedRealNumber('complex', Args[1]);
+  Result := ComplexValue2(ToReal(Args[0]), ToReal(Args[1]));
+end;
+
+{ Floored division and modulo. Mode 0: div, 1: mod. }
+function DivMod(const Fn: string; const A, B: TAxValue; Mode: Integer): TAxValue;
+var
+  X, Y, Q, R: Int64;
+  RX, RY, RQ: Double;
+begin
+  NeedRealNumber(Fn, A);
+  NeedRealNumber(Fn, B);
+  if (NumRank(A) <= 1) and (NumRank(B) <= 1) then
+  begin
+    if A.Kind = vkBool then X := Ord(A.B) else X := A.I;
+    if B.Kind = vkBool then Y := Ord(B.B) else Y := B.I;
+    if Y = 0 then
+      RaiseFmt(DomainError, '%s by zero', [Fn]);
+    if (X = Low(Int64)) and (Y = -1) then
+    begin
+      if Mode = 1 then Exit(IntValue(0));
+      RaiseFmt(OverflowError, 'integer overflow in %s', [Fn]);
+    end;
+    Q := X div Y;
+    R := X mod Y;
+    if (R <> 0) and ((R < 0) <> (Y < 0)) then
+    begin
+      Dec(Q);
+      R := R + Y;
+    end;
+    if Mode = 0 then Result := IntValue(Q) else Result := IntValue(R);
+    Exit;
+  end;
+  RX := ToReal(A);
+  RY := ToReal(B);
+  if RY = 0 then
+    Exit(RealValue(NaN));
+  RQ := Floor(RX / RY);
+  if Mode = 0 then
+    Result := RealValue(RQ)
+  else
+    Result := RealValue(RX - RQ * RY);
+end;
+
+function BDiv(const Args: TAxValues): TAxValue;
+begin Result := DivMod('div', Args[0], Args[1], 0); end;
+function BMod(const Args: TAxValues): TAxValue;
+begin Result := DivMod('mod', Args[0], Args[1], 1); end;
+
+function MinMax(const Fn: string; const A, B: TAxValue; WantMax: Boolean): TAxValue;
+var
+  X, Y: Double;
+  IA, IB: Int64;
+  TakeB: Boolean;
+begin
+  NeedRealNumber(Fn, A);
+  NeedRealNumber(Fn, B);
+  if (NumRank(A) <= 1) and (NumRank(B) <= 1) then
+  begin
+    // Both bool or int: compare exactly as ints.
+    if A.Kind = vkBool then IA := Ord(A.B) else IA := A.I;
+    if B.Kind = vkBool then IB := Ord(B.B) else IB := B.I;
+    if WantMax then TakeB := IB > IA else TakeB := IB < IA;
+    if TakeB then Result := IntValue(IB) else Result := IntValue(IA);
+    Exit;
+  end;
+  X := ToReal(A);
+  Y := ToReal(B);
+  if IsNan(X) or IsNan(Y) then
+    Exit(RealValue(NaN));
+  if WantMax then Result := RealValue(Max(X, Y)) else Result := RealValue(Min(X, Y));
+end;
+
+function BMin(const Args: TAxValues): TAxValue;
+begin Result := MinMax('min', Args[0], Args[1], False); end;
+function BMax(const Args: TAxValues): TAxValue;
+begin Result := MinMax('max', Args[0], Args[1], True); end;
+
+function BFactorial(const Args: TAxValues): TAxValue;
+var
+  N, I, F: Int64;
+begin
+  if not (Args[0].Kind in [vkInt, vkBool]) then
+    RaiseFmt(TypeError, 'factorial needs an int, got %s', [TypeName(Args[0])]);
+  if Args[0].Kind = vkBool then N := Ord(Args[0].B) else N := Args[0].I;
+  if N < 0 then
+    RaiseFmt(DomainError, 'factorial of a negative number (%d)', [N]);
+  F := 1;
+  for I := 2 to N do
+    F := CheckedMul(F, I, 'factorial');
+  Result := IntValue(F);
+end;
+
+procedure DefineBuiltins(const Define: TProc<string, TAxValue>);
+
+  procedure Add(const Name: string; Fn: TBuiltinFn; MinArgs, MaxArgs: Integer);
+  var
+    B: TBuiltinObj;
+    V: TAxValue;
+  begin
+    B := TBuiltinObj.Create;
+    B.Name := Name;
+    B.Fn := Fn;
+    B.MinArgs := MinArgs;
+    B.MaxArgs := MaxArgs;
+    V := NothingValue;
+    V.Kind := vkBuiltin;
+    V.Obj := B;
+    Define(Name, V);
+  end;
+
+begin
+  Add('print', BPrint, 0, -1);
+  Add('error', BError, 1, 2);
+  Add('string', BString, 1, 1);
+  Add('typeof', BTypeof, 1, 1);
+  Add('sqrt', BSqrt, 1, 1);
+  Add('exp', BExp, 1, 1);
+  Add('log', BLog, 1, 1);
+  Add('sin', BSin, 1, 1);
+  Add('cos', BCos, 1, 1);
+  Add('tan', BTan, 1, 1);
+  Add('asin', BAsin, 1, 1);
+  Add('acos', BAcos, 1, 1);
+  Add('atan', BAtan, 1, 1);
+  Add('sinh', BSinh, 1, 1);
+  Add('cosh', BCosh, 1, 1);
+  Add('tanh', BTanh, 1, 1);
+  Add('asinh', BAsinh, 1, 1);
+  Add('acosh', BAcosh, 1, 1);
+  Add('atanh', BAtanh, 1, 1);
+  Add('abs', BAbs, 1, 1);
+  Add('int', BInt, 1, 1);
+  Add('floor', BFloor, 1, 1);
+  Add('ceil', BCeil, 1, 1);
+  Add('round', BRound, 1, 1);
+  Add('real', BReal, 1, 1);
+  Add('imag', BImag, 1, 1);
+  Add('conj', BConj, 1, 1);
+  Add('arg', BArg, 1, 1);
+  Add('complex', BComplex, 1, 2);
+  Add('div', BDiv, 2, 2);
+  Add('mod', BMod, 2, 2);
+  Add('min', BMin, 2, 2);
+  Add('max', BMax, 2, 2);
+  Add('factorial', BFactorial, 1, 1);
+end;
+
+end.

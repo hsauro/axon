@@ -42,6 +42,8 @@ type
     FFile: string;
     FSkipNL: Boolean;
     FInIndex: Boolean;
+    FLoopDepth: Integer;   // loops enclosing the current point, within the current function
+    FFuncDepth: Integer;   // functions enclosing the current point
 
     // ---- token access
     function Cur: TToken;
@@ -64,6 +66,7 @@ type
     function ParseDeclaration: TStmt;
     function ParseReturn: TStmt;
     function ParseIf: TStmt;
+    procedure ParseLoopBody(Into: TStmtList; const Opener: TToken);
     function ParseFor: TStmt;
     function ParseWhile: TStmt;
     function ParseTry: TStmt;
@@ -298,6 +301,9 @@ begin
       PrevNewline := False;
 
       T := Cur;
+      // A statement followed by ";" does not display its value at the REPL.
+      if T.Kind = tkSemicolon then
+        Into.Last.Silent := True;
       if not ((T.Kind in Terminators) or (T.Kind in Closers) or (T.Kind = tkEOF)) then
         ErrorExpected('end of line or ";"');
     end;
@@ -317,15 +323,20 @@ begin
   T := Cur;
   case T.Kind of
     tkLocal, tkGlobal: Result := ParseDeclaration;
-    tkReturn:          Result := ParseReturn;
-    tkBreak:
+    tkReturn:
       begin
-        Result := TBreakStmt.Create;
-        Result.SetPos(Advance);
+        if FFuncDepth = 0 then
+          Error('"return" outside a function', T);
+        Result := ParseReturn;
       end;
-    tkContinue:
+    tkBreak, tkContinue:
       begin
-        Result := TContinueStmt.Create;
+        if FLoopDepth = 0 then
+          Error(Format('"%s" outside a loop', [TokenSpelling[T.Kind]]), T);
+        if T.Kind = tkBreak then
+          Result := TBreakStmt.Create
+        else
+          Result := TContinueStmt.Create;
         Result.SetPos(Advance);
       end;
     tkIf:     Result := ParseIf;
@@ -457,6 +468,16 @@ begin
   Result := S;
 end;
 
+procedure TParser.ParseLoopBody(Into: TStmtList; const Opener: TToken);
+begin
+  Inc(FLoopDepth);
+  try
+    ParseBlock(Into, [tkEnd], Opener);
+  finally
+    Dec(FLoopDepth);
+  end;
+end;
+
 function TParser.ParseFor: TStmt;
 var
   S: TForStmt;
@@ -470,7 +491,7 @@ begin
     Expect(tkIn, '"in"');
     S.Iter := ParseExpression;
     // A terminator after the header is optional; ParseBlock skips it.
-    ParseBlock(S.Body, [tkEnd], Opener);
+    ParseLoopBody(S.Body, Opener);
     Expect(tkEnd, '"end" to close "for"');
   except
     S.Free;
@@ -490,7 +511,7 @@ begin
     S.SetPos(Opener);
     S.Cond := ParseExpression;
     // A terminator after the header is optional; ParseBlock skips it.
-    ParseBlock(S.Body, [tkEnd], Opener);
+    ParseLoopBody(S.Body, Opener);
     Expect(tkEnd, '"end" to close "while"');
   except
     S.Free;
@@ -548,6 +569,7 @@ end;
 procedure TParser.ParseFunctionRest(F: TFunctionDecl);
 var
   SavedSkip, SavedIndex: Boolean;
+  SavedLoops: Integer;
   Opener: TToken;
 begin
   Opener := FTokens[FPos - 1];   // the "function" keyword or the name
@@ -565,7 +587,16 @@ begin
     FSkipNL := False;
     if Accept(tkColon) then
       F.ReturnType := ParseType;
-    ParseBlock(F.Body, [tkEnd], Opener);
+    // A function body is a new context: loops outside it do not count.
+    SavedLoops := FLoopDepth;
+    FLoopDepth := 0;
+    Inc(FFuncDepth);
+    try
+      ParseBlock(F.Body, [tkEnd], Opener);
+    finally
+      Dec(FFuncDepth);
+      FLoopDepth := SavedLoops;
+    end;
     Expect(tkEnd, '"end" to close "function"');
   finally
     FSkipNL := SavedSkip;

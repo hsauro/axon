@@ -155,7 +155,10 @@ type
 
   (* ---- Statements ---- *)
 
-  TStmt = class(TNode);
+  TStmt = class(TNode)
+  public
+    Silent: Boolean;   // followed by ";": the REPL does not display its value
+  end;
   TStmtList = TObjectList<TStmt>;
 
   TParam = class(TNode)
