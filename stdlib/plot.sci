@@ -1,4 +1,4 @@
-## Line, scatter and surface plots, saved as PNG, SVG or PDF. Plotting calls
+## Line, scatter, histogram and surface plots, saved as PNG, SVG or PDF. Plotting calls
 ## add to the current figure; plot.save writes it. See the Language
 ## Reference, "The plot module".
 
@@ -128,6 +128,106 @@ export function scatter(x, y; label = nothing, color = nothing, size = 6.0, mark
   if typeof(color) == "nothing" color = next_color(fig) end
   add_series({type: "scatter", three_d: false, x: xs, y: ys, label: label, color: color,
               size: size + 0.0, marker: marker})
+end
+
+# The edges of the bins: bins equal bins over the finite data, or the given
+# increasing edges.
+function bin_edges(xs, bins, where)
+  if typeof(bins) == "int"
+    if bins < 1
+      fail("ArgumentError", where + ": bins must be at least 1, got " + string(bins))
+    end
+    lo = 1.0 / 0.0
+    hi = -1.0 / 0.0
+    for v in xs
+      if v == v and abs(v) < 1.0 / 0.0
+        if v < lo lo = v end
+        if v > hi hi = v end
+      end
+    end
+    if lo > hi
+      lo = 0.0
+      hi = 1.0
+    elseif lo == hi
+      lo = lo - 0.5
+      hi = hi + 0.5
+    end
+    e = linspace(lo, hi, bins + 1)
+    e[bins + 1] = hi
+    return e
+  end
+  if typeof(bins) != "vector" and typeof(bins) != "range" and typeof(bins) != "matrix"
+    fail("TypeError", where + ": bins must be an int or a vector of edges, got " +
+      typeof(bins))
+  end
+  e = real_vector(bins, where + ": bins")
+  if length(e) < 2
+    fail("ArgumentError", where + ": bins needs at least 2 edges")
+  end
+  for k in 1:length(e) - 1
+    if not (e[k] < e[k + 1])
+      fail("ArgumentError", where + ": bin edges must be strictly increasing")
+    end
+  end
+  return e
+end
+
+# How many values fall in each bin [e[k], e[k + 1]); the last bin includes
+# its right edge. Values outside the edges, and NaN, are not counted.
+function bin_counts(xs: vector{real}, e: vector{real}): vector{real}
+  nb = length(e) - 1
+  counts = zeros(nb)
+  top = e[nb + 1]
+  for v in xs
+    if v >= e[1] and v <= top
+      lo = 1
+      hi = nb + 1
+      while hi - lo > 1
+        mid = div(lo + hi, 2)
+        if v >= e[mid]
+          lo = mid
+        else
+          hi = mid
+        end
+      end
+      counts[lo] = counts[lo] + 1.0
+    end
+  end
+  return counts
+end
+
+function add_bars(x, bins, label, color, density, where)
+  xs = real_vector(x, where + ": x")
+  e = bin_edges(xs, bins, where)
+  c = bin_counts(xs, e)
+  heights = c
+  if density
+    total = sum(c)
+    if total > 0
+      heights = c ./ (total * (e[2:end] - e[1:end - 1]))
+    end
+  end
+  fig = figure_now()
+  if typeof(color) == "nothing" color = next_color(fig) end
+  # y holds 0 as well as the heights, so the axis range includes the baseline.
+  add_series({type: "bars", three_d: false, x: e, y: [0.0; heights], heights: heights,
+              label: label, color: color})
+  return {counts: int(c), edges: e, heights: heights}
+end
+
+## Adds a histogram of the values x: bars whose heights are the number of
+## values in each bin. bins is a number of equal bins spanning the data, or a
+## vector of increasing bin edges; each bin includes its left edge, and the
+## last also its right. Returns {counts, edges, heights}. Keywords: label,
+## color.
+export function hist(x; bins = 10, label = nothing, color = nothing)
+  return add_bars(x, bins, label, color, false, "plot.hist")
+end
+
+## Like hist, but the heights are scaled so the bars' total area is 1, for
+## comparison with a probability density.
+export function hist_density(x; bins = 10, label = nothing, color = nothing)
+  return add_bars(x, bins, label, color, true, "plot.hist_density")
 end
 
 ## Adds the surface z = Z[i, j] over the grid (x[j], y[i]), coloured by height.
@@ -302,6 +402,13 @@ function data_range(values, lim)
   return lo - pad, hi + pad
 end
 
+function has_bars(series)
+  for s in series
+    if s.type == "bars" return true end
+  end
+  return false
+end
+
 function all_x(series)
   v = zeros(0)
   for s in series
@@ -345,6 +452,10 @@ function render_2d(fig)
   items = {}
   [x0, x1] = data_range(all_x(fig.series), fig.xlim)
   [y0, y1] = data_range(all_y(fig.series), fig.ylim)
+  # Bars stand on the x axis: no padding below a baseline at 0.
+  if typeof(fig.ylim) == "nothing" and has_bars(fig.series) and min(all_y(fig.series)) >= 0
+    y0 = 0.0
+  end
   [xt, xstep] = nice_ticks(x0, x1, 7)
   [yt, ystep] = nice_ticks(y0, y1, 6)
   xlabels = {}
@@ -403,7 +514,15 @@ function render_2d(fig)
   for s in fig.series
     px = px0 + (s.x - x0) * sx
     py = py1 - (s.y - y0) * sy
-    if s.type == "line"
+    if s.type == "bars"
+      base = py1 - (0.0 - y0) * sy
+      for k in 1:length(s.heights)
+        ytop = py1 - (s.heights[k] - y0) * sy
+        drawn = append(drawn, {kind: "rect", x: px[k], y: min(ytop, base),
+                               w: px[k + 1] - px[k], h: abs(base - ytop), fill: s.color,
+                               color: "white", width: 0.6})
+      end
+    elseif s.type == "line"
       drawn = append(drawn, {kind: "line", x: px, y: py, color: s.color, width: s.width,
                              dash: dash_for(s.style, s.width)})
       if typeof(s.marker) != "nothing"
@@ -464,7 +583,10 @@ function legend_items(series, xr, yt)
   for k in 1:length(labelled)
     s = labelled[k]
     cy = by + 4.0 + rowh * (k - 0.5)
-    if s.type == "line"
+    if s.type == "bars"
+      items = append(items, {kind: "rect", x: bx + 9.0, y: cy - 5.0, w: 16.0, h: 10.0,
+                             fill: s.color})
+    elseif s.type == "line"
       items = append(items, {kind: "line", x: [bx + 6.0, bx + 28.0], y: [cy, cy],
                              color: s.color, width: s.width, dash: dash_for(s.style, s.width)})
       if typeof(s.marker) != "nothing"

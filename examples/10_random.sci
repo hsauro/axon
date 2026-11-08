@@ -37,24 +37,12 @@ m = mean(z)
 s = sqrt(mean((z - m) .* (z - m)))
 println("sample mean", round(m * 1000) / 1000, "sd", round(s * 1000) / 1000)
 
-nb = 40
-lo = -4.0
-w = 8.0 / nb
-counts = zeros(nb)
-for v in z
-  b = floor((v - lo) / w) + 1
-  if b >= 1 and b <= nb
-    counts[b] = counts[b] + 1
-  end
-end
-centres = linspace(lo + w / 2, -lo - w / 2, nb)
-density = counts / (length(z) * w)         # scaled so the area is 1
-
+# hist_density scales the bars so their total area is 1, like a density.
 t = linspace(-4.0, 4.0, 200)
 bell = exp(-t .* t / 2) / sqrt(2 * 3.141592653589793)
 
 plot.figure(title = "20000 normal samples")
-plot.scatter(centres, density, label = "histogram")
+plot.hist_density(z, bins = 40, label = "histogram")
 plot.line(t, bell, label = "normal density")
 plot.xlabel("z")
 plot.ylabel("density")

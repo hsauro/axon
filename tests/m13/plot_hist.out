@@ -1,0 +1,16 @@
+1×2 matrix{int}
+  1  3
+1×3 matrix{real}
+  1.0  2.0  3.0
+vector int true
+1×5 matrix{int}
+  2  2  2  2  2
+1×6 matrix{real}
+  0.0  2.0  4.0  6.0  8.0  10.0
+1×3 matrix{real}
+  2.5  3.0  3.5
+1×3 matrix{int}
+  2  2  1
+1×3 matrix{real}
+  0.4  0.4  0.1
+true true

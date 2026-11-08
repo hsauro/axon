@@ -709,6 +709,8 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 | `figure(; width = 640, height = 480, title)` | Starts a new current figure, sized in points |
 | `line(x, y; label, color, width = 1.5, style = "-", marker, marker_size = 5)` | Adds a line; `style` is `"-"`, `"--"`, `":"` or `"-."`, and `marker` draws a marker of that shape at each point |
 | `scatter(x, y; label, color, size = 6, marker = "circle")` | Adds markers at the points |
+| `hist(x; bins = 10, label, color)` | Adds a histogram of the values `x`: one bar per bin, as high as the number of values in it. Returns `{counts, edges, heights}` |
+| `hist_density(x; bins = 10, label, color)` | As `hist`, with heights scaled so the bars' total area is 1, for comparison with a probability density |
 | `surface(x, y, Z; label, colormap = "viridis", edges = true, elev = 30, azim = -60)` | Adds the surface with height `Z[i, j]` over `(x[j], y[i])`, coloured by height (`"viridis"` or `"gray"`), seen from the given elevation and azimuth in degrees |
 | `title(s)`, `xlabel(s)`, `ylabel(s)`, `zlabel(s)` | Set the title and axis labels |
 | `xlim(lo, hi)`, `ylim(lo, hi)` | Fix an axis range; otherwise it is the data range padded by 5% |
@@ -717,8 +719,9 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 | `show(; scale = 2)` | Shows the current figure through `graphics.show`: in the IDE's plot pane, or in the system's image viewer |
 | `gcf()` | The current figure as a record, or `nothing` before the first plotting call |
 
+- **Histograms.** `bins` is a number of equal-width bins spanning the smallest to the largest finite value of `x` (a single distinct value gets one unit around it), or a vector of strictly increasing bin edges. A value belongs to the bin `[e[k], e[k + 1])`, and the last bin also includes its right edge; values outside the edges and NaN are not counted. In the result, `counts` is a `vector{int}`, `edges` a `real` vector one longer, and `heights` the bar heights drawn (the counts as reals, or the densities `counts[k] / (sum(counts) * width[k])`). With bars in a figure and no `ylim`, the y axis starts at 0 unless some value is negative.
 - **Defaults.** Series without a `color` take the next colour of a ten-colour cycle. A legend lists the series that have a `label`. Axis ticks are round numbers (1, 2 or 5 times a power of ten). Colours are given as for `graphics`.
-- **Errors.** `x` and `y` of different lengths raise `DimensionError`, and so does a `Z` that is not `length(y)` by `length(x)`. Non-real data raises `TypeError`. An unknown style, colour map or marker, a figure that mixes a surface with lines or markers, and `save` or `show` with no figure raise `ArgumentError`.
+- **Errors.** `x` and `y` of different lengths raise `DimensionError`, and so does a `Z` that is not `length(y)` by `length(x)`. Non-real data raises `TypeError`. An unknown style, colour map or marker, a figure that mixes a surface with lines or markers, and `save` or `show` with no figure raise `ArgumentError`, as do fewer than 1 bin, fewer than two edges and edges that do not increase; `bins` of another type raises `TypeError`.
 
 ## Modules and foreign functions
 

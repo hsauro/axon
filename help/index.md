@@ -25,7 +25,9 @@ description of Axon. Some sections you may want often:
 | Sparse matrices | [Sparse operands](Axon-Language-Reference.md#sparse-operands) |
 | `linalg`: solve, eig, svd, ... | [The linalg module](Axon-Language-Reference.md#the-linalg-module) |
 | `ode`: differential equations | [The ode module](Axon-Language-Reference.md#the-ode-module) |
-| `plot`: line, scatter, surface | [The plot module](Axon-Language-Reference.md#the-plot-module) |
+| `plot`: line, scatter, histogram, surface | [The plot module](Axon-Language-Reference.md#the-plot-module) |
+| `random`: uniform, normal and integer random numbers | [The random module](Axon-Language-Reference.md#the-random-module) |
+| `time`: clocks and timing code | [The time module](Axon-Language-Reference.md#the-time-module) |
 | `graphics`: drawing to PNG, SVG, PDF | [The graphics module](Axon-Language-Reference.md#the-graphics-module) |
 | `io`: reading and writing files | [The io module](Axon-Language-Reference.md#the-io-module) |
 | Modules and packages | [Modules](Axon-Language-Reference.md#modules) |
