@@ -272,18 +272,36 @@ What remains per evaluation is mostly the call itself: about 0.4 µs for a compi
 
 ### J8 — Benchmarks and closing
 
-- [ ] `bench/` holds the benchmark programs, run by `bench.cmd`, which prints interpreted against compiled timings from `time.bench`:
-  - recursive `fib(25)`
+- [x] `bench/run.sci`, run by `bench.cmd`, times every kernel interpreted and compiled in one process (switching with `__jit_mode`), and checks that both give the same result (`isequal`). The kernels:
+  - recursive `fib`
   - a scalar sum loop
   - the sieve of Eratosthenes
   - the Mandelbrot set
   - a naive triple-loop matrix product, against BLAS `*`
   - n-body
-  - the Lotka–Volterra `ode.solve` with `rk45` and with `bdf`
-- [ ] Results recorded in this document, with the machine, the sizes, and best-of-5 per call
-- [ ] Target: at least 20 times faster than interpreted on the scalar-loop benchmarks. This is a target, not a promise: report what is measured
-- [ ] macOS ARM64 run of the suite in all three modes and of the benchmarks
-- [ ] `Axon-Milestones.md` L2 items ticked or rewritten to match what was built
+  - the Lotka–Volterra `ode.solve` with `rk45`, and the Robertson problem with `bdf`
+
+  The sizes keep the interpreted runs short: the whole table takes about 30 s. The per-kernel scripts of J0 are gone
+- [x] Results recorded below
+- [x] Target met: every scalar-loop kernel is 469 to 1120 times faster than interpreted, against a target of at least 20
+- [ ] macOS ARM64: build `libmir.dylib` there (`tools/mir/CMakeLists.txt`, clang), sign the host with `allow-jit`, and run `axon --jit-selftest`, `test -jit` and the benchmarks. This needs the Mac
+- [x] `Axon-Milestones.md` L2 rewritten to match what was built
+
+**Results.** Win64 Release, Intel Core i9-9900X at 3.5 GHz, `bench.cmd`, Nov 7, 2026. Each figure is the best of 5 runs, per call (`time.bench`), so it excludes compilation, which happens at the first call. In every row the compiled and interpreted results are identical.
+
+| Kernel | Interpreted | Compiled | Speed-up |
+| --- | --- | --- | --- |
+| `fib(22)`, recursive | 132 ms | 223 µs | 590× |
+| `harmonic(100000)`, scalar loop | 88.9 ms | 107 µs | 828× |
+| `sieve(100000)`, vector reads and writes | 373 ms | 795 µs | 469× |
+| `mandel(60, 50)`, real arithmetic and calls | 191 ms | 211 µs | 905× |
+| `matmul` of two 60×60 matrices, triple loop (unannotated, specialised) | 465 ms | 415 µs | 1120× |
+| `nbody(1000)`, five bodies | 209 ms | 303 µs | 688× |
+| `ode.solve`, Lotka–Volterra, `rk45` | 22.6 ms | 5.63 ms | 4× |
+| `ode.solve`, Robertson, `bdf` | 4.84 ms | 1.13 ms | 4× |
+| The same 60×60 product with BLAS `*` | 36.2 µs | | |
+
+The ODE rows compare the right-hand side interpreted and compiled. In both columns the solver loops are J7's native ones. Against the solver as it was before L2, with its loops in Axon, the gains are 31× (175 ms to 5.63 ms) and 108× (122 ms to 1.13 ms).
 
 ## Baseline (today's interpreter)
 

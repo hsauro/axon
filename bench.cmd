@@ -1,6 +1,6 @@
 @echo off
-rem Runs the JIT benchmarks (bench\*.sci) and prints the best time per call
-rem of each kernel, with a check that its result is right (true).
+rem Runs the JIT benchmarks (bench\run.sci): each kernel timed interpreted
+rem and compiled (best of 5 per call), with a check that both agree.
 rem   bench            uses Win64\Release\axon.exe (build Release first)
 rem   bench Debug      uses Win64\Debug\axon.exe
 setlocal
@@ -12,5 +12,7 @@ if not exist "%AXON%" (
   exit /b 2
 )
 pushd "%~dp0bench"
-for %%f in (*.sci) do "%AXON%" "%%f" || (popd & exit /b 1)
+"%AXON%" run.sci
+set RESULT=%ERRORLEVEL%
 popd
+exit /b %RESULT%

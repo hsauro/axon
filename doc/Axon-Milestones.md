@@ -215,7 +215,8 @@ These stages start after M13 and are planned in outline only. Each gets its own 
 
 The detailed plan, milestones J0 to J8, is [Axon JIT Plan](Axon-JIT-Plan.md). The JIT compiles from the syntax tree through a typed IR; the tree-walker stays as the reference implementation and the fallback, so no bytecode VM is needed first.
 
-- [ ] Annotated, type-stable functions translated to MIR and compiled in-process
-- [ ] Fallback to the interpreter for anything the JIT cannot compile
-- [ ] Compiled ODE right-hand sides passed to CVODE as native callbacks
-- [ ] The full test suite passes with the JIT forced on, plus benchmarks showing the speed-up on scalar loops
+- [x] Type-stable functions translated to MIR and compiled in-process at their first call. The types come from annotations, or from the arguments when there are none (specialisation). This covers closures and values read from outside, scalars, real and int vectors, real matrices, and calls
+- [x] Fallback to the interpreter for anything the JIT cannot compile, silently, with results, output, errors, traces and array copies identical to the interpreter's
+- [x] Fast ODE solves: the solvers' stepping loops run natively (core module `odecore`, CVODE called from Delphi), and compiled right-hand sides run as native code. This replaces "compiled right-hand sides passed to CVODE as native callbacks", which profiling showed would not have helped (see the plan, J7)
+- [x] The full test suite passes with the JIT off, on (the default) and forced (`test.cmd -jit`), and the benchmarks (`bench.cmd`) show 469 to 1120 times faster scalar loops, and 31 to 108 times faster ODE solves than before L2
+- [ ] The macOS ARM64 check: `libmir.dylib`, the suite in all three modes, and the benchmarks
