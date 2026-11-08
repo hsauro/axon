@@ -100,6 +100,7 @@ IMAG   = ( INT | REAL ) "i" ;
 - `_` may separate digits for readability, as in `1_000_000`. It must sit between two digits.
 - `IMAG` applies only when `i` follows the number directly and is not followed by an identifier character. `2i` and `2.5e-3i` are imaginary literals. `i` on its own is an ordinary identifier, and `2in` is the integer `2` followed by the keyword `in`.
 - An integer literal must fit in a 64-bit `int` and a real literal in a finite `real`; otherwise it is a `SyntaxError`.
+- A real literal (and the number in an imaginary one) denotes the double nearest to its exact decimal value, with ties going to the double whose last bit is 0. Any number of digits may be written, and every digit counts, so the 17 significant digits that identify a double always read back as that double. A literal too small for a subnormal is `0.0`.
 
 ### Strings
 

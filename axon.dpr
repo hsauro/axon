@@ -30,6 +30,7 @@ uses
   Axon.IoModule in 'src\Axon.IoModule.pas',
   Axon.TimeModule in 'src\Axon.TimeModule.pas',
   Axon.Random in 'src\Axon.Random.pas',
+  Axon.FloatParse in 'src\Axon.FloatParse.pas',
   Axon.OdeCore in 'src\Axon.OdeCore.pas',
   Axon.Native.Cvode in 'src\native\Axon.Native.Cvode.pas',
   Axon.Graphics in 'src\Axon.Graphics.pas',

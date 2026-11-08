@@ -24,7 +24,7 @@ implementation
 
 uses
   System.SysUtils, System.Character, System.Generics.Collections,
-  Axon.Errors;
+  Axon.Errors, Axon.FloatParse;
 
 type
   TLexer = class
@@ -277,7 +277,7 @@ begin
   if (Peek = 'i') and not IsIdentChar(Peek(1)) then
   begin
     Advance;
-    if not TryStrToFloat(Clean, RealVal, TFormatSettings.Invariant) or
+    if not TryDecimalToDouble(Clean, RealVal) or
        RealVal.IsInfinity then
       Error('imaginary literal is out of range', StartLine, StartCol);
     Add(tkImag, Clean + 'i', StartLine, StartCol);
@@ -285,7 +285,7 @@ begin
   end
   else if IsReal then
   begin
-    if not TryStrToFloat(Clean, RealVal, TFormatSettings.Invariant) or
+    if not TryDecimalToDouble(Clean, RealVal) or
        RealVal.IsInfinity then
       Error('real literal is out of range', StartLine, StartCol);
     Add(tkReal, Clean, StartLine, StartCol);

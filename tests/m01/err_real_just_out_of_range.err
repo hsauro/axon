@@ -1,0 +1,2 @@
+SyntaxError: real literal is out of range
+  at err_real_just_out_of_range.sci:3:5

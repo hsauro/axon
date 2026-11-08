@@ -1,16 +1,11 @@
 import random
 # Reference values from an independent implementation of xoshiro256**
-# seeded through SplitMix64 (reals from the top 53 bits). Compared within
-# 1e-15 rather than with ==, because a 17-digit literal is not always read
-# to the nearest double.
-function near(x, y)
-  return abs(x - y) < 1e-15
-end
+# seeded through SplitMix64 (reals from the top 53 bits), exactly.
 random.seed(42)
-println(near(random.rand(), 0.08386297105988216), near(random.rand(), 0.3789802506626686),
-  near(random.rand(), 0.6800434110281394))
+println(random.rand() == 0.08386297105988216, random.rand() == 0.3789802506626686,
+  random.rand() == 0.6800434110281394)
 random.seed(-5)
-println(near(random.rand(), 0.47659061098406563))
+println(random.rand() == 0.47659061098406563)
 # Polar-method normals, two per pair of accepted draws (the last digit of
 # log and sqrt may differ between math libraries).
 random.seed(1)

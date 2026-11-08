@@ -26,6 +26,7 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - `src/Axon.Platform.pas`: the only place for `{$IFDEF MSWINDOWS}`/`POSIX` code, apart from `src/native`
 - `src/Axon.TestRunner.pas`: `axon test`
 - `src/Axon.Lexer.pas`, `Axon.Parser.pas`, `Axon.Ast.pas`, `Axon.AstDump.pas`: the front end
+- `src/Axon.FloatParse.pas`: decimal text to the nearest double for real literals (Clinger's fast path, else Go strconv's decimal-shift algorithm). Delphi's `TryStrToFloat` is not correctly rounded; don't use it for literals.
 - `src/Axon.Values.pas`: `TAxValue`, a tagged record holding scalars inline and other payloads in reference-counted objects; also the display forms
 - `src/Axon.Ops.pas`: operators, promotion, checked integer arithmetic. Array and range operands are passed on to `Axon.Arrays`.
 - `src/Axon.Arrays.pas`: dense arrays. `TArrayObj` (declared in `Axon.Values`) is column-major, with one typed buffer per element type. This unit holds literals, broadcasting, `MatMul`, transpose, index resolution and reductions. Elementwise operations call the scalar operators per element.
