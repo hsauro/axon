@@ -213,7 +213,8 @@ These stages start after M13 and are planned in outline only. Each gets its own 
 
 ### L2 — MIR JIT
 
-- [ ] A bytecode VM replaces the tree-walker, passing all M0–M13 tests unchanged
+The detailed plan, milestones J0 to J8, is [Axon JIT Plan](Axon-JIT-Plan.md). The JIT compiles from the syntax tree through a typed IR; the tree-walker stays as the reference implementation and the fallback, so no bytecode VM is needed first.
+
 - [ ] Annotated, type-stable functions translated to MIR and compiled in-process
 - [ ] Fallback to the interpreter for anything the JIT cannot compile
 - [ ] Compiled ODE right-hand sides passed to CVODE as native callbacks

@@ -106,6 +106,7 @@ xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md" "$(MSBuil
         <DCCReference Include="src\Axon.SparseLU.pas"/>
         <DCCReference Include="src\native\Axon.Native.Cvode.pas"/>
         <DCCReference Include="src\native\Axon.Native.Mir.pas"/>
+        <DCCReference Include="src\Axon.JitSelfTest.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

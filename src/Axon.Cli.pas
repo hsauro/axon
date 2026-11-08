@@ -7,6 +7,7 @@ unit Axon.Cli;
     axon --tokens file.sci  print the token stream (M1)
     axon --ast file.sci     print the syntax tree (M2)
     axon test [-v] [path]   run the conformance tests
+    axon --jit-selftest     check that the MIR JIT works here (L2, J0)
     axon --version | --help
 
   Exit codes are defined in Axon.Errors. }
@@ -22,7 +23,7 @@ uses
   Axon.Version, Axon.Errors, Axon.Platform, Axon.Source, Axon.TestRunner,
   System.Math,
   Axon.Tokens, Axon.Lexer, Axon.Ast, Axon.Parser, Axon.AstDump, Axon.Interp,
-  Axon.Repl;
+  Axon.Repl, Axon.JitSelfTest;
 
 procedure PrintUsage;
 begin
@@ -36,6 +37,7 @@ begin
   Writeln('  axon --repl-protocol    the REPL for front ends such as the IDE');
   Writeln('  axon --check file|-     check the syntax without running (- reads stdin)');
   Writeln('  axon test [-v] [path]   run the conformance tests (default path: tests)');
+  Writeln('  axon --jit-selftest     check that the MIR JIT library works');
   Writeln('  axon --version          print the version');
 end;
 
@@ -178,6 +180,8 @@ begin
     Result := RunTestCommand(Copy(Args, 1, MaxInt))
   else if (Cmd = '--tokens') or (Cmd = '--ast') then
     Result := FrontEndDump(Cmd, Arg1)
+  else if Cmd = '--jit-selftest' then
+    Result := RunJitSelfTest
   else if Cmd = '--repl-protocol' then
     Result := RunReplProtocol
   else if Cmd = '--check' then

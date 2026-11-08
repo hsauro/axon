@@ -31,3 +31,4 @@ __recovery/
 
 # Files tests write and delete (left behind only if a test is interrupted)
 _tmp_*
+third_party/
