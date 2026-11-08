@@ -99,6 +99,7 @@
         <DCCReference Include="uAxonMarkdown.pas"/>
         <DCCReference Include="uPreferences.pas"/>
         <DCCReference Include="uRefSections.pas"/>
+        <DCCReference Include="..\src\Axon.Version.pas"/>
         <RcCompile Include="AxonIDEStyles.rc">
             <Form>AxonIDEStyles.res</Form>
         </RcCompile>
@@ -164,6 +165,12 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
+                <DeployFile LocalName="$(BDS)\bin\delphi_PROJECTICNS.icns" Configuration="Debug" Class="ProjectOSXResource">
+                    <Platform Name="OSXARM64">
+                        <RemoteName>AxonIDE.icns</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployFile Condition="'$(SKIADIR)'==''" Required="true" LocalName="$(BDS)\bin\sk4d.dll" Configuration="Debug" Class="Skia">
                     <Platform Name="Win32">
                         <RemoteDir>.\</RemoteDir>
@@ -209,6 +216,477 @@
                         <RemoteDir>.\</RemoteDir>
                         <Operation>0</Operation>
                         <RemoteName>sk4d.dll</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\OSXARM64\Debug\AxonIDE.dSYM" Configuration="Debug" Class="ProjectOSXDebug">
+                    <Platform Name="OSXARM64">
+                        <RemoteName>AxonIDE</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\OSXARM64\Debug\AxonIDE.entitlements" Configuration="Debug" Class="ProjectOSXEntitlements">
+                    <Platform Name="OSXARM64">
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\OSXARM64\Debug\AxonIDE.info.plist" Configuration="Debug" Class="ProjectOSXInfoPList">
+                    <Platform Name="OSXARM64">
+                        <RemoteName>Info.plist</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\OSXARM64\Debug\AxonIDE" Configuration="Debug" Class="ProjectOutput">
+                    <Platform Name="OSXARM64">
+                        <RemoteName>AxonIDE</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\OSXARM64\Debug\axon" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>1</Operation>
+                        <RemoteName>axon</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\OSXARM64\Release\axon" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>1</Operation>
+                        <RemoteName>axon</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\doc\Axon-Language-Reference.md" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>Axon-Language-Reference.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\doc\Axon-Language-Reference.md" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>Axon-Language-Reference.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\doc\Axon-White-Paper.md" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>Axon-White-Paper.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\doc\Axon-White-Paper.md" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>Axon-White-Paper.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\01_basics.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>01_basics.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\01_basics.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>01_basics.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\02_collections.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>02_collections.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\02_collections.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>02_collections.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\03_linear_algebra.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>03_linear_algebra.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\03_linear_algebra.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>03_linear_algebra.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\04_lotka_volterra.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>04_lotka_volterra.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\04_lotka_volterra.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>04_lotka_volterra.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\05_stiff_and_events.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>05_stiff_and_events.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\05_stiff_and_events.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>05_stiff_and_events.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\06_sparse.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>06_sparse.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\06_sparse.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>06_sparse.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\07_surface.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>07_surface.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\07_surface.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>07_surface.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\08_timing.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>08_timing.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\08_timing.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>08_timing.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\09_jit.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>09_jit.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\09_jit.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>09_jit.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\10_random.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>10_random.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\10_random.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>10_random.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\11_bar_charts.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>11_bar_charts.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\11_bar_charts.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>11_bar_charts.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\12_scatter.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>12_scatter.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\12_scatter.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>12_scatter.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\13_line_plots.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>13_line_plots.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\13_line_plots.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>13_line_plots.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\help\getting-started.md" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>getting-started.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\help\getting-started.md" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>getting-started.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\help\ide.md" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>ide.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\help\ide.md" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>ide.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\help\index.md" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>index.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\help\index.md" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>index.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\help\tour.md" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>tour.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\help\tour.md" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>tour.md</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\lib\macos\libmir.dylib" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>libmir.dylib</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\lib\macos\libmir.dylib" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>libmir.dylib</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\lib\macos\libopenblas.dylib" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>libopenblas.dylib</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\lib\macos\libopenblas.dylib" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>libopenblas.dylib</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\lib\macos\libsundials_core.dylib" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>libsundials_core.dylib</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\lib\macos\libsundials_core.dylib" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>libsundials_core.dylib</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\lib\macos\libsundials_cvode.dylib" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>libsundials_cvode.dylib</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\lib\macos\libsundials_cvode.dylib" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>libsundials_cvode.dylib</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\stdlib\linalg.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>linalg.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\stdlib\linalg.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>linalg.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\stdlib\ode.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>ode.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\stdlib\ode.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>ode.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\stdlib\package.toml" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>package.toml</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\stdlib\package.toml" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>package.toml</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\stdlib\plot.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>plot.sci</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\stdlib\plot.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
+                        <Operation>0</Operation>
+                        <RemoteName>plot.sci</RemoteName>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
@@ -1162,454 +1640,6 @@
                 <ProjectRoot Platform="Win32" Name="$(PROJECTNAME)"/>
                 <ProjectRoot Platform="Win64" Name="$(PROJECTNAME)"/>
                 <ProjectRoot Platform="Win64x" Name="$(PROJECTNAME)"/>
-                <DeployFile LocalName="..\OSXARM64\Debug\axon" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>axon</RemoteName>
-                        <Operation>1</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\OSXARM64\Release\axon" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>axon</RemoteName>
-                        <Operation>1</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\lib\macos\libmir.dylib" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>libmir.dylib</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\lib\macos\libmir.dylib" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>libmir.dylib</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\lib\macos\libopenblas.dylib" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>libopenblas.dylib</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\lib\macos\libopenblas.dylib" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>libopenblas.dylib</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\lib\macos\libsundials_core.dylib" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>libsundials_core.dylib</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\lib\macos\libsundials_core.dylib" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>libsundials_core.dylib</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\lib\macos\libsundials_cvode.dylib" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>libsundials_cvode.dylib</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\lib\macos\libsundials_cvode.dylib" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\</RemoteDir>
-                        <RemoteName>libsundials_cvode.dylib</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\stdlib\linalg.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
-                        <RemoteName>linalg.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\stdlib\linalg.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
-                        <RemoteName>linalg.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\stdlib\ode.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
-                        <RemoteName>ode.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\stdlib\ode.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
-                        <RemoteName>ode.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\stdlib\plot.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
-                        <RemoteName>plot.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\stdlib\plot.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
-                        <RemoteName>plot.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\stdlib\package.toml" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
-                        <RemoteName>package.toml</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\stdlib\package.toml" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\stdlib\</RemoteDir>
-                        <RemoteName>package.toml</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\01_basics.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>01_basics.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\01_basics.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>01_basics.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\02_collections.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>02_collections.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\02_collections.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>02_collections.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\03_linear_algebra.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>03_linear_algebra.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\03_linear_algebra.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>03_linear_algebra.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\04_lotka_volterra.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>04_lotka_volterra.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\04_lotka_volterra.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>04_lotka_volterra.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\05_stiff_and_events.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>05_stiff_and_events.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\05_stiff_and_events.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>05_stiff_and_events.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\06_sparse.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>06_sparse.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\06_sparse.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>06_sparse.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\07_surface.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>07_surface.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\07_surface.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>07_surface.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\08_timing.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>08_timing.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\08_timing.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>08_timing.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\09_jit.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>09_jit.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\09_jit.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>09_jit.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\10_random.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>10_random.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\10_random.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>10_random.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\11_bar_charts.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>11_bar_charts.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\11_bar_charts.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>11_bar_charts.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\12_scatter.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>12_scatter.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\12_scatter.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>12_scatter.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\13_line_plots.sci" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>13_line_plots.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\examples\13_line_plots.sci" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
-                        <RemoteName>13_line_plots.sci</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\help\getting-started.md" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>getting-started.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\help\getting-started.md" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>getting-started.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\help\ide.md" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>ide.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\help\ide.md" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>ide.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\help\index.md" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>index.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\help\index.md" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>index.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\help\tour.md" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>tour.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\help\tour.md" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>tour.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\doc\Axon-Language-Reference.md" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>Axon-Language-Reference.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\doc\Axon-Language-Reference.md" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>Axon-Language-Reference.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\doc\Axon-White-Paper.md" Configuration="Debug" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>Axon-White-Paper.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
-                <DeployFile LocalName="..\doc\Axon-White-Paper.md" Configuration="Release" Class="File">
-                    <Platform Name="OSXARM64">
-                        <RemoteDir>Contents\MacOS\help\</RemoteDir>
-                        <RemoteName>Axon-White-Paper.md</RemoteName>
-                        <Operation>0</Operation>
-                        <Overwrite>true</Overwrite>
-                    </Platform>
-                </DeployFile>
             </Deployment>
         </BorlandProject>
         <ProjectFileVersion>12</ProjectFileVersion>
@@ -1617,6 +1647,7 @@
     <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATADIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATADIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
     <Import Project="AxonIDE.styles.targets"/>
+    <Import Project="..\tools\AxonBuildInfo.targets"/>
     <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
 </Project>

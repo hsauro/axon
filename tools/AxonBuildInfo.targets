@@ -1,0 +1,35 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Writes src/Axon.BuildInfo.inc (gitignored) on every build: the build time
+       and the git commit, which Axon.Version includes, so the version option of
+       axon, the IDE's Welcome tab and Help > About identify the exact build
+       (useful when checking that a Mac deployment is current). Imported by
+       axon.dproj and ide/AxonIDE.dproj; runs before the resources and the
+       Pascal sources are compiled. RAD Studio builds with the .NET Framework's
+       MSBuild 4, whose Exec cannot capture output, so git writes to temporary
+       files that are read back. -->
+  <Target Name="AxonBuildInfo" BeforeTargets="ResourceBuild">
+    <PropertyGroup>
+      <_AxonRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</_AxonRoot>
+      <_AxonBuildTime>$([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm'))</_AxonBuildTime>
+      <_AxonTmp>$([System.IO.Path]::GetTempPath())axon-buildinfo-$(MSBuildProjectName)</_AxonTmp>
+    </PropertyGroup>
+    <Exec Command="git rev-parse --short HEAD &gt; &quot;$(_AxonTmp)-commit.txt&quot; 2&gt;nul"
+          WorkingDirectory="$(_AxonRoot)" IgnoreExitCode="true" ContinueOnError="true" />
+    <Exec Command="git status --porcelain --untracked-files=no &gt; &quot;$(_AxonTmp)-status.txt&quot; 2&gt;nul"
+          WorkingDirectory="$(_AxonRoot)" IgnoreExitCode="true" ContinueOnError="true" />
+    <ReadLinesFromFile File="$(_AxonTmp)-commit.txt" Condition="Exists('$(_AxonTmp)-commit.txt')">
+      <Output TaskParameter="Lines" PropertyName="_AxonCommit" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(_AxonTmp)-status.txt" Condition="Exists('$(_AxonTmp)-status.txt')">
+      <Output TaskParameter="Lines" ItemName="_AxonChange" />
+    </ReadLinesFromFile>
+    <Delete Files="$(_AxonTmp)-commit.txt;$(_AxonTmp)-status.txt" ContinueOnError="true" />
+    <PropertyGroup>
+      <_AxonCommit Condition="'$(_AxonCommit)'==''">unknown</_AxonCommit>
+      <!-- Uncommitted changes to tracked files: the commit alone does not name the build. -->
+      <_AxonCommit Condition="'@(_AxonChange)'!=''">$(_AxonCommit)+changes</_AxonCommit>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_AxonRoot)\src\Axon.BuildInfo.inc" Overwrite="true"
+                      Lines="// Written by tools\AxonBuildInfo.targets on every build%3B do not edit.;const;  AxonBuildTime = '$(_AxonBuildTime)'%3B;  AxonCommit = '$(_AxonCommit)'%3B" />
+  </Target>
+</Project>

@@ -11,5 +11,6 @@ object frmMain: TfrmMain
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   OnCloseQuery = FormCloseQuery
+  OnActivate = FormActivate
   DesignerMasterStyle = 0
 end

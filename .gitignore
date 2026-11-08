@@ -35,3 +35,6 @@ third_party/
 
 # RAD Studio premium styles, copied from the installation by the IDE build
 ide/styles/MineShaft_*.style
+
+# Written on every build by tools/AxonBuildInfo.targets
+src/Axon.BuildInfo.inc

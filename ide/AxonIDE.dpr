@@ -20,7 +20,8 @@ uses
   uRunReport in 'uRunReport.pas',
   uAxonMarkdown in 'uAxonMarkdown.pas',
   uPreferences in 'uPreferences.pas',
-  uRefSections in 'uRefSections.pas';
+  uRefSections in 'uRefSections.pas',
+  Axon.Version in '..\src\Axon.Version.pas';
 
 // The build's resources (AxonIDE.res: icon, version information and the
 // Windows manifest that makes the IDE DPI-aware), then the dark style

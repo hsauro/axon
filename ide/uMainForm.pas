@@ -55,7 +55,7 @@ uses
   FMX.Layouts, FMX.ListBox, FMX.TabControl, FMX.Menus, FMX.Objects,
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
   uSkiaCodeEditor, uCodeEditorTypes, uFindBar, uProcessRunner, uRunReport,
-  uRhoMarkdownViewer, uPreferences, uRefSections;
+  uRhoMarkdownViewer, uPreferences, uRefSections, Axon.Version;
 
 type
   { Text colours of the output panes, per theme. }
@@ -74,6 +74,8 @@ type
 
   TfrmMain = class(TForm)
     procedure FormCreate(Sender: TObject);
+    procedure FormActivate(Sender: TObject);
+    procedure FullScreenTimerFired(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
   private
@@ -133,6 +135,10 @@ type
     // Layout remembered between sessions
     FPlotPane: TLayout;
     FNormalBounds: TRect;      // the window's bounds when last not maximized
+    FSettingsSaved: Boolean;   // saved when closing was agreed (FormCloseQuery)
+    FPendingFullScreen: Boolean; // macOS: go full screen once the window is active
+    FPendingMaximize: Boolean; // macOS: maximize (zoom) once the window is active
+    FWasFullScreen: Boolean;   // macOS: full screen at the last resize (what is saved)
     // Welcome tab (nil when closed)
     FWelcomeTab: TTabItem;
     FWelcomeList: TListBox;
@@ -217,6 +223,7 @@ type
     procedure CmdPreferences(Sender: TObject);
     procedure ApplyPreferences;
     procedure SizePaneItem(Item: TListBoxItem);
+    function IsFullScreen: Boolean;
     procedure LoadLayout(Ini: TCustomIniFile);
     procedure SaveLayout(Ini: TCustomIniFile);
     function TryShowFigure(const Line: string): Boolean;
@@ -472,6 +479,38 @@ begin
   UpdateTitle;
 end;
 
+{ macOS: a window that was maximized (zoomed) or full screen when the IDE
+  last closed becomes so again, shortly after it first becomes active (the
+  window has to be on screen for macOS to change it). }
+procedure TfrmMain.FormActivate(Sender: TObject);
+var
+  T: TTimer;
+begin
+  if not (FPendingFullScreen or FPendingMaximize) then
+    Exit;
+  T := TTimer.Create(Self);
+  T.Interval := 300;
+  T.OnTimer := FullScreenTimerFired;
+  T.Enabled := True;
+end;
+
+procedure TfrmMain.FullScreenTimerFired(Sender: TObject);
+begin
+  TTimer(Sender).Enabled := False;
+  if FPendingMaximize then
+    WindowState := TWindowState.wsMaximized;
+  if FPendingFullScreen then
+    FullScreen := True;
+  FPendingMaximize := False;
+  FPendingFullScreen := False;
+  // Freed after this event returns.
+  TThread.ForceQueue(nil,
+    procedure
+    begin
+      Sender.Free;
+    end);
+end;
+
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
   FRunner.Free;          // kills a running program
@@ -490,7 +529,8 @@ begin
       TDirectory.Delete(FShowDir, True);
     except
     end;
-  SaveSettings;
+  if not FSettingsSaved then
+    SaveSettings;
   FRecent.Free;
   FFrames.Free;
   FDocs.Free;
@@ -509,8 +549,10 @@ begin
     end;
   // Save the layout now: on macOS, Quit asks the main form whether it may
   // close and then ends the application without destroying the form, so
-  // FormDestroy (which also saves) never runs.
+  // FormDestroy never runs; and by then the window, whose state is saved,
+  // is gone.
   SaveSettings;
+  FSettingsSaved := True;
 end;
 
 function TfrmMain.AddButton(Parent: TFmxObject; const Text, Hint: string;
@@ -1076,10 +1118,37 @@ procedure TfrmMain.RecordNormalBounds;
 begin
   TThread.ForceQueue(nil,
     procedure
+    var
+      Full: Boolean;
     begin
-      if WindowState = TWindowState.wsNormal then
+      Full := IsFullScreen;
+      if (WindowState = TWindowState.wsNormal) and not Full then
         FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
+      // macOS full screen is tracked as it changes (entering or leaving it
+      // resizes the window) and saved at once: by the time the application
+      // quits, the window may already have left full screen.
+      if Full <> FWasFullScreen then
+      begin
+        FWasFullScreen := Full;
+        if not (csDestroying in ComponentState) and not FSettingsSaved then
+          SaveSettings;
+      end;
     end);
+end;
+
+{ macOS full screen (the green button), which FMX reports through FullScreen
+  rather than WindowState. Windows maximizes instead, so this is False there.
+  Safe while the window is being destroyed. }
+function TfrmMain.IsFullScreen: Boolean;
+begin
+  Result := False;
+{$IFDEF MACOS}
+  try
+    Result := (Handle <> nil) and FullScreen;
+  except
+    Result := False;
+  end;
+{$ENDIF}
 end;
 
 procedure TfrmMain.LoadLayout(Ini: TCustomIniFile);
@@ -1125,8 +1194,20 @@ begin
   else
     SetBounds(Left, Top, R.Width, R.Height);
   FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
+{$IFDEF MACOS}
+  // Maximized (zoomed, the green button) once the window is active, as for
+  // full screen below: set while the form is created, it does not survive
+  // the window being shown.
+  FPendingMaximize := Ini.ReadBool('Window', 'Maximized', False);
+{$ELSE}
   if Ini.ReadBool('Window', 'Maximized', False) then
     WindowState := TWindowState.wsMaximized;
+{$ENDIF}
+{$IFDEF MACOS}
+  // Full screen after the window first becomes active (FormActivate): macOS
+  // ignores a full-screen request for a window that is not on screen yet.
+  FPendingFullScreen := Ini.ReadBool('Window', 'FullScreen', False);
+{$ENDIF}
 
   // Pane sizes, kept within what the window can hold.
   FPlotPane.Width := EnsureRange(Ini.ReadInteger('Window', 'PlotWidth', Round(FPlotPane.Width)),
@@ -1149,15 +1230,19 @@ end;
 
 procedure TfrmMain.SaveLayout(Ini: TCustomIniFile);
 begin
-  // A window that is not maximized saves where it is now: moving a window
-  // may not go through SetBoundsF on every platform.
-  if WindowState = TWindowState.wsNormal then
+  // A window that is not maximized or full screen saves where it is now:
+  // moving a window may not go through SetBoundsF on every platform. A full
+  // screen window keeps the normal bounds it returns to.
+  if (WindowState = TWindowState.wsNormal) and not IsFullScreen and not FWasFullScreen then
     FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
   Ini.WriteInteger('Window', 'Left', FNormalBounds.Left);
   Ini.WriteInteger('Window', 'Top', FNormalBounds.Top);
   Ini.WriteInteger('Window', 'Width', FNormalBounds.Width);
   Ini.WriteInteger('Window', 'Height', FNormalBounds.Height);
   Ini.WriteBool('Window', 'Maximized', WindowState = TWindowState.wsMaximized);
+{$IFDEF MACOS}
+  Ini.WriteBool('Window', 'FullScreen', FWasFullScreen or IsFullScreen);
+{$ENDIF}
   Ini.WriteInteger('Window', 'PlotWidth', Round(FPlotPane.Width));
   Ini.WriteInteger('Window', 'BottomHeight', Round(FBottomTabs.Height));
   Ini.WriteInteger('Window', 'BottomTab', FBottomTabs.TabIndex);
@@ -2315,7 +2400,7 @@ end;
 procedure TfrmMain.ShowWelcome;
 var
   Page, Head, Buttons: TLayout;
-  Title, Sub, Keys, RecentHead: TLabel;
+  Title, Sub, Ver, Keys, RecentHead: TLabel;
   B: TButton;
   Columns: TGridPanelLayout;
   Column: TLayout;
@@ -2339,7 +2424,7 @@ begin
   Head := TLayout.Create(Self);
   Head.Parent := Page;
   Head.Align := TAlignLayout.Top;
-  Head.Height := 176;
+  Head.Height := 196;
 
   Title := TLabel.Create(Self);
   Title.Parent := Head;
@@ -2356,6 +2441,15 @@ begin
   Sub.Position.Y := 100;
   Sub.Height := 22;
   Sub.Text := 'A language for scientific computing.';
+
+  // The exact build, to check that a deployment (on the Mac) is current.
+  Ver := TLabel.Create(Self);
+  Ver.Parent := Head;
+  Ver.Align := TAlignLayout.Top;
+  Ver.Position.Y := 130;
+  Ver.Height := 20;
+  Ver.Text := 'Version ' + AxonVersionText;
+  Ver.Opacity := 0.6;
 
   Buttons := TLayout.Create(Self);
   Buttons.Parent := Head;
@@ -3218,7 +3312,8 @@ end;
 
 procedure TfrmMain.CmdAbout(Sender: TObject);
 begin
-  TDialogServiceSync.MessageDialog('Axon IDE'#10'An editor and runner for the Axon language.',
+  TDialogServiceSync.MessageDialog('Axon IDE'#10'Version ' + AxonVersionText + #10#10 +
+    'An editor and runner for the Axon language.',
     TMsgDlgType.mtInformation, [TMsgDlgBtn.mbOK], TMsgDlgBtn.mbOK, 0);
 end;
 

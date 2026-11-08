@@ -280,7 +280,7 @@ begin
   end
   else if Cmd = '--version' then
   begin
-    Writeln('Axon ', AxonVersion, ' (', AxonMilestone, ')');
+    Writeln('Axon ', AxonVersionText);
     Result := ExitOk;
   end
   else if Cmd = 'test' then
