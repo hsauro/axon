@@ -1,4 +1,4 @@
-## Line, scatter, histogram and surface plots, saved as PNG, SVG or PDF. Plotting calls
+## Line, scatter, bar, histogram and surface plots, saved as PNG, SVG or PDF. Plotting calls
 ## add to the current figure; plot.save writes it. See the Language
 ## Reference, "The plot module".
 
@@ -55,7 +55,8 @@ end
 function new_figure(width, height, title)
   return {width: width + 0.0, height: height + 0.0, title: title, xlabel: nothing,
           ylabel: nothing, zlabel: nothing, xlim: nothing, ylim: nothing, grid: true,
-          legend: true, series: {}, three_d: false, elev: 30.0, azim: -60.0}
+          legend: true, series: {}, three_d: false, elev: 30.0, azim: -60.0,
+          xcategories: nothing}
 end
 
 function figure_now()
@@ -196,6 +197,57 @@ function bin_counts(xs: vector{real}, e: vector{real}): vector{real}
   return counts
 end
 
+# A series of bars from left[k] to right[k], rising (or falling) from 0 to
+# heights[k]. x and y hold the ends and 0, so the axis ranges cover them.
+function bar_series(left, right, heights, label, color)
+  return {type: "bars", three_d: false, x: [left; right], y: [0.0; heights], left: left,
+          right: right, heights: heights, label: label, color: color}
+end
+
+## Adds a bar chart: a bar of the given height at each position of x. x is a
+## real vector of bar centres, or a list of strings naming categories, which
+## places the bars at 1, 2, ... and labels the x axis with the names. Bars
+## rise from 0, or fall for negative heights. Keywords: width (of each bar,
+## in x units), label, color.
+export function bar(x, heights; width = 0.8, label = nothing, color = nothing)
+  global current
+  categories = nothing
+  if typeof(x) == "list"
+    for c in x
+      if typeof(c) != "string"
+        fail("TypeError", "plot.bar: categories must be strings, got " + typeof(c))
+      end
+    end
+    categories = x
+    xs = zeros(length(x))
+    for k in 1:length(x) xs[k] = k end
+  else
+    xs = real_vector(x, "plot.bar: x")
+  end
+  hs = real_vector(heights, "plot.bar: heights")
+  if length(xs) != length(hs)
+    fail("DimensionError", "plot.bar: x has " + string(length(xs)) + " values but heights has " +
+      string(length(hs)))
+  end
+  if typeof(width) != "int" and typeof(width) != "real"
+    fail("TypeError", "plot.bar: width must be a number, got " + typeof(width))
+  end
+  if not (width > 0)
+    fail("ArgumentError", "plot.bar: width must be positive")
+  end
+  fig = figure_now()
+  if typeof(categories) != "nothing"
+    if typeof(fig.xcategories) != "nothing" and not isequal(fig.xcategories, categories)
+      fail("ArgumentError", "plot.bar: the figure already has different categories")
+    end
+  end
+  if typeof(color) == "nothing" color = next_color(fig) end
+  add_series(bar_series(xs - width / 2, xs + width / 2, hs, label, color))
+  if typeof(categories) != "nothing"
+    current.xcategories = categories
+  end
+end
+
 function add_bars(x, bins, label, color, density, where)
   xs = real_vector(x, where + ": x")
   e = bin_edges(xs, bins, where)
@@ -209,9 +261,7 @@ function add_bars(x, bins, label, color, density, where)
   end
   fig = figure_now()
   if typeof(color) == "nothing" color = next_color(fig) end
-  # y holds 0 as well as the heights, so the axis range includes the baseline.
-  add_series({type: "bars", three_d: false, x: e, y: [0.0; heights], heights: heights,
-              label: label, color: color})
+  add_series(bar_series(e[1:end - 1], e[2:end], heights, label, color))
   return {counts: int(c), edges: e, heights: heights}
 end
 
@@ -453,13 +503,21 @@ function render_2d(fig)
   [x0, x1] = data_range(all_x(fig.series), fig.xlim)
   [y0, y1] = data_range(all_y(fig.series), fig.ylim)
   # Bars stand on the x axis: no padding below a baseline at 0.
-  if typeof(fig.ylim) == "nothing" and has_bars(fig.series) and min(all_y(fig.series)) >= 0
-    y0 = 0.0
+  if typeof(fig.ylim) == "nothing" and has_bars(fig.series)
+    if min(all_y(fig.series)) >= 0 y0 = 0.0 end
+    if max(all_y(fig.series)) <= 0 y1 = 0.0 end
   end
-  [xt, xstep] = nice_ticks(x0, x1, 7)
   [yt, ystep] = nice_ticks(y0, y1, 6)
-  xlabels = {}
-  for v in xt xlabels = append(xlabels, tick_label(v, xstep)) end
+  # Category names label their positions 1, 2, ...; otherwise round numbers.
+  if typeof(fig.xcategories) != "nothing"
+    xt = zeros(length(fig.xcategories))
+    for k in 1:length(xt) xt[k] = k end
+    xlabels = fig.xcategories
+  else
+    [xt, xstep] = nice_ticks(x0, x1, 7)
+    xlabels = {}
+    for v in xt xlabels = append(xlabels, tick_label(v, xstep)) end
+  end
   ylabels = {}
   wmax = 0.0
   for v in yt
@@ -518,8 +576,10 @@ function render_2d(fig)
       base = py1 - (0.0 - y0) * sy
       for k in 1:length(s.heights)
         ytop = py1 - (s.heights[k] - y0) * sy
-        drawn = append(drawn, {kind: "rect", x: px[k], y: min(ytop, base),
-                               w: px[k + 1] - px[k], h: abs(base - ytop), fill: s.color,
+        xl = px0 + (s.left[k] - x0) * sx
+        xr = px0 + (s.right[k] - x0) * sx
+        drawn = append(drawn, {kind: "rect", x: xl, y: min(ytop, base),
+                               w: xr - xl, h: abs(base - ytop), fill: s.color,
                                color: "white", width: 0.6})
       end
     elseif s.type == "line"
