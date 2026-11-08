@@ -43,7 +43,15 @@ Axon is built with Embarcadero RAD Studio 13 (Delphi, BDS 37.0).
 - **From the command line:** `build.cmd` builds Win64 Debug, and `build.cmd Release` builds Release.
 - **Tests:** `test.cmd` runs the test suite; `test.cmd -jit` runs it with the JIT off, on and forced.
 
-The IDE uses two component sets from the sibling folder `..\RhodyComponents`: the `RhoEditor` code editor and the `RhoMarkDownViewer` markdown viewer. They are referenced in place through the unit search path.
+The IDE uses two components of mine that live in their own repositories: the [RhoSkiaCodeEditor](https://github.com/hsauro/RhoSkiaCodeEditor) code editor and the [RhoMarkdownViewer](https://github.com/hsauro/RhoMarkdownViewer) markdown viewer. The IDE project finds their source through its unit search path, in a `RhodyComponents` folder next to the Axon folder, so clone them there under these names:
+
+```
+cd ..
+git clone https://github.com/hsauro/RhoSkiaCodeEditor.git RhodyComponents/RhoEditor
+git clone https://github.com/hsauro/RhoMarkdownViewer.git RhodyComponents/RhoMarkDownViewer
+```
+
+The interpreter (`axon.dproj`) needs neither.
 
 Prebuilt native libraries are in `lib/win64` and `lib/macos`; see [lib/README.md](lib/README.md) for where each came from and how to rebuild it. The macOS libraries are built on the Mac by scripts in `tools/`.
 
