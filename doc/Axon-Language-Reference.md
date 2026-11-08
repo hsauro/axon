@@ -643,13 +643,14 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 The interpreter compiles functions to native code at their first call (a just-in-time compiler built on MIR). Compilation changes only speed: a compiled function gives the same results, prints the same output, raises the same errors with the same traces, and makes the same array copies (`__copies()`) as when it is interpreted. A function that cannot be compiled with these guarantees runs interpreted, silently.
 
 - **What compiles.**
-  - **Functions.** Named top-level functions whose parameters are annotated `bool`, `int`, `real`, `vector{real}`, `vector{int}` or `matrix{real}`. The element type of an array must be given; a plain `vector` or `matrix` could hold any element type.
+  - **Functions.** Named top-level functions.
+  - **Parameters.** A parameter annotated `bool`, `int`, `real`, `vector{real}`, `vector{int}` or `matrix{real}` has that type. A parameter without an annotation, or annotated plain `vector` or `matrix`, takes the type of the argument it is called with. Such a function is compiled separately for each set of argument types it meets, up to eight; further calls run interpreted. An unannotated parameter is an untyped variable, so a function that assigns it a value of another type stays interpreted for that call.
   - **Bodies.** Arithmetic and comparisons, `and`/`or`/`not`, `if`, `while`, `for` over ranges and arrays, `break`, `continue` and `return` (with several values).
   - **Variables.** Local and typed variables.
   - **Arrays.** Element reads and writes with int indices and `end`, and operators on real arrays.
   - **Calls.** Calls to other functions, recursion included, and the scalar built-ins: the elementary functions, `abs`, `floor`, `ceil`, `round`, `int`, `real`, `min`, `max`, `div`, `mod`, `length`, `size`, `zeros`, `ones`, `sum`, `print` and `error`.
 - **What stays interpreted.**
-  - **Types.** A function whose variable changes type, or whose result type depends on a value: `n ^ k` with `int` operands and a variable exponent is an `int` for `k >= 0` and a `real` otherwise.
+  - **Types.** A function whose variable changes type, or whose result type depends on a value: `n ^ k` with `int` operands and a variable exponent is an `int` for `k >= 0` and a `real` otherwise. A call whose arguments include a string, list, record, dictionary, complex number, range, or an array other than a real vector, int vector or real matrix.
   - **Names.** A function that reads a module variable, or reads a variable that may be unassigned on some path.
   - **Constructs.** Closures, `try`, `global`, strings beyond `print` and `error` arguments, complex numbers, lists, records, dictionaries, and indexing with ranges, colons or masks.
 

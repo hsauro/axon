@@ -32,8 +32,10 @@ function use_pair(a: int): int
   %2 = mul.int p, q  @22:3
   ret %2
 
-function legacy: not compiled: parameter x has no type annotation (25:17)
+function legacy: not compiled: parameter x has no type annotation (it is compiled when called, for the argument types) (25:17)
 
 function wrap(x: real): real
-  call.interp legacy(x)  @30:3
+  call.interp legacy(x)  @31:3
   ret x
+
+function legacy(real): not compiled: strings are not compiled (26:7)

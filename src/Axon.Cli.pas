@@ -130,6 +130,16 @@ begin
   Result := ExitOk;
 end;
 
+function ArrayHasNothing(const Types: TArray<TJType>): Boolean;
+var
+  T: TJType;
+begin
+  for T in Types do
+    if T = jtNothing then
+      Exit(True);
+  Result := False;
+end;
+
 { --jir: each named function at the top level of the program, lowered to
   JIR, or the reason it is not compiled. Blank lines separate functions.
   Called names resolve statically: to the program's top-level functions,
@@ -181,12 +191,25 @@ begin
         begin
           if Lines.Count > 0 then
             Lines.Add('');
-          E := Session.Lower(TFunctionStmt(S).Func, nil, Prog.FileName);
+          E := Session.Lower(TFunctionStmt(S).Func, nil, Prog.FileName,
+            AnnotatedTypes(TFunctionStmt(S).Func));
           if E.State = esLowered then
             E.Func.Dump(Lines)
           else
             Lines.Add(Format('function %s: not compiled: %s (%d:%d)',
               [TFunctionStmt(S).Func.Name, E.Reason, E.RejectLine, E.RejectCol]));
+        end;
+      // The specialisations that calls in the file made, for their argument
+      // types (J6), in the order they were made.
+      for E in Session.Order do
+        if IsSpecialised(E.Decl) and not ArrayHasNothing(E.ParamTypes) then
+        begin
+          Lines.Add('');
+          if E.State = esLowered then
+            E.Func.Dump(Lines)
+          else
+            Lines.Add(Format('function %s(%s): not compiled: %s (%d:%d)',
+              [E.Decl.Name, TypesText(E.ParamTypes), E.Reason, E.RejectLine, E.RejectCol]));
         end;
     finally
       Session.Free;

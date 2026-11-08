@@ -80,10 +80,15 @@ function JitModeName: string;
 { Called by the interpreter: how calls resolve, and its call-depth counter. }
 procedure JitSetup(const Resolver: TJResolver; DepthPtr: PInteger; MaxDepth: Integer);
 
-{ Compiles a function (FuncObj is its TFunctionObj), or returns nil, with
-  the reason, when it is rejected or MIR is unavailable. }
+{ The JIR type of a value, for specialisation; jtNothing for one that does
+  not compile. }
+function JitTypeOf(const V: TAxValue): TJType;
+
+{ Compiles a function (FuncObj is its TFunctionObj) for the types of the
+  arguments it is called with, or returns nil, with the reason, when it is
+  rejected or MIR is unavailable. }
 function JitCompile(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
-  out Reason: string): TJitCode;
+  const ArgTypes: TArray<TJType>; out Reason: string): TJitCode;
 
 { The compiled code of a function, or nil: also for a function compiled
   only as a callee, which the interpreter has not called yet. }
@@ -490,6 +495,8 @@ begin
   end;
 end;
 
+function DisplayName(E: TJEntry): string; forward;
+
 { Generates every function the session has lowered and not yet generated,
   and links them together. }
 procedure GenerateGroup;
@@ -503,7 +510,7 @@ var
 begin
   Group := TList<TJEntry>.Create;
   try
-    for E in Session.Entries.Values do
+    for E in Session.Order do
       if (E.State = esLowered) and (E.Code = nil) then
         Group.Add(E);
     // Codes first, so calls within the group know their callees' ids.
@@ -531,27 +538,60 @@ begin
     for K := 0 to Group.Count - 1 do
     begin
       @TJitCode(Group[K].Code).Entry := MirFunctionAddress(Entries[K]);
-      LogDecision('compiled ' + Group[K].Decl.Name);
+      LogDecision('compiled ' + DisplayName(Group[K]));
     end;
   finally
     Group.Free;
   end;
 end;
 
+{ Any compiled code of the function, for any argument types. }
 function JitCodeOf(Decl: TFunctionDecl): TJitCode;
 var
   E: TJEntry;
 begin
-  if Session.Entries.TryGetValue(Decl, E) then
-    Result := TJitCode(E.Code)
+  for E in Session.Order do
+    if (E.Decl = Decl) and (E.Code <> nil) then
+      Exit(TJitCode(E.Code));
+  Result := nil;
+end;
+
+function JitTypeOf(const V: TAxValue): TJType;
+var
+  A: TArrayObj;
+begin
+  case V.Kind of
+    vkBool: Result := jtBool;
+    vkInt:  Result := jtInt;
+    vkReal: Result := jtReal;
+    vkArray:
+      begin
+        A := AsArray(V);
+        if A.IsVector and (A.ElemType = etReal) then Result := jtVecReal
+        else if A.IsVector and (A.ElemType = etInt) then Result := jtVecInt
+        else if not A.IsVector and (A.ElemType = etReal) then Result := jtMatReal
+        else Result := jtNothing;
+      end;
   else
-    Result := nil;
+    Result := jtNothing;
+  end;
+end;
+
+{ The name in logs and reports: with its parameter types when they come
+  from the arguments. }
+function DisplayName(E: TJEntry): string;
+begin
+  if IsSpecialised(E.Decl) then
+    Result := E.Decl.Name + '(' + TypesText(E.ParamTypes) + ')'
+  else
+    Result := E.Decl.Name;
 end;
 
 function JitCompile(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
-  out Reason: string): TJitCode;
+  const ArgTypes: TArray<TJType>; out Reason: string): TJitCode;
 var
   E: TJEntry;
+  Types: TArray<TJType>;
 begin
   Result := nil;
   if not MirAvailable then
@@ -559,11 +599,16 @@ begin
     Reason := 'the JIT is unavailable: ' + MirError;
     Exit;
   end;
-  E := Session.Lower(Decl, FuncObj, FileName);
+  if not SignatureFor(Decl, ArgTypes, Types, Reason) then
+  begin
+    LogDecision(Format('rejected %s: %s', [Decl.Name, Reason]));
+    Exit;
+  end;
+  E := Session.Lower(Decl, FuncObj, FileName, Types);
   if E.State <> esLowered then
   begin
     Reason := Format('%s (%d:%d)', [E.Reason, E.RejectLine, E.RejectCol]);
-    LogDecision(Format('rejected %s: %s', [Decl.Name, Reason]));
+    LogDecision(Format('rejected %s: %s', [DisplayName(E), Reason]));
     Exit;
   end;
   if E.Code = nil then

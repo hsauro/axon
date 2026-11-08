@@ -9,7 +9,7 @@
 4.0 true true
 true true true
 true true true
-true false parameter x has no type annotation (59:17)
+true false strings are not compiled (60:7)
 talk: 3 1.5 true
 true
 10 true

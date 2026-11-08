@@ -1,4 +1,4 @@
-function no_annot: not compiled: parameter x has no type annotation (1:19)
+function no_annot: not compiled: parameter x has no type annotation (it is compiled when called, for the argument types) (1:19)
 
 function changes_type: not compiled: x is int at 6:3 and real at 7:3 (7:3)
 

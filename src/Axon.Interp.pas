@@ -25,7 +25,7 @@ interface
 
 uses
   System.SysUtils, System.Generics.Collections,
-  Axon.Ast, Axon.Values, Axon.Ffi;
+  Axon.Ast, Axon.Values, Axon.Ffi, Axon.Jit.Ir;
 
 type
   { A construct that a later milestone implements. }
@@ -71,9 +71,13 @@ type
     IsClosure: Boolean;       // lambda or nested function: rule 5 reaches outward
     FileName: string;         // the module file it was defined in (for errors)
     FilePath: string;         // its full path (for imports made while it runs)
-    // The JIT (Axon.Jit): compiled at the first call when the mode is on.
-    JitTried: Boolean;
-    JitCode: TObject;         // a TJitCode, owned by the JIT's registry; nil if not compiled
+    // The JIT (Axon.Jit): compiled at the first call with each set of
+    // argument types, when the mode is on. The codes are TJitCode, owned by
+    // the JIT's registry; nil for a set that is not compiled.
+    JitCodes: TDictionary<string, TObject>;
+    JitLastTypes: TArray<TJType>;   // the last set of argument types, and its code
+    JitLastCode: TObject;
+    JitHaveLast: Boolean;
     JitReason: string;        // why it was not compiled
     constructor Create(ADecl: TFunctionDecl; AClosure: TScope; AIsClosure: Boolean);
     destructor Destroy; override;
@@ -170,6 +174,7 @@ type
     { Calls any function value with positional arguments (used for callbacks). }
     function CallValue(const Fn: TAxValue; const Args: TAxValues): TAxValue;
     function RunCompiled(Code: TObject; const Args: TAxValues): TAxValues;
+    function CompiledFor(F: TFunctionObj; const Args: TAxValues): TObject;
   private
     function MakeRange(E: TRangeExpr; Scope: TScope): TAxValue;
     function EvalLogical(E: TBinaryExpr; Scope: TScope): TAxValue;
@@ -207,7 +212,7 @@ uses
   Axon.Packages, Axon.Source, Axon.Lexer, Axon.Parser,
   Axon.Sparse, Axon.NativeModules,
   Axon.Errors, Axon.Tokens, Axon.Ops, Axon.Builtins, Axon.Complex, Axon.Arrays,
-  Axon.Jit, Axon.Jit.Ir, Axon.Jit.Lower;
+  Axon.Jit, Axon.Jit.Lower;
 
 function StringChars(const S: string): TArray<string>; forward;
 function BJitCompiled(const Args: TAxValues): TAxValue; forward;
@@ -397,6 +402,7 @@ end;
 
 destructor TFunctionObj.Destroy;
 begin
+  JitCodes.Free;
   Closure.Release;
   inherited;
 end;
@@ -998,6 +1004,47 @@ begin
     Result := 'anonymous function';
 end;
 
+{ The compiled code of F for the types of these arguments, compiling it at
+  the first call with them; nil when it does not compile. The last set of
+  types is checked first, so a function called the same way each time costs
+  one comparison per argument. }
+function TInterpreter.CompiledFor(F: TFunctionObj; const Args: TAxValues): TObject;
+var
+  Types: TArray<TJType>;
+  K: Integer;
+  Same: Boolean;
+  Key: string;
+begin
+  SetLength(Types, Length(Args));
+  for K := 0 to High(Args) do
+    Types[K] := JitTypeOf(Args[K]);
+  if F.JitHaveLast and (Length(Types) = Length(F.JitLastTypes)) then
+  begin
+    Same := True;
+    for K := 0 to High(Types) do
+      if Types[K] <> F.JitLastTypes[K] then
+      begin
+        Same := False;
+        Break;
+      end;
+    if Same then
+      Exit(F.JitLastCode);
+  end;
+  if F.JitCodes = nil then
+    F.JitCodes := TDictionary<string, TObject>.Create;
+  Key := '';
+  for K := 0 to High(Types) do
+    Key := Key + Chr(Ord('a') + Ord(Types[K]));
+  if not F.JitCodes.TryGetValue(Key, Result) then
+  begin
+    Result := JitCompile(F.Decl, F, F.FileName, Types, F.JitReason);
+    F.JitCodes.Add(Key, Result);
+  end;
+  F.JitLastTypes := Types;
+  F.JitLastCode := Result;
+  F.JitHaveLast := True;
+end;
+
 { Calls compiled code with the bound arguments. An error it reports is
   raised here, at its site, inside Invoke's frame handling, so the report and
   trace match the interpreter's. }
@@ -1086,6 +1133,7 @@ var
   V: TAxValue;
   Cell: TVarCell;
   Bound: TAxValues;            // the bound parameter values, for compiled code
+  JitCode: TObject;
 begin
   D := F.Decl;
   Fn := DescribeFunction(F);
@@ -1163,15 +1211,14 @@ begin
         Bound[I] := V;
       end;
 
-      // Compiled code, when the JIT is on and the function compiles. Closures
-      // are never compiled: their assignments can reach enclosing scopes.
-      if (JitMode <> jmOff) and not F.IsClosure and not F.JitTried then
-      begin
-        F.JitTried := True;
-        F.JitCode := JitCompile(D, F, F.FileName, F.JitReason);
-      end;
-      if (JitMode <> jmOff) and (F.JitCode <> nil) then
-        Result := RunCompiled(TJitCode(F.JitCode), Bound)
+      // Compiled code, when the JIT is on and the function compiles for
+      // these argument types. Closures are never compiled: their
+      // assignments can reach enclosing scopes.
+      JitCode := nil;
+      if (JitMode <> jmOff) and not F.IsClosure then
+        JitCode := CompiledFor(F, Bound);
+      if JitCode <> nil then
+        Result := RunCompiled(JitCode, Bound)
       else if ExecBody(D.Body, Root) = sigReturn then
       begin
         Result := FReturn;

@@ -55,8 +55,9 @@ function realdivmod(x: real, y: real): real
   return div(x, y) * 10 + mod(x, y)
 end
 
-# Runs interpreted (an unannotated parameter); its result type is declared.
+# Runs interpreted (it uses a string); its result type is declared.
 function legacy(x): real
+  s = "text"
   return x * 2
 end
 

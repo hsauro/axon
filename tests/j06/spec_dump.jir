@@ -1,0 +1,36 @@
+function scale: not compiled: parameter x has no type annotation (it is compiled when called, for the argument types) (1:16)
+
+function both(a: int, b: real): real
+  %0 = call scale(a, 2)  @6:10
+  %1 = call scale(b, 2)  @6:24
+  %2 = i2r %0
+  %3 = add.real %2, %1
+  ret %3
+
+function first: not compiled: parameter v has no type annotation (it is compiled when called, for the argument types) (9:16)
+
+function use(A: matrix{real}, w: vector{int}): real
+  %0 = call first(w)  @14:10
+  %1 = len.int A, 1
+  bound 1, %1  @14:23
+  %2 = len.int A, 2
+  bound 1, %2  @14:26
+  %3 = load.real A, 1, 1
+  %4 = i2r %0
+  %5 = add.real %4, %3
+  ret %5
+
+function scale(x: int, k: int): int
+  %0 = mul.int x, k  @2:3
+  ret %0
+
+function scale(x: real, k: int): real
+  %0 = i2r k
+  %1 = mul.real x, %0
+  ret %1
+
+function first(v: vector{int}): int
+  %0 = len.int v, 0
+  bound 1, %0  @10:12
+  %1 = load.int v, 1
+  ret %1

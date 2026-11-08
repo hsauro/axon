@@ -48,10 +48,18 @@ unit Axon.Jit.Lower;
      so do +, -, *, / and the dotted operators on real arrays, for the
      shapes in LowerArrayOp. for x in v visits the elements of an array.
 
+   - Specialisation (J6). A parameter without an annotation, or annotated
+     plain vector or matrix, takes the type of the argument at a call: from
+     the bound value when the interpreter calls the function, from the
+     static type when compiled code does. The session keeps one lowering per
+     function and parameter types (at most MaxSpecialisations). An
+     unannotated parameter is an untyped variable: it starts with the
+     argument's type and must keep it, as any untyped variable must.
+
    Not compiled yet, and rejected: ranges, masks and colons as indices,
    fields, strings other than print and error arguments, complex numbers,
-   ranges as values, lambdas and nested functions, try, global, keyword
-   arguments, and unannotated parameters (J6).
+   ranges as values, lambdas and nested functions, try, global and keyword
+   arguments.
 
    A TJSession lowers functions on demand and keeps the results, so a call
    can ask for its callee's types; the JIT keeps one session for the
@@ -89,10 +97,17 @@ type
 
   TJEntryState = (esLowering, esLowered, esRejected);
 
-  { A function the session has lowered, or is lowering. }
+const
+  MaxSpecialisations = 8;      // per function; calls beyond run interpreted
+
+type
+
+  { A function the session has lowered, or is lowering, for one list of
+    parameter types. }
   TJEntry = class
   public
     Decl: TFunctionDecl;
+    ParamTypes: TArray<TJType>;
     FuncObj: TObject;
     FileName: string;
     State: TJEntryState;
@@ -106,14 +121,36 @@ type
   TJSession = class
   public
     Resolver: TJResolver;
-    Entries: TObjectDictionary<TFunctionDecl, TJEntry>;
+    Entries: TObjectDictionary<string, TJEntry>;   // by SignatureKey
+    Order: TList<TJEntry>;                         // in the order lowered
+    Counts: TDictionary<TFunctionDecl, Integer>;   // specialisations per function
     constructor Create(const AResolver: TJResolver);
     destructor Destroy; override;
-    { Lowers Decl, or returns what an earlier call found. Never raises for
-      a rejection: the entry's State says. }
-    function Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string): TJEntry;
+    { Lowers Decl for the parameter types, or returns what an earlier call
+      found. Never raises for a rejection: the entry's State says. }
+    function Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
+      const ParamTypes: TArray<TJType>): TJEntry;
     function Resolve(Context: TObject; const Name: string): TJResolved;
   end;
+
+{ The parameter types of Decl for a call with these argument types: an
+  annotation that compiles gives its own type (the argument is converted to
+  it); an unannotated parameter, or one annotated plain vector or matrix,
+  takes the argument's type. False, with the reason, when a parameter cannot
+  be typed. jtNothing in ArgTypes is an argument of a type that does not
+  compile. }
+function SignatureFor(Decl: TFunctionDecl; const ArgTypes: TArray<TJType>;
+  out ParamTypes: TArray<TJType>; out Reason: string): Boolean;
+
+(* The parameter types as text: "int, vector{real}". *)
+function TypesText(const Types: TArray<TJType>): string;
+
+{ Whether Decl has a parameter whose type comes from its arguments. }
+function IsSpecialised(Decl: TFunctionDecl): Boolean;
+
+{ The parameter types from the annotations alone, jtNothing where a type
+  comes from the arguments or does not compile (for --jir). }
+function AnnotatedTypes(Decl: TFunctionDecl): TArray<TJType>;
 
 implementation
 
@@ -219,6 +256,7 @@ type
     procedure EmitReturn(const Vals: TArray<TJValue>; N: TNode);
     procedure CheckBodyShape(Body: TStmtList);
   public
+    ParamTypes: TArray<TJType>;        // from the entry
     constructor Create(ADecl: TFunctionDecl; ASession: TJSession; AEntry: TJEntry; AContext: TObject);
     destructor Destroy; override;
     function Run: TJFunction;
@@ -948,8 +986,20 @@ begin
     Reject('calls the built-in %s, which is not compiled yet', [Name], E);
 end;
 
+function ArgTypesOf(const Args: TArray<TJValue>): TArray<TJType>;
+var
+  K: Integer;
+begin
+  SetLength(Result, Length(Args));
+  for K := 0 to High(Args) do
+    if Storable(Args[K].Typ) then
+      Result[K] := Args[K].Typ
+    else
+      Result[K] := jtNothing;
+end;
+
 { A call of an Axon function: direct when the callee compiles, through the
-  interpreter otherwise. }
+  interpreter otherwise. The callee is specialised on the argument types. }
 function TLowerer.LowerFunctionCall(E: TCallExpr; const R: TJResolved; var Args: TArray<TJValue>;
   T: TJCallTarget; Want: Integer): TArray<TJType>;
 var
@@ -971,9 +1021,11 @@ begin
     Why := 'it is a closure'
   else if not Positional then
     Why := 'it has keyword parameters'
+  else if not SignatureFor(R.Decl, ArgTypesOf(Args), Params, Why) then
+    // through the interpreter, with the reason
   else
   begin
-    Callee := Session.Lower(R.Decl, R.FuncObj, R.FileName);
+    Callee := Session.Lower(R.Decl, R.FuncObj, R.FileName, Params);
     case Callee.State of
       esLowered:
         begin
@@ -1107,7 +1159,9 @@ begin
   if not IsArrayType(V.Typ) then
     Reject('assigns an element of %s, which is %s', [V.Name, JTypeName(V.Typ)], S);
   Elem := ElemOf(V.Typ);
-  if not Numeric(Val.Typ) or (Rank(Val.Typ) > Rank(Elem)) then
+  if not Numeric(Val.Typ) then
+    Reject('assigning %s to elements of an array is not compiled yet', [JTypeName(Val.Typ)], S);
+  if Rank(Val.Typ) > Rank(Elem) then
     Reject('stores %s in %s, which would change its element type', [JTypeName(Val.Typ),
       JTypeName(V.Typ)], S);
   Val := Convert(Val, Elem);
@@ -1698,16 +1752,24 @@ var
   P: TParam;
   T: TJType;
   V: TJVar;
+  K: Integer;
 begin
   F := TJFunction.Create(Decl.Name);
   Scopes.Add(TScopeMap.Create);
-  for P in Decl.Params do
+  for K := 0 to Decl.Params.Count - 1 do
   begin
-    if P.TypeRef = nil then
-      Reject('parameter %s has no type annotation', [P.Name], P);
-    if not TypeOfRef(P.TypeRef, T) then
+    P := Decl.Params[K];
+    // The types come from SignatureFor; jtNothing when none was given.
+    if (K > High(ParamTypes)) or (ParamTypes[K] = jtNothing) then
+    begin
+      if P.TypeRef = nil then
+        Reject('parameter %s has no type annotation (it is compiled when called, for the ' +
+          'argument types)', [P.Name], P);
       Reject('parameter %s: %s', [P.Name, TypeHint(P.TypeRef)], P);
-    V := NewVar(P.Name, T, True, P, 0, True);
+    end;
+    T := ParamTypes[K];
+    // An unannotated parameter is an untyped variable.
+    V := NewVar(P.Name, T, P.TypeRef <> nil, P, 0, True);
     MarkAssigned(V);
     F.Params.Add(V.Reg);
   end;
@@ -1745,13 +1807,99 @@ constructor TJSession.Create(const AResolver: TJResolver);
 begin
   inherited Create;
   Resolver := AResolver;
-  Entries := TObjectDictionary<TFunctionDecl, TJEntry>.Create([doOwnsValues]);
+  Entries := TObjectDictionary<string, TJEntry>.Create([doOwnsValues]);
+  Order := TList<TJEntry>.Create;
+  Counts := TDictionary<TFunctionDecl, Integer>.Create;
 end;
 
 destructor TJSession.Destroy;
 begin
+  Counts.Free;
+  Order.Free;
   Entries.Free;
   inherited;
+end;
+
+function TypesText(const Types: TArray<TJType>): string;
+var
+  K: Integer;
+begin
+  Result := '';
+  for K := 0 to High(Types) do
+  begin
+    if K > 0 then
+      Result := Result + ', ';
+    Result := Result + JTypeName(Types[K]);
+  end;
+end;
+
+function SignatureKey(Decl: TFunctionDecl; const Types: TArray<TJType>): string;
+begin
+  Result := IntToHex(NativeInt(Decl), 16) + '(' + TypesText(Types) + ')';
+end;
+
+function AnnotatedTypes(Decl: TFunctionDecl): TArray<TJType>;
+var
+  K: Integer;
+  T: TJType;
+begin
+  SetLength(Result, Decl.Params.Count);
+  for K := 0 to Decl.Params.Count - 1 do
+    if (Decl.Params[K].TypeRef <> nil) and TypeOfRef(Decl.Params[K].TypeRef, T) then
+      Result[K] := T
+    else
+      Result[K] := jtNothing;
+end;
+
+function IsSpecialised(Decl: TFunctionDecl): Boolean;
+var
+  P: TParam;
+begin
+  for P in Decl.Params do
+    if (P.TypeRef = nil) or ((P.TypeRef.Param = nil) and
+      ((P.TypeRef.Name = 'vector') or (P.TypeRef.Name = 'matrix'))) then
+      Exit(True);
+  Result := False;
+end;
+
+function SignatureFor(Decl: TFunctionDecl; const ArgTypes: TArray<TJType>;
+  out ParamTypes: TArray<TJType>; out Reason: string): Boolean;
+var
+  K: Integer;
+  P: TParam;
+  T, A: TJType;
+begin
+  Reason := '';
+  SetLength(ParamTypes, Decl.Params.Count);
+  if Length(ArgTypes) <> Decl.Params.Count then
+  begin
+    Reason := Format('it takes %d argument(s), not %d', [Decl.Params.Count, Length(ArgTypes)]);
+    Exit(False);
+  end;
+  for K := 0 to Decl.Params.Count - 1 do
+  begin
+    P := Decl.Params[K];
+    A := ArgTypes[K];
+    if (P.TypeRef <> nil) and TypeOfRef(P.TypeRef, T) then
+      ParamTypes[K] := T
+    else if (P.TypeRef <> nil) and (P.TypeRef.Param = nil) and (P.TypeRef.Name = 'vector') and
+      (A in [jtVecReal, jtVecInt]) then
+      ParamTypes[K] := A
+    else if (P.TypeRef <> nil) and (P.TypeRef.Param = nil) and (P.TypeRef.Name = 'matrix') and
+      (A = jtMatReal) then
+      ParamTypes[K] := A
+    else if (P.TypeRef = nil) and (A <> jtNothing) then
+      ParamTypes[K] := A
+    else
+    begin
+      if P.TypeRef <> nil then
+        Reason := Format('parameter %s: %s', [P.Name, TypeHint(P.TypeRef)])
+      else
+        Reason := Format('parameter %s is passed a value of a type that is not compiled', [P.Name]);
+      Exit(False);
+    end;
+  end;
+  Result := True;
 end;
 
 function TJSession.Resolve(Context: TObject; const Name: string): TJResolved;
@@ -1765,19 +1913,38 @@ begin
     Result := Default(TJResolved);
 end;
 
-function TJSession.Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string): TJEntry;
+function TJSession.Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
+  const ParamTypes: TArray<TJType>): TJEntry;
 var
   L: TLowerer;
+  Key: string;
+  N: Integer;
 begin
-  if Entries.TryGetValue(Decl, Result) then
+  Key := SignatureKey(Decl, ParamTypes);
+  if Entries.TryGetValue(Key, Result) then
     Exit;
   Result := TJEntry.Create;
   Result.Decl := Decl;
+  Result.ParamTypes := ParamTypes;
   Result.FuncObj := FuncObj;
   Result.FileName := FileName;
   Result.State := esLowering;
-  Entries.Add(Decl, Result);
+  Entries.Add(Key, Result);
+  Order.Add(Result);
+  if not Counts.TryGetValue(Decl, N) then
+    N := 0;
+  Inc(N);
+  Counts.AddOrSetValue(Decl, N);
+  if N > MaxSpecialisations then
+  begin
+    Result.State := esRejected;
+    Result.Reason := Format('more than %d sets of argument types', [MaxSpecialisations]);
+    Result.RejectLine := Decl.Line;
+    Result.RejectCol := Decl.Col;
+    Exit;
+  end;
   L := TLowerer.Create(Decl, Self, Result, FuncObj);
+  L.ParamTypes := ParamTypes;
   try
     try
       Result.Func := L.Run;

@@ -77,7 +77,7 @@ Delphi exceptions cannot unwind through MIR-generated frames on Win64, because t
 - **Mode.** `--jit=off|on|force` on the command line, or the environment variable `AXON_JIT`. The default was `off` until J5 and is now `on`.
 - **`on`.** A function is compiled at its first call when every parameter is annotated with a supported type, and when inference accepts the body. Compiling is cheap: MIR's author measures about 0.25 ms for a sieve. So there is no call-count threshold, at least at first.
 - **Cache.** The compiled code is kept per function and per argument-type signature. A call whose argument types do not match the annotations runs interpreted, as now.
-- **`force`.** `force` additionally specialises unannotated functions on the runtime types of their arguments (J6). It also reports how many calls ran compiled, so the test suite proves it exercises the JIT.
+- **`force`.** `force` behaves as `on` (specialisation of unannotated functions, J6, applies to both). `AXON_JIT_LOG` shows which functions a run compiled.
 - **For tests.** `__jit_compiled(f)` returns `true` once `f` has compiled code, like `__copies()`.
 
 ### D7. Boxed boundary, unboxed inside
@@ -221,9 +221,16 @@ Every kernel in `bench/` now compiles. In the full suite with the JIT forced on,
 
 ### J6 — Specialisation of unannotated functions
 
-- [ ] At a call, an unannotated function is specialised on the concrete argument types, then cached per signature
-- [ ] Inference is shared with J1, so the rejection rules are unchanged
-- [ ] A limit on specialisations per function, with interpretation beyond it
+- [x] A parameter without an annotation, or annotated plain `vector` or `matrix`, takes the argument's type:
+  - **From the interpreter.** When the interpreter calls the function, the type comes from the bound value. `Invoke` keeps a code per set of argument types on the `TFunctionObj`, and the last set is checked first, so a function called the same way each time costs one comparison per argument.
+  - **From compiled code.** A compiled call specialises its callee on the static types of its arguments.
+
+  The session keys its entries by function and parameter types (`SignatureFor`, `SignatureKey`). Logs and the IDE report name specialisations with their types, as in `sq(real)`
+- [x] Inference is J1's: an unannotated parameter is an untyped variable, so a body that changes its type is rejected for that signature only. For example, `changes(int)` runs interpreted while `changes(real)` compiles
+- [x] At most eight specialisations per function (`MaxSpecialisations`); calls with further argument types run interpreted, with the reason given
+- [x] `--jir` prints, after the top-level functions, the specialisations that calls in the file created. `tests/j06` covers the dump, results against interpreted runs (recursion, scalars, plain `matrix` and `vector`, a parameter that changes type, the limit), and an error trace through a specialised function
+
+In the full suite with the JIT forced on, 127 functions compile (85 after J4). Most of the remaining rejections are calls with arguments of types the JIT does not compile, such as strings, lists and records.
 
 ### J7 — ODE right-hand sides
 
