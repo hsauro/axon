@@ -48,6 +48,15 @@ Nov 7, 2026 · Herbert Sauro
   - [Overloading](#overloading)
   - [Recursion and evaluation order](#recursion-and-evaluation-order)
 - [Errors](#errors)
+- [Built-in functions](#built-in-functions)
+  - [Array functions](#array-functions)
+  - [Sparse matrix functions](#sparse-matrix-functions)
+  - [Elementary functions](#elementary-functions)
+  - [Rounding and integer functions](#rounding-and-integer-functions)
+  - [Complex number functions](#complex-number-functions)
+  - [Output and text functions](#output-and-text-functions)
+  - [Lists and dictionaries](#lists-and-dictionaries)
+  - [Other built-in functions](#other-built-in-functions)
 - [Standard modules](#standard-modules)
   - [The linalg module](#the-linalg-module)
   - [The io module](#the-io-module)
@@ -591,6 +600,113 @@ IndexError: index 5 is out of bounds for a list of length 3
 ```
 
 The first line is `Kind: message`. Each further line is one trace frame, innermost first, giving the file, line and column, followed by `in name` for a frame inside a function. `error(err)` keeps the original trace. At the REPL it prints the same report and returns to the prompt with the session's variables intact.
+
+## Built-in functions
+
+These functions are always available, without an `import`. Each table links to the section that gives the full rules. Functions of the standard modules (`random.randn`, `io.read_file`, `plot.line` and so on) are listed under [Standard modules](#standard-modules). At the REPL, `help name` shows a one-line description of any of them, and in the IDE <kbd>F1</kbd> does the same.
+
+### Array functions
+
+| Function | Result |
+| --- | --- |
+| `zeros(m, n)`, `zeros(n)` | An m×n `real` matrix, or a vector of length n, of zeros |
+| `ones(m, n)`, `ones(n)` | The same, filled with ones |
+| `eye(n)`, `eye(m, n)` | The identity matrix |
+| `rand()`, `rand(n)`, `rand(m, n)` | Uniform random reals in [0, 1); `random.seed` makes them repeat |
+| `linspace(a, b, n)` | A `real` vector of n points from a to b inclusive |
+| `size(A)`, `size(A, d)` | The row and column counts as two values (`[m, n] = size(A)`), or the count along dimension d |
+| `length(x)` | The number of elements of an array, list, string or dictionary |
+| `reshape(A, m, n)`, `reshape(A, n)` | The elements of `A` in column-major order, as an m×n matrix or a vector |
+| `eltype(A)` | The element type of an array, as a string: `"bool"`, `"int"`, `"real"` or `"complex"` |
+| `sum(A)`, `sum(A, d)` | The sum of all elements, or the sums along dimension d |
+| `prod(A)`, `prod(A, d)` | The product of all elements, or the products along dimension d |
+| `mean(A)`, `mean(A, d)` | The mean of all elements, or the means along dimension d (`mean(A, 1)` is the row of column means) |
+| `min(A)`, `max(A)` | The smallest or largest element |
+| `min(a, b)`, `max(a, b)` | The smaller or larger value, elementwise with broadcasting |
+| `all(A)`, `any(A)` | Whether every, or some, element of a `bool` array is `true` |
+| `dot(u, v)` | The inner product, with `u` conjugated |
+| `adjoint(A)` | The conjugate transpose, the same as `A'` |
+
+See [Vectors and matrices](#vectors-and-matrices) and [Linear-algebra operators](#linear-algebra-operators).
+
+### Sparse matrix functions
+
+| Function | Result |
+| --- | --- |
+| `sparse(i, j, v, m, n)` | An m×n sparse matrix with entries `v[k]` at `(i[k], j[k])` |
+| `sparse(A)` | A dense matrix as a sparse one |
+| `speye(n)`, `speye(m, n)` | The sparse identity |
+| `nnz(S)` | The number of stored entries of a sparse matrix, or of nonzero elements of an array |
+| `full(S)` | A sparse matrix as a dense one |
+| `splu(S)` | Two sparse values `L, U` with `S = L*U`: `[L, U] = splu(S)` |
+
+See [Sparse operands](#sparse-operands).
+
+### Elementary functions
+
+`sqrt`, `exp`, `log`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh` and `atanh` take a number or an array and apply elementwise. A real argument outside the function's domain gives NaN (`sqrt(-1.0)`, `log(-1.0)`); a complex argument gives the principal value. `log` is the natural logarithm.
+
+| Function | Result |
+| --- | --- |
+| `abs(x)` | The absolute value, or the modulus of a complex number |
+| `factorial(n)` | n! for an `int` n ≥ 0 |
+
+### Rounding and integer functions
+
+| Function | Result |
+| --- | --- |
+| `int(x)` | Converts to `int`, truncating toward zero |
+| `floor(x)` | The largest integer not above x, as an `int` |
+| `ceil(x)` | The smallest integer not below x, as an `int` |
+| `round(x)` | The nearest integer, halves away from zero, as an `int` |
+| `div(a, b)` | Floored division: `floor(a / b)` |
+| `mod(a, b)` | The remainder of `div`, with the sign of `b` |
+
+See [Numeric promotion](#numeric-promotion).
+
+### Complex number functions
+
+| Function | Result |
+| --- | --- |
+| `complex(re, im)`, `complex(x)` | A complex number from its parts, or from a real |
+| `real(z)`, `imag(z)` | The real or imaginary part |
+| `conj(z)` | The complex conjugate |
+| `arg(z)` | The argument (phase angle) in radians |
+| `abs(z)` | The modulus |
+
+### Output and text functions
+
+| Function | Result |
+| --- | --- |
+| `print(a, b, ...)` | Writes the values separated by spaces, without a newline |
+| `println(a, b, ...)` | Writes the values separated by spaces, then a newline |
+| `format(x, decimals)` | `x` as text with exactly that many digits after the point: `format(3.14159, 2)` is `"3.14"` |
+| `string(x)` | The display form of any value, as a string |
+| `display_size(rows, cols)` | Arrays up to rows×cols are displayed in full; `display_size()` restores 10×8 |
+| `display_decimals(n)` | Displayed reals show n decimals (1 to 15); `display_decimals()` restores the default |
+
+See [Printing](#printing) and [Display](#display).
+
+### Lists and dictionaries
+
+| Function | Result |
+| --- | --- |
+| `append(l, x)` | A new list or vector with `x` added at the end |
+| `dict(key => value, ...)` | A dictionary with the given entries |
+| `get(d, key, default)` | `d[key]`, or `default` when the key is missing |
+| `haskey(d, key)` | Whether the dictionary has the key |
+| `keys(d)` | The keys, as a list in insertion order |
+
+See [Lists, records and dictionaries](#lists-records-and-dictionaries).
+
+### Other built-in functions
+
+| Function | Result |
+| --- | --- |
+| `typeof(x)` | The type of a value, as a string: `"int"`, `"real"`, `"vector"`, `"matrix"`, `"string"`, `"dict"` and so on |
+| `isequal(a, b)` | Whether two values are equal as whole values (see [Comparison](#comparison)) |
+| `error(message)`, `error(kind, message)` | Raises an error (see [Errors](#errors)) |
+| `keep(f)` | Keeps a callback valid after the `extern` call that received it (see [Foreign functions](#foreign-functions)) |
 
 ## Standard modules
 

@@ -91,7 +91,7 @@ const
     (Name: 'acosh';    Params: '(x)';     Text: 'The inverse hyperbolic cosine'),
     (Name: 'atanh';    Params: '(x)';     Text: 'The inverse hyperbolic tangent'),
     (Name: 'abs';      Params: '(x)';     Text: 'The absolute value, or the modulus of a complex number'),
-    (Name: 'int';      Params: '(x)';     Text: 'Converts to int; a real must be a whole number'),
+    (Name: 'int';      Params: '(x)';     Text: 'Converts to int, truncating toward zero'),
     (Name: 'floor';    Params: '(x)';     Text: 'The largest integer not above x'),
     (Name: 'ceil';     Params: '(x)';     Text: 'The smallest integer not below x'),
     (Name: 'round';    Params: '(x)';     Text: 'The nearest integer, halves away from zero'),

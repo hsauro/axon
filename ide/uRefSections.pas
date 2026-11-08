@@ -24,12 +24,15 @@ uses
 const
   // Anchor, then the built-ins it documents. Keep in step with the
   // reference's headings: a stale anchor only means no section is shown.
-  Sections: array[0..9] of string = (
+  Sections: array[0..11] of string = (
     'printing: print println display_size display_decimals format',
     'strings-1: string',
     'vectors-and-matrices: zeros ones eye rand linspace size length reshape ' +
       'eltype sum prod mean min max all any',
-    'numeric-promotion: int floor ceil round real complex div mod sqrt log',
+    'numeric-promotion: int floor ceil round real complex div mod',
+    'elementary-functions: sqrt exp log sin cos tan asin acos atan sinh cosh tanh ' +
+      'asinh acosh atanh abs factorial',
+    'complex-number-functions: imag conj arg',
     'sparse-operands: sparse speye nnz full splu',
     'lists-records-and-dictionaries: append get keys haskey dict typeof',
     'comparison: isequal',
