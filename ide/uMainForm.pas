@@ -31,7 +31,7 @@ interface
 
 uses
   System.SysUtils, System.Types, System.UITypes, System.Classes,
-  System.Generics.Collections,
+  System.Generics.Collections, System.IniFiles,
   FMX.Types, FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs, FMX.StdCtrls,
   FMX.Layouts, FMX.ListBox, FMX.TabControl, FMX.Menus, FMX.Objects,
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
@@ -104,6 +104,9 @@ type
     FCheckAgain: Boolean;
     // Figures from plot.show()
     FShowDir: string;
+    // Layout remembered between sessions
+    FPlotPane: TLayout;
+    FNormalBounds: TRect;      // the window's bounds when last not maximized
     FFigureShown: Boolean;     // since the current run or REPL command started
     FFigureCount: Integer;
     procedure BuildUI;
@@ -128,6 +131,9 @@ type
     procedure CheckOutput(Kind: TOutputKind; const Text: string);
     procedure CheckExit(ExitCode: Integer);
     procedure SetupShowDir;
+    procedure FormResized(Sender: TObject);
+    procedure LoadLayout(Ini: TCustomIniFile);
+    procedure SaveLayout(Ini: TCustomIniFile);
     function TryShowFigure(const Line: string): Boolean;
     procedure BuildMenu;
     function AddMenuItem(Parent: TFmxObject; const Text, ShortCut: string;
@@ -204,7 +210,7 @@ uses
 {$ELSE}
   Posix.Stdlib,
 {$ENDIF}
-  System.IOUtils, System.IniFiles, System.DateUtils, System.Math,
+  System.IOUtils, System.DateUtils, System.Math,
   FMX.ActnList, FMX.DialogService.Sync,
   uAxonHighlighter;
 
@@ -254,6 +260,8 @@ begin
   SetupShowDir;
   BuildUI;
   BuildMenu;
+  FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
+  OnResize := FormResized;
   LoadSettings;
   RebuildRecentMenu;
   // Files named on the command line, or an empty document.
@@ -361,6 +369,7 @@ begin
 
   // Plot pane on the right.
   Right := TLayout.Create(Self);
+  FPlotPane := Right;
   Right.Parent := Body;
   Right.Align := TAlignLayout.Right;
   Right.Width := 380;
@@ -716,6 +725,7 @@ begin
       if S <> '' then
         FRecent.Add(S);
     end;
+    LoadLayout(Ini);
   finally
     Ini.Free;
   end;
@@ -733,6 +743,7 @@ begin
       Ini.EraseSection('Recent');
       for K := 0 to FRecent.Count - 1 do
         Ini.WriteString('Recent', 'File' + IntToStr(K + 1), FRecent[K]);
+      SaveLayout(Ini);
       Ini.UpdateFile;
     finally
       Ini.Free;
@@ -740,6 +751,78 @@ begin
   except
     // Settings are a convenience; failing to save them is not an error.
   end;
+end;
+
+{ Keeps the bounds of the normal (not maximized) window, which is what a
+  maximized window returns to and what is saved. }
+procedure TfrmMain.FormResized(Sender: TObject);
+begin
+  // The resize that maximizes a window arrives before WindowState changes,
+  // so the state is read once the event has been handled.
+  TThread.ForceQueue(nil,
+    procedure
+    begin
+      if WindowState = TWindowState.wsNormal then
+        FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
+    end);
+end;
+
+procedure TfrmMain.LoadLayout(Ini: TCustomIniFile);
+var
+  R: TRect;
+  K, W, H: Integer;
+  Visible: Boolean;
+  Area: TRectF;
+begin
+  if not Ini.SectionExists('Window') then
+    Exit;
+  W := Ini.ReadInteger('Window', 'Width', Width);
+  H := Ini.ReadInteger('Window', 'Height', Height);
+  R := TRect.Create(Ini.ReadInteger('Window', 'Left', Left), Ini.ReadInteger('Window', 'Top', Top),
+    0, 0);
+  R.Right := R.Left + Max(W, 500);
+  R.Bottom := R.Top + Max(H, 360);
+  // Restore the position only if the title bar is on a display now (a
+  // monitor may have been disconnected); otherwise keep the window centred.
+  Visible := False;
+  for K := 0 to Screen.DisplayCount - 1 do
+  begin
+    Area := Screen.Displays[K].Workarea;
+    if (R.Top >= Area.Top) and (R.Top < Area.Bottom - 20) and
+      (R.Left < Area.Right - 50) and (R.Right > Area.Left + 50) then
+      Visible := True;
+  end;
+  if Visible then
+  begin
+    Position := TFormPosition.Designed;
+    SetBounds(R.Left, R.Top, R.Width, R.Height);
+  end
+  else
+    SetBounds(Left, Top, R.Width, R.Height);
+  FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
+  if Ini.ReadBool('Window', 'Maximized', False) then
+    WindowState := TWindowState.wsMaximized;
+
+  // Pane sizes, kept within what the window can hold.
+  FPlotPane.Width := EnsureRange(Ini.ReadInteger('Window', 'PlotWidth', Round(FPlotPane.Width)),
+    150, Max(150, Width - 300));
+  FBottomTabs.Height := EnsureRange(Ini.ReadInteger('Window', 'BottomHeight',
+    Round(FBottomTabs.Height)), 80, Max(80, Height - 220));
+  K := Ini.ReadInteger('Window', 'BottomTab', 0);
+  if (K >= 0) and (K < FBottomTabs.TabCount) then
+    FBottomTabs.TabIndex := K;
+end;
+
+procedure TfrmMain.SaveLayout(Ini: TCustomIniFile);
+begin
+  Ini.WriteInteger('Window', 'Left', FNormalBounds.Left);
+  Ini.WriteInteger('Window', 'Top', FNormalBounds.Top);
+  Ini.WriteInteger('Window', 'Width', FNormalBounds.Width);
+  Ini.WriteInteger('Window', 'Height', FNormalBounds.Height);
+  Ini.WriteBool('Window', 'Maximized', WindowState = TWindowState.wsMaximized);
+  Ini.WriteInteger('Window', 'PlotWidth', Round(FPlotPane.Width));
+  Ini.WriteInteger('Window', 'BottomHeight', Round(FBottomTabs.Height));
+  Ini.WriteInteger('Window', 'BottomTab', FBottomTabs.TabIndex);
 end;
 
 procedure TfrmMain.AddRecent(const Path: string);
