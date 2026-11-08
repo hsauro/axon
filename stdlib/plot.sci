@@ -416,7 +416,26 @@ export function show(; scale = 2.0)
   end
   scene = render(current)
   scene.scale = scale + 0.0
-  graphics.show(scene)
+  if interactive(current)
+    # The IDE also gets the figure itself, which it draws in its interactive
+    # chart (zoom, pan, editing) instead of the image.
+    graphics.show(scene, current)
+  else
+    graphics.show(scene)
+  end
+end
+
+# Whether the IDE's interactive chart can draw the figure: line and scatter
+# series in 2-D, with round-number ticks (bars, histograms, surfaces and
+# named ticks are shown as the image).
+function interactive(fig)
+  if fig.three_d or typeof(fig.xcategories) != "nothing" or typeof(fig.xticks) != "nothing"
+    return false
+  end
+  for s in fig.series
+    if s.type != "line" and s.type != "scatter" return false end
+  end
+  return length(fig.series) > 0
 end
 
 ## The current figure, as a record (nothing before the first plotting call).

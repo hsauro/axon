@@ -629,6 +629,10 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 | `write_file(path, text)` | Writes the string as UTF-8, replacing the file; returns `nothing` |
 | `file_exists(path)` | `true` when the file exists |
 | `delete_file(path)` | Deletes the file and returns `true`, or returns `false` when there was no such file |
+| `write_json(path, value)` | Writes the value as JSON text (UTF-8), replacing the file; returns `nothing` |
+| `read_json(path)` | The value described by the JSON text in the file |
+
+JSON and Axon values correspond as follows. Writing: `nothing` is `null`; `bool`, `int` and `real` are JSON literals, reals with enough digits to read back exactly and a `.0` on whole numbers, and NaN and infinities `null`; strings are escaped; lists and ranges are arrays; records, and dictionaries with string keys, are objects; a vector is an array of numbers and a matrix an array of its rows. Complex numbers, sparse matrices and functions raise `TypeError`. Reading: `null` is `nothing`; a number with no point or exponent that fits in an `int` is an `int`, any other a `real`, read exactly; an array of numbers (with `null` read as NaN) is a vector, an array of such arrays of one length is a matrix, and any other array is a list; an object is a record when every key is a valid name and a dictionary otherwise. Text that is not valid JSON raises `IOError`.
 
 ### The time module
 
@@ -676,7 +680,7 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 `graphics` is a core module that renders a scene to a file through the Skia library. It is the drawing layer under `plot`. Skia loads at the first call that needs it; when it cannot be loaded, that call raises `ForeignError` and the rest of the language is unaffected. On Windows Skia is the shipped `sk4d.dll`; on macOS it is linked into the interpreter.
 
 - **`save(scene, path)`** writes the scene to `path`, whose extension chooses the format: `.png` (raster), `.svg` or `.pdf` (vector, with text kept as text). Any other extension raises `ArgumentError`, and a file that cannot be written raises `IOError`.
-- **`show(scene)`** renders the scene to a PNG and shows it, and returns the file's path. When the environment variable `AXON_SHOW_DIR` is set, as it is for programs run from the IDE, the file is written there and a line holding U+0003, `show `, and the path is written to standard error, so the front end can display it while the program runs. Otherwise the file goes to a temporary folder and opens in the system's image viewer; if no viewer can be started, it raises `ForeignError`.
+- **`show(scene)`** and **`show(scene, data)`** render the scene to a PNG and show it, and return the file's path. With `data`, a front end also gets the value as JSON next to the PNG, under the same name with the extension `.json`; `plot.show` passes the figure record, which the IDE draws in its interactive chart. When the environment variable `AXON_SHOW_DIR` is set, as it is for programs run from the IDE, the file is written there and a line holding U+0003, `show `, and the path is written to standard error, so the front end can display it while the program runs. Otherwise the file goes to a temporary folder and opens in the system's image viewer; if no viewer can be started, it raises `ForeignError`.
 - **`text_width(text, size)`** and **`text_width(text, size, font)`** return the width in points of the text as drawn, for layout.
 - **Scenes.** A scene is a record with `width` and `height` in points (1/72 inch; default 640 by 480), `background` (a colour, default `"white"`), `scale` (pixels per point for PNG, default 1) and `items`, a list of item records drawn in order. Coordinates run from the top-left corner with y pointing down.
 - **Items.** Each item has a `kind`:
@@ -736,7 +740,7 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 | `grid(on)`, `legend(on)` | Show or hide the grid and the legend (both shown by default) |
 | `legend_position(where)` | Places the legend: `"best"` (the default), `"top right"`, `"top left"`, `"bottom right"`, `"bottom left"`, or `"outside"`, to the right of the plot area, which is narrowed to make room |
 | `save(path; scale = 2)` | Writes the current figure as PNG, SVG or PDF, chosen by the extension; `scale` sets PNG pixels per point |
-| `show(; scale = 2)` | Shows the current figure through `graphics.show`: in the IDE's plot pane, or in the system's image viewer |
+| `show(; scale = 2)` | Shows the current figure through `graphics.show`: in the IDE's plot pane, or in the system's image viewer. In the IDE, a figure with only line and scatter series (no surface, bars or named ticks) is drawn in an interactive chart that can be zoomed, panned and edited; other figures are shown as the image |
 | `gcf()` | The current figure as a record, or `nothing` before the first plotting call |
 
 - **Bar charts.** Bars of several series at the same positions overlap; to place them side by side, offset `x` and narrow `width`, as in `plot.bar(x - 0.2, a, width = 0.4)` and `plot.bar(x + 0.2, b, width = 0.4)`, and name the groups with `plot.xticks(x, names)`. Every series with categories in one figure must use the same list.

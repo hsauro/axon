@@ -21,6 +21,7 @@ uses
   uAxonMarkdown in 'uAxonMarkdown.pas',
   uPreferences in 'uPreferences.pas',
   uRefSections in 'uRefSections.pas',
+  uFigureChart in 'uFigureChart.pas',
   Axon.Version in '..\src\Axon.Version.pas';
 
 // The build's resources (AxonIDE.res: icon, version information and the

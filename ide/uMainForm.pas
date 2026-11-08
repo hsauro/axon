@@ -55,7 +55,8 @@ uses
   FMX.Layouts, FMX.ListBox, FMX.TabControl, FMX.Menus, FMX.Objects,
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
   uSkiaCodeEditor, uCodeEditorTypes, uFindBar, uProcessRunner, uRunReport,
-  uRhoMarkdownViewer, uPreferences, uRefSections, Axon.Version;
+  uRhoMarkdownViewer, uPreferences, uRefSections, Axon.Version, SkPlotPaintBox,
+  uFigureChart;
 
 type
   { Text colours of the output panes, per theme. }
@@ -83,6 +84,7 @@ type
     FTabs: TTabControl;
     FOutput: TListBox;
     FPlotImage: TImage;
+    FPlotChart: TSkPlotPaintBox;   // line and scatter figures, interactive
     FPlotCaption: TLabel;
     FStatus: TLabel;
     FCaretInfo: TLabel;
@@ -643,6 +645,15 @@ begin
   FPlotImage.Align := TAlignLayout.Client;
   FPlotImage.WrapMode := TImageWrapMode.Fit;
   FPlotImage.Margins.Rect := TRectF.Create(4, 4, 4, 4);
+  // Line and scatter figures from plot.show are drawn here instead, where
+  // they can be zoomed (wheel, Shift-drag), panned (drag), reset
+  // (Ctrl+double-click) and edited (double-click); see uFigureChart.
+  FPlotChart := TSkPlotPaintBox.Create(Self);
+  FPlotChart.Parent := Right;
+  FPlotChart.Align := TAlignLayout.Client;
+  FPlotChart.Margins.Rect := TRectF.Create(4, 4, 4, 4);
+  FPlotChart.ZoomPanEnabled := True;
+  FPlotChart.Visible := False;
   Split := TSplitter.Create(Self);
   Split.Parent := Body;
   Split.Align := TAlignLayout.Right;
@@ -1587,6 +1598,8 @@ begin
     Exit;
   try
     FPlotImage.Bitmap.LoadFromFile(Newest);
+    FPlotChart.Visible := False;
+    FPlotImage.Visible := True;
     FPlotCaption.Text := ExtractFileName(Newest);
   except
     FPlotCaption.Text := 'Cannot show ' + ExtractFileName(Newest);
@@ -2305,8 +2318,23 @@ begin
   if not Result then
     Exit;
   Path := Line.Substring(Length(Marker)).Trim;
+  // A figure with its data next to the PNG (line and scatter plots) goes to
+  // the interactive chart; any other figure is shown as the image.
+  if TFile.Exists(TPath.ChangeExtension(Path, '.json')) and
+    LoadFigure(FPlotChart, TPath.ChangeExtension(Path, '.json')) then
+  begin
+    FPlotImage.Visible := False;
+    FPlotChart.Visible := True;
+    Inc(FFigureCount);
+    FPlotCaption.Text := Format('Figure %d: wheel zooms, drag pans, double-click edits',
+      [FFigureCount]);
+    FFigureShown := True;
+    Exit;
+  end;
   try
     FPlotImage.Bitmap.LoadFromFile(Path);
+    FPlotChart.Visible := False;
+    FPlotImage.Visible := True;
     Inc(FFigureCount);
     FPlotCaption.Text := Format('Figure %d (plot.show)', [FFigureCount]);
     FFigureShown := True;

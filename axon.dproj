@@ -5,10 +5,11 @@
         <FrameworkType>None</FrameworkType>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
-        <Platform Condition="'$(Platform)'==''">OSXARM64</Platform>
+        <Platform Condition="'$(Platform)'==''">Win64</Platform>
         <TargetedPlatforms>131074</TargetedPlatforms>
         <AppType>Console</AppType>
         <MainSource>axon.dpr</MainSource>
+        <ProjectName Condition="'$(ProjectName)'==''">axon</ProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
         <Base>true</Base>
@@ -123,6 +124,7 @@ xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md" "$(MSBuil
         <DCCReference Include="src\Axon.TimeModule.pas"/>
         <DCCReference Include="src\Axon.Random.pas"/>
         <DCCReference Include="src\Axon.FloatParse.pas"/>
+        <DCCReference Include="src\Axon.Json.pas"/>
         <DCCReference Include="src\Axon.OdeCore.pas"/>
         <DCCReference Include="src\native\Axon.Native.Cvode.pas"/>
         <DCCReference Include="src\Axon.Graphics.pas"/>

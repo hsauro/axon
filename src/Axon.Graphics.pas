@@ -25,7 +25,8 @@ uses
   System.SysUtils, System.Classes, System.Math, System.Generics.Collections,
   System.Skia.API,
   System.IOUtils,
-  Axon.Errors, Axon.Values, Axon.Ops, Axon.Arrays, Axon.NativeModules, Axon.Platform;
+  Axon.Errors, Axon.Values, Axon.Ops, Axon.Arrays, Axon.NativeModules, Axon.Platform,
+  Axon.Json;
 
 type
   TColor32 = Cardinal;   // ARGB
@@ -797,11 +798,14 @@ end;
 var
   ShowCount: Integer;
 
-{ graphics.show(scene): renders the scene to a PNG and shows it. Under a
-  front end that sets AXON_SHOW_DIR (the IDE), the file goes there and a
-  line #3"show <path>" on stderr tells the front end to display it;
-  otherwise it goes to a temporary folder and opens in the system viewer.
-  Returns the path. }
+{ graphics.show(scene) or graphics.show(scene, data): renders the scene to a
+  PNG and shows it. Under a front end that sets AXON_SHOW_DIR (the IDE), the
+  file goes there and a line #3"show <path>" on stderr tells the front end to
+  display it; otherwise it goes to a temporary folder and opens in the
+  system viewer. Returns the path. With data (plot's figure record), the
+  front end also gets the data as JSON next to the PNG, under the same name
+  with the extension .json, written before the #3 line; the IDE draws a
+  figure with such a file in its interactive chart instead of the image. }
 function BShow(const Args: TAxValues): TAxValue;
 var
   Scene: TRecordObj;
@@ -831,6 +835,16 @@ begin
     [MainThreadID, ShowCount, TThread.GetTickCount64 mod 1000000]));
   EnsureSkia;
   SavePng(Scene, W, H, Path);
+  if FrontEnd and (Length(Args) > 1) and (Args[1].Kind <> vkNothing) then
+    try
+      TFile.WriteAllBytes(TPath.ChangeExtension(Path, '.json'),
+        TEncoding.UTF8.GetBytes(ValueToJson(Args[1], 'graphics.show')));
+    except
+      on E: EAxonError do
+        raise;
+      on E: Exception do
+        RaiseFmt(IOError, 'graphics.show: cannot write the figure data: %s', [E.Message]);
+    end;
   if FrontEnd then
   begin
     Writeln(ErrOutput, #3'show ' + Path);
@@ -862,7 +876,7 @@ end;
 procedure DefineGraphics(const Define: TProc<string, TAxValue>);
 begin
   Define('save', BuiltinValue('save', BSave, 2, 2));
-  Define('show', BuiltinValue('show', BShow, 1, 1));
+  Define('show', BuiltinValue('show', BShow, 1, 2));
   Define('text_width', BuiltinValue('text_width', BTextWidth, 2, 3));
 end;
 

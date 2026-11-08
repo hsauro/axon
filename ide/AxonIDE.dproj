@@ -5,10 +5,11 @@
         <FrameworkType>FMX</FrameworkType>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
-        <Platform Condition="'$(Platform)'==''">OSXARM64</Platform>
+        <Platform Condition="'$(Platform)'==''">Win64</Platform>
         <TargetedPlatforms>131074</TargetedPlatforms>
         <AppType>Application</AppType>
         <MainSource>AxonIDE.dpr</MainSource>
+        <ProjectName Condition="'$(ProjectName)'==''">AxonIDE</ProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
         <Base>true</Base>
@@ -48,7 +49,7 @@
     <PropertyGroup Condition="'$(Base)'!=''">
         <DCC_ExeOutput>..\$(Platform)\$(Config)</DCC_ExeOutput>
         <DCC_DcuOutput>.\$(Platform)\$(Config)\dcu</DCC_DcuOutput>
-        <DCC_UnitSearchPath>..\..\RhodyComponents\RhoEditor\Source;..\..\RhodyComponents\RhoMarkDownViewer\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\RhodyComponents\PlottingComponent\Source;..\..\RhodyComponents\RhoEditor\Source;..\..\RhodyComponents\RhoMarkDownViewer\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
         <DCC_Define>SKIA;$(DCC_Define)</DCC_Define>
         <SanitizedProjectName>AxonIDE</SanitizedProjectName>
@@ -99,6 +100,7 @@
         <DCCReference Include="uAxonMarkdown.pas"/>
         <DCCReference Include="uPreferences.pas"/>
         <DCCReference Include="uRefSections.pas"/>
+        <DCCReference Include="uFigureChart.pas"/>
         <DCCReference Include="..\src\Axon.Version.pas"/>
         <RcCompile Include="AxonIDEStyles.rc">
             <Form>AxonIDEStyles.res</Form>

@@ -90,6 +90,21 @@ At the prompt, `run "file.sci"` does the same for any file.
 the program is still running. Figures saved with `plot.save("name.png")` are
 shown too, when the program ends.
 
+Line and scatter plots are shown in an interactive chart:
+
+| Action | Effect |
+| --- | --- |
+| Mouse wheel | Zoom in or out around the pointer |
+| Drag | Pan |
+| <kbd>Shift</kbd>+drag | Zoom to the box you draw |
+| <kbd>Ctrl</kbd>+double-click | Back to the whole plot |
+| Double-click | Edit titles, axes, series styles and the legend |
+| Click a legend entry | Hide or show that series |
+| Right-click | Copy the image, or export it as PNG or PDF |
+
+Bar charts, histograms, surfaces and plots with named ticks (`plot.xticks`) are
+shown as an image.
+
 ## Help
 
 <kbd>F1</kbd> shows help on the name under the caret: a built-in function, a

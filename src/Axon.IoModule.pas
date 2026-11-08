@@ -10,7 +10,7 @@ implementation
 
 uses
   System.SysUtils, System.Classes, System.IOUtils,
-  Axon.Errors, Axon.Values, Axon.Ops, Axon.NativeModules;
+  Axon.Errors, Axon.Values, Axon.Ops, Axon.NativeModules, Axon.Json;
 
 function PathArg(const Fn: string; const V: TAxValue): string;
 begin
@@ -109,6 +109,38 @@ begin
   Result := BoolValue(True);
 end;
 
+{ io.write_json(path, value): the value as JSON text (Axon.Json says how
+  each kind of value is written). }
+function BWriteJson(const Args: TAxValues): TAxValue;
+var
+  Path, Text: string;
+begin
+  Path := PathArg('write_json', Args[0]);
+  Text := ValueToJson(Args[1], 'write_json');
+  try
+    TFile.WriteAllBytes(Path, TEncoding.UTF8.GetBytes(Text));
+  except
+    on E: Exception do
+      IoFail('write_json', Path, E);
+  end;
+  Result := NothingValue;
+end;
+
+{ io.read_json(path): the value the JSON text in the file describes. }
+function BReadJson(const Args: TAxValues): TAxValue;
+var
+  Path, Text: string;
+begin
+  Path := PathArg('read_json', Args[0]);
+  try
+    Text := TEncoding.UTF8.GetString(TFile.ReadAllBytes(Path));
+  except
+    on E: Exception do
+      IoFail('read_json', Path, E);
+  end;
+  Result := JsonToValue(Text, 'read_json');
+end;
+
 procedure DefineIo(const Define: TProc<string, TAxValue>);
 begin
   Define('read_file', BuiltinValue('read_file', BReadFile, 1, 1));
@@ -116,6 +148,8 @@ begin
   Define('write_file', BuiltinValue('write_file', BWriteFile, 2, 2));
   Define('file_exists', BuiltinValue('file_exists', BFileExists, 1, 1));
   Define('delete_file', BuiltinValue('delete_file', BDeleteFile, 1, 1));
+  Define('write_json', BuiltinValue('write_json', BWriteJson, 2, 2));
+  Define('read_json', BuiltinValue('read_json', BReadJson, 1, 1));
 end;
 
 initialization

@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..89] of TBuiltinDoc = (
+  BuiltinDocs: array[0..91] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -116,6 +116,8 @@ const
     (Name: 'write_file';  Params: '(path, text)'; Text: 'Writes a string to a file as UTF-8, replacing it'),
     (Name: 'file_exists'; Params: '(path)'; Text: 'True when the file exists'),
     (Name: 'delete_file'; Params: '(path)'; Text: 'Deletes a file; false when there was no such file'),
+    (Name: 'write_json'; Params: '(path, value)'; Text: 'Writes a value as JSON (records and string-keyed dictionaries as objects, arrays as numbers)'),
+    (Name: 'read_json'; Params: '(path)'; Text: 'Reads a JSON file: objects as records, number arrays as vectors or matrices'),
     // time
     (Name: 'clock';   Params: '()'; Text: 'Seconds on a monotonic high-resolution clock; subtract two readings'),
     (Name: 'now';     Params: '()'; Text: 'Wall-clock seconds since 1970-01-01 UTC'),
