@@ -56,6 +56,7 @@ type
     procedure ShowError(const S: string);
     procedure Report(E: Exception);
     function TryHelp(const Line: string): Boolean;
+    function TryRun(const Line: string): Boolean;
     procedure RunStatements(Prog: TProgram);
     procedure RunEntry(const First: string);
   public
@@ -208,6 +209,52 @@ begin
   Result := True;
 end;
 
+{ run "path": runs a file in this session, as a program runs, so the names
+  it defines stay. The path is taken literally between the quotes (no
+  escapes, so Windows paths need no doubling) and is relative to the
+  session's directory. "run" followed by a string is not valid Axon, so a
+  variable or function named run is unaffected. Returns False for any
+  other line. }
+function TRepl.TryRun(const Line: string): Boolean;
+var
+  S, Path, Source: string;
+  Prog: TProgram;
+begin
+  S := Line.Trim;
+  if not (S.StartsWith('run ') or S.StartsWith('run"') or S.StartsWith('run'#9)) then
+    Exit(False);
+  S := Copy(S, 4, MaxInt).Trim;
+  if not S.StartsWith('"') then
+    Exit(False);
+  Result := True;
+  if (S.Length < 2) or not S.EndsWith('"') then
+  begin
+    ShowError('run: write the path in double quotes, as in run "model.sci"');
+    Exit;
+  end;
+  Path := Copy(S, 2, S.Length - 2);
+  if not IsSourceFileName(Path) then
+  begin
+    ShowError(Format('run: %s: source files must end in .sci or .txt', [Path]));
+    Exit;
+  end;
+  if not FileExists(Path) then
+  begin
+    ShowError(Format('run: %s: file not found', [Path]));
+    Exit;
+  end;
+  try
+    Source := LoadSourceFile(Path);
+    // The whole file is parsed first, so a syntax error runs nothing.
+    Prog := ParseSource(Source, Path);
+    FPrograms.Add(Prog);
+    FInterp.RunInSession(Prog, Path);
+  except
+    on E: Exception do
+      Report(E);   // earlier statements keep their effects, as in a program
+  end;
+end;
+
 procedure TRepl.RunStatements(Prog: TProgram);
 var
   S: TStmt;
@@ -240,7 +287,7 @@ var
   Buffer, Line: string;
   Prog: TProgram;
 begin
-  if TryHelp(First) then
+  if TryHelp(First) or TryRun(First) then
     Exit;
   Buffer := First;
   // Parse, reading continuation lines while the input is incomplete.

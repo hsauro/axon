@@ -106,7 +106,7 @@ type
     FReplPrompt: TLabel;
     FReplDirLabel: TLabel;
     FRepl: TProcessRunner;
-    FReplPartial: string;
+    FReplPartial: array[TOutputKind] of string;  // per stream: a print may leave stdout open
     FReplDir: string;
     FReplRestart: Boolean;
     FReplHistory: TStringList;
@@ -277,6 +277,7 @@ type
     procedure CmdClearOutput(Sender: TObject);
     procedure CmdAbout(Sender: TObject);
     procedure CmdSendToRepl(Sender: TObject);
+    procedure CmdRunInRepl(Sender: TObject);
     procedure CmdReplRestart(Sender: TObject);
     procedure CmdReplClear(Sender: TObject);
     procedure CmdHelpWord(Sender: TObject);
@@ -541,6 +542,8 @@ begin
   AddButton(Bar, 'Save', 'Save (Ctrl+S)', CmdSave);
   FRunButton := AddButton(Bar, #$25B6' Run', 'Run the current file (F9)', CmdRun);
   FRunButton.Margins.Left := 16;
+  AddButton(Bar, #$25B6' REPL', 'Run the current file in the REPL, keeping its variables there (Shift+F9)',
+    CmdRunInRepl).Width := 72;
   FStopButton := AddButton(Bar, #$25A0' Stop', 'Stop the running program (Ctrl+F2)', CmdStop);
   FJitButton := AddButton(Bar, 'JIT on', 'Compile functions to native code (Run > Use JIT Compiler); ' +
     'click to switch, then run again to compare', CmdToggleJit);
@@ -707,6 +710,7 @@ begin
   FStopItem := AddMenuItem(M, '&Stop', 'Ctrl+F2', CmdStop);
   FJitItem := AddMenuItem(M, 'Use &JIT Compiler', '', CmdToggleJit);
   AddMenuItem(M, '-', '', nil);
+  AddMenuItem(M, 'Run in REP&L', 'Shift+F9', CmdRunInRepl);
   AddMenuItem(M, 'Send to RE&PL', 'Ctrl+Enter', CmdSendToRepl);
   AddMenuItem(M, 'Restart R&EPL', '', CmdReplRestart);
   AddMenuItem(M, '-', '', nil);
@@ -1514,7 +1518,8 @@ begin
     Exit;
   end;
   FReplDir := ReplWorkDir;
-  FReplPartial := '';
+  FReplPartial[okStdOut] := '';
+  FReplPartial[okStdErr] := '';
   try
     FRepl.Start(Exe, ['--repl-protocol'], FReplDir, True);
   except
@@ -1556,7 +1561,7 @@ var
   S, L: string;
   P: Integer;
 begin
-  S := FReplPartial + Text.Replace(#13#10, #10).Replace(#13, #10);
+  S := FReplPartial[Kind] + Text.Replace(#13#10, #10).Replace(#13, #10);
   P := S.IndexOf(#10);
   FReplList.BeginUpdate;
   try
@@ -1591,7 +1596,7 @@ begin
     FReplList.EndUpdate;
   end;
   ScrollToEnd(FReplList);
-  FReplPartial := S;
+  FReplPartial[Kind] := S;
 end;
 
 procedure TfrmMain.ReplExit(ExitCode: Integer);
@@ -1693,6 +1698,24 @@ begin
   if Text = '' then
     Text := Doc.Editor.LineText(Doc.Editor.CaretLine);
   ReplSend(Text.Replace(#13#10, #10).Split([#10]));
+end;
+
+{ Runs the whole file in the REPL session with its run command, so the
+  variables it creates can be inspected there afterwards. The file is saved
+  first, as for Run. }
+procedure TfrmMain.CmdRunInRepl(Sender: TObject);
+var
+  Doc: TDocument;
+begin
+  Doc := CurrentDoc;
+  if Doc = nil then
+    Exit;
+  if (Doc.FilePath = '') or Doc.Editor.Modified then
+    if not SaveDoc(Doc, False) then
+      Exit;
+  for var D in FDocs do
+    D.Editor.ClearMarkers;
+  ReplSend(['run "' + Doc.FilePath + '"']);
 end;
 
 procedure TfrmMain.CmdReplRestart(Sender: TObject);

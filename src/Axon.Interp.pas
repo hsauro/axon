@@ -204,6 +204,11 @@ type
     procedure Hoist(P: TProgram); overload;
     procedure Hoist(P: TProgram; Globals: TScope); overload;
     procedure Run(P: TProgram);
+    { Runs a parsed file in this session's global scope, as a program runs
+      (nothing is displayed), for the REPL's run command. Its definitions
+      stay; errors and the functions it defines name FileName, and its
+      imports resolve from that file's folder. }
+    procedure RunInSession(P: TProgram; const FileName: string);
     { Runs one top-level statement (the REPL). Shown receives the values to
       display: an expression's values, or the new value of an assigned name
       (then ShownName is that name). }
@@ -3032,6 +3037,25 @@ begin
   for S in P.Body do
     ExecStmt(S, FGlobals);
   M.Loading := False;
+end;
+
+procedure TInterpreter.RunInSession(P: TProgram; const FileName: string);
+var
+  S: TStmt;
+  SavedFile, SavedPath: string;
+begin
+  SavedFile := FFile;
+  SavedPath := FCurrentPath;
+  FFile := FileName;
+  FCurrentPath := TPath.GetFullPath(FileName);
+  try
+    Hoist(P);
+    for S in P.Body do
+      ExecStmt(S, FGlobals);
+  finally
+    FFile := SavedFile;
+    FCurrentPath := SavedPath;
+  end;
 end;
 
 function TInterpreter.ExecTopLevel(S: TStmt; out Shown: TAxValues;

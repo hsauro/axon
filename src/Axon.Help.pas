@@ -284,6 +284,7 @@ begin
     'Type a statement or expression to run it; its value is displayed.',
     'A trailing ";" suppresses the display.',
     'help name   shows the documentation of a function, record type or module',
+    'run "file.sci"   runs a file in this session; the names it defines stay',
     'Ctrl+D (Ctrl+Z then Enter on Windows) ends the session.'];
 end;
 

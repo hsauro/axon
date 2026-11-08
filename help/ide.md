@@ -76,6 +76,14 @@ you use it, in the current file's folder, and keeps its variables until you
 press **Restart**, which also stops a statement that does not finish. **Clear**
 empties the transcript.
 
+**Run** (<kbd>F9</kbd>) runs a program on its own, and its variables are gone
+when it ends. To keep them, use the **▶ REPL** button next to Run (or
+**Run > Run in REPL**, <kbd>Shift+F9</kbd>): it saves the file and runs it in
+the REPL session, so afterwards you can inspect any of its variables there,
+such as `sol.t` or `A`. Its output appears in the REPL pane, assignments in the
+file are not displayed, and the variables stay until you press **Restart**.
+At the prompt, `run "file.sci"` does the same for any file.
+
 ## Plots
 
 `plot.show()` displays the current figure in the plot pane at once, even while
@@ -100,6 +108,7 @@ them. Its last link opens that section in the Documentation tab.
 | Key | Action |
 | --- | --- |
 | <kbd>F9</kbd> | Run the current file |
+| <kbd>Shift+F9</kbd> | Run the current file in the REPL, keeping its variables there |
 | <kbd>Ctrl+F2</kbd> | Stop the running program |
 | <kbd>Ctrl+Enter</kbd> | Send the current line or selection to the REPL |
 | <kbd>F1</kbd> | Help on the word under the caret |

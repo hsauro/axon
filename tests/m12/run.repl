@@ -1,0 +1,35 @@
+> run "run/model.sci"
+model ran 3
+> square(k)
+9
+> v'
+1×3 matrix{int}
+  1  2  3
+> square("a")
+TypeError: operator * is not defined for string and string
+  at run/model.sci:3:3 in square
+  at <repl>:1:1
+> run "run/stops.sci"
+UserError: stop here
+  at run/stops.sci:3:1
+> x
+10
+> y
+NameError: "y" is not defined
+  at <repl>:1:1
+> run "run/broken.sci"
+SyntaxError: expected ")", found end of file
+  at run/broken.sci:4:1
+> z
+NameError: "z" is not defined
+  at <repl>:1:1
+> run "run/missing.sci"
+run: run/missing.sci: file not found
+> run "notes.md"
+run: notes.md: source files must end in .sci or .txt
+> run "run/model.sci
+run: write the path in double quotes, as in run "model.sci"
+> run = 5
+run = 5
+> run + 1
+6
