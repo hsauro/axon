@@ -2,7 +2,9 @@ unit uMainForm;
 
 (* The Axon IDE's main window.
 
-   - Tabs of TSkiaCodeEditor documents with Axon highlighting.
+   - Tabs of TSkiaCodeEditor documents with Axon highlighting, and a
+     Welcome tab (at start-up, from Help > Welcome, and when the last file
+     closes) with New, Open, the main shortcuts and the recent files.
    - Run (F9) saves the current file and runs axon on it as a separate
      process, in the file's directory, so imports and package.toml resolve
      exactly as on the command line. Stop (Ctrl+F2) kills it.
@@ -107,6 +109,9 @@ type
     // Layout remembered between sessions
     FPlotPane: TLayout;
     FNormalBounds: TRect;      // the window's bounds when last not maximized
+    // Welcome tab (nil when closed)
+    FWelcomeTab: TTabItem;
+    FWelcomeList: TListBox;
     FFigureShown: Boolean;     // since the current run or REPL command started
     FFigureCount: Integer;
     procedure BuildUI;
@@ -132,6 +137,11 @@ type
     procedure CheckExit(ExitCode: Integer);
     procedure SetupShowDir;
     procedure RecordNormalBounds;
+    procedure ShowWelcome;
+    procedure CloseWelcome;
+    procedure RefreshWelcome;
+    procedure WelcomeItemClick(const Sender: TCustomListBox; const Item: TListBoxItem);
+    procedure CmdWelcome(Sender: TObject);
     procedure LoadLayout(Ini: TCustomIniFile);
     procedure SaveLayout(Ini: TCustomIniFile);
     function TryShowFigure(const Line: string): Boolean;
@@ -275,7 +285,7 @@ begin
         OpenFile(TPath.GetFullPath(ParamStr(K)));
   end;
   if FDocs.Count = 0 then
-    NewDocument('', '');
+    ShowWelcome;
   SetRunning(False);
   UpdateTitle;
 end;
@@ -492,6 +502,7 @@ begin
   AddMenuItem(M, 'C&lear Output', '', CmdClearOutput);
 
   M := AddMenuItem(Menu, '&Help', '', nil);
+  AddMenuItem(M, '&Welcome', '', CmdWelcome);
   AddMenuItem(M, '&Help on Word', 'F1', CmdHelpWord);
   AddMenuItem(M, '-', '', nil);
   AddMenuItem(M, '&About Axon IDE', '', CmdAbout);
@@ -653,7 +664,7 @@ begin
   Doc.Tab.Free;
   Doc.Free;
   if FDocs.Count = 0 then
-    NewDocument('', '');
+    ShowWelcome;
   UpdateTitle;
 end;
 
@@ -670,7 +681,9 @@ var
   Doc: TDocument;
 begin
   Doc := CurrentDoc;
-  if Doc = nil then
+  if (Doc = nil) and (FWelcomeTab <> nil) and (FTabs.ActiveTab = FWelcomeTab) then
+    Caption := 'Welcome - Axon'
+  else if Doc = nil then
     Caption := 'Axon'
   else if Doc.FilePath <> '' then
     Caption := Doc.DisplayName + ' - ' + ExtractFileDir(Doc.FilePath) + ' - Axon'
@@ -863,6 +876,7 @@ begin
     Item.TagString := FRecent[K];
   end;
   FRecentMenu.Enabled := FRecent.Count > 0;
+  RefreshWelcome;
 end;
 
 procedure TfrmMain.RecentClick(Sender: TObject);
@@ -1806,6 +1820,176 @@ begin
     FStatus.Text := Format('Syntax error at line %d: %s', [Frame.Line, Msg]);
 end;
 
+{ ---------------- welcome tab ---------------- }
+
+procedure TfrmMain.ShowWelcome;
+var
+  Page, Head, Buttons: TLayout;
+  Title, Sub, Keys, RecentHead: TLabel;
+  B: TButton;
+begin
+  if FWelcomeTab <> nil then
+  begin
+    FTabs.ActiveTab := FWelcomeTab;
+    RefreshWelcome;
+    UpdateTitle;
+    Exit;
+  end;
+  FWelcomeTab := FTabs.Add;
+  FWelcomeTab.Text := 'Welcome';
+  FWelcomeTab.Index := 0;
+
+  Page := TLayout.Create(Self);
+  Page.Parent := FWelcomeTab;
+  Page.Align := TAlignLayout.Client;
+  Page.Padding.Rect := TRectF.Create(32, 24, 32, 16);
+
+  Head := TLayout.Create(Self);
+  Head.Parent := Page;
+  Head.Align := TAlignLayout.Top;
+  Head.Height := 176;
+
+  Title := TLabel.Create(Self);
+  Title.Parent := Head;
+  Title.Align := TAlignLayout.Top;
+  Title.Height := 40;
+  Title.StyledSettings := Title.StyledSettings - [TStyledSetting.Size, TStyledSetting.Style];
+  Title.TextSettings.Font.Size := 26;
+  Title.TextSettings.Font.Style := [TFontStyle.fsBold];
+  Title.Text := 'Axon';
+
+  Sub := TLabel.Create(Self);
+  Sub.Parent := Head;
+  Sub.Align := TAlignLayout.Top;
+  Sub.Position.Y := 100;
+  Sub.Height := 22;
+  Sub.Text := 'A language for scientific computing.';
+
+  Buttons := TLayout.Create(Self);
+  Buttons.Parent := Head;
+  Buttons.Align := TAlignLayout.Top;
+  Buttons.Position.Y := 200;
+  Buttons.Height := 44;
+  Buttons.Margins.Top := 10;
+  B := TButton.Create(Self);
+  B.Parent := Buttons;
+  B.Align := TAlignLayout.Left;
+  B.Width := 120;
+  B.Text := 'New file';
+  B.OnClick := CmdNew;
+  B := TButton.Create(Self);
+  B.Parent := Buttons;
+  B.Position.X := 1000;
+  B.Align := TAlignLayout.Left;
+  B.Width := 120;
+  B.Margins.Left := 10;
+  B.Text := 'Open file...';
+  B.OnClick := CmdOpen;
+
+  Keys := TLabel.Create(Self);
+  Keys.Parent := Head;
+  Keys.Align := TAlignLayout.Top;
+  Keys.Position.Y := 300;
+  Keys.Height := 40;
+  Keys.Margins.Top := 8;
+  Keys.TextSettings.WordWrap := True;
+  Keys.Text := 'F9 runs the current file. F1 shows help on the word under the caret. ' +
+    'Ctrl+Enter sends the current line or selection to the REPL.';
+
+  RecentHead := TLabel.Create(Self);
+  RecentHead.Parent := Page;
+  RecentHead.Align := TAlignLayout.Top;
+  RecentHead.Position.Y := 400;
+  RecentHead.Height := 26;
+  RecentHead.StyledSettings := RecentHead.StyledSettings - [TStyledSetting.Style];
+  RecentHead.TextSettings.Font.Style := [TFontStyle.fsBold];
+  RecentHead.Text := 'Recent files';
+
+  FWelcomeList := TListBox.Create(Self);
+  FWelcomeList.Parent := Page;
+  FWelcomeList.Align := TAlignLayout.Client;
+  FWelcomeList.ItemHeight := 40;
+  FWelcomeList.OnItemClick := WelcomeItemClick;
+
+  RefreshWelcome;
+  FTabs.ActiveTab := FWelcomeTab;
+  UpdateTitle;
+end;
+
+procedure TfrmMain.CloseWelcome;
+begin
+  if FWelcomeTab = nil then
+    Exit;
+  FWelcomeList := nil;
+  FWelcomeTab.Free;
+  FWelcomeTab := nil;
+  UpdateTitle;
+end;
+
+{ One item per recent file: its name, with the folder as the detail line. }
+procedure TfrmMain.RefreshWelcome;
+var
+  Item: TListBoxItem;
+  Path: string;
+begin
+  if FWelcomeList = nil then
+    Exit;
+  FWelcomeList.BeginUpdate;
+  try
+    FWelcomeList.Clear;
+    for Path in FRecent do
+    begin
+      Item := TListBoxItem.Create(FWelcomeList);
+      Item.Parent := FWelcomeList;
+      Item.StyleLookup := 'listboxitembottomdetail';
+      Item.TagString := Path;
+      Item.Text := ExtractFileName(Path);
+      if TFile.Exists(Path) then
+        Item.ItemData.Detail := ExtractFileDir(Path)
+      else
+        Item.ItemData.Detail := ExtractFileDir(Path) + '   (missing: click to remove)';
+    end;
+    if FRecent.Count = 0 then
+    begin
+      Item := TListBoxItem.Create(FWelcomeList);
+      Item.Parent := FWelcomeList;
+      Item.Text := 'No recent files yet.';
+      Item.Enabled := False;
+    end;
+  finally
+    FWelcomeList.EndUpdate;
+  end;
+end;
+
+procedure TfrmMain.WelcomeItemClick(const Sender: TCustomListBox; const Item: TListBoxItem);
+var
+  Path: string;
+  K: Integer;
+begin
+  if (Item = nil) or (Item.TagString = '') then
+    Exit;
+  Path := Item.TagString;
+  if TFile.Exists(Path) then
+    // Deferred: opening a file rebuilds this list, which owns Item.
+    TThread.ForceQueue(nil,
+      procedure
+      begin
+        OpenFile(Path);
+      end)
+  else
+  begin
+    K := FRecent.IndexOf(Path);
+    if K >= 0 then
+      FRecent.Delete(K);
+    TThread.ForceQueue(nil, RebuildRecentMenu);
+  end;
+end;
+
+procedure TfrmMain.CmdWelcome(Sender: TObject);
+begin
+  ShowWelcome;
+end;
+
 { ---------------- commands ---------------- }
 
 procedure TfrmMain.CmdNew(Sender: TObject);
@@ -1848,7 +2032,13 @@ end;
 
 procedure TfrmMain.CmdClose(Sender: TObject);
 begin
-  if CurrentDoc <> nil then
+  if (FWelcomeTab <> nil) and (FTabs.ActiveTab = FWelcomeTab) then
+  begin
+    CloseWelcome;
+    if FDocs.Count = 0 then
+      NewDocument('', '');
+  end
+  else if CurrentDoc <> nil then
     CloseDoc(CurrentDoc);
 end;
 
