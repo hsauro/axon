@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..70] of TBuiltinDoc = (
+  BuiltinDocs: array[0..71] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -111,7 +111,8 @@ const
     (Name: 'delete_file'; Params: '(path)'; Text: 'Deletes a file; false when there was no such file'),
     // graphics
     (Name: 'save';       Params: '(scene, path)'; Text: 'Renders a scene to a .png, .svg or .pdf file'),
-    (Name: 'text_width'; Params: '(text, size, font)'; Text: 'The width of text in points, for layout')
+    (Name: 'text_width'; Params: '(text, size, font)'; Text: 'The width of text in points, for layout'),
+    (Name: 'show';       Params: '(scene)'; Text: 'Renders a scene to a PNG and shows it (in the IDE, or a viewer); returns the path')
   );
 
 function DocLines(const Doc: TArray<string>): TArray<string>;

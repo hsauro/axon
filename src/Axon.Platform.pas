@@ -13,6 +13,10 @@ procedure InitConsole;
   an empty Value removes it. }
 procedure SetEnv(const Name, Value: string);
 
+{ Opens a file with the system's default application (an image viewer for a
+  PNG). Returns False if that could not be started. }
+function OpenWithDefaultApp(const Path: string): Boolean;
+
 { Loads a native library; returns 0 if it cannot be loaded. }
 function LoadNativeLibrary(const Path: string): NativeUInt;
 { The address of a symbol in a loaded library, or nil. }
@@ -30,12 +34,33 @@ implementation
 
 uses
 {$IFDEF MSWINDOWS}
-  Winapi.Windows,
+  Winapi.Windows, Winapi.ShellAPI,
 {$ENDIF}
 {$IFDEF POSIX}
   Posix.Stdlib, Posix.SysWait, Posix.Dlfcn,
 {$ENDIF}
   System.SysUtils, System.Classes, System.IOUtils, System.Math;
+
+function OpenWithDefaultApp(const Path: string): Boolean;
+{$IFDEF MSWINDOWS}
+begin
+  Result := ShellExecute(0, 'open', PChar(Path), nil, nil, SW_SHOWNORMAL) > 32;
+end;
+{$ELSE}
+var
+  M: TMarshaller;
+  Cmd: string;
+begin
+  // "open" (macOS) or "xdg-open" (Linux), in the background.
+{$IFDEF MACOS}
+  Cmd := 'open ';
+{$ELSE}
+  Cmd := 'xdg-open ';
+{$ENDIF}
+  Cmd := Cmd + '''' + StringReplace(Path, '''', '''\''''', [rfReplaceAll]) + ''' >/dev/null 2>&1 &';
+  Result := _system(M.AsUtf8(Cmd).ToPointer) = 0;
+end;
+{$ENDIF}
 
 procedure InitConsole;
 begin

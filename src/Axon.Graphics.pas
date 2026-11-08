@@ -24,7 +24,8 @@ implementation
 uses
   System.SysUtils, System.Classes, System.Math, System.Generics.Collections,
   System.Skia.API,
-  Axon.Errors, Axon.Values, Axon.Ops, Axon.Arrays, Axon.NativeModules;
+  System.IOUtils,
+  Axon.Errors, Axon.Values, Axon.Ops, Axon.Arrays, Axon.NativeModules, Axon.Platform;
 
 type
   TColor32 = Cardinal;   // ARGB
@@ -793,6 +794,53 @@ begin
   end;
 end;
 
+var
+  ShowCount: Integer;
+
+{ graphics.show(scene): renders the scene to a PNG and shows it. Under a
+  front end that sets AXON_SHOW_DIR (the IDE), the file goes there and a
+  line #3"show <path>" on stderr tells the front end to display it;
+  otherwise it goes to a temporary folder and opens in the system viewer.
+  Returns the path. }
+function BShow(const Args: TAxValues): TAxValue;
+var
+  Scene: TRecordObj;
+  Dir, Path: string;
+  FrontEnd: Boolean;
+  W, H: Double;
+begin
+  if Args[0].Kind <> vkRecord then
+    RaiseFmt(TypeError, 'graphics.show needs a scene record, got %s', [TypeName(Args[0])]);
+  Scene := AsRecord(Args[0]);
+  W := NumField(Scene, 'width', 640, 'graphics.show');
+  H := NumField(Scene, 'height', 480, 'graphics.show');
+  if (W <= 0) or (H <= 0) or (W > 20000) or (H > 20000) then
+    RaiseError(ArgumentError, 'graphics.show: width and height must be between 0 and 20000');
+  Dir := GetEnvironmentVariable('AXON_SHOW_DIR');
+  FrontEnd := Dir <> '';
+  if not FrontEnd then
+    Dir := TPath.Combine(TPath.GetTempPath, 'axon-figures');
+  try
+    ForceDirectories(Dir);
+  except
+    on E: Exception do
+      RaiseFmt(IOError, 'graphics.show: cannot create "%s": %s', [Dir, E.Message]);
+  end;
+  Inc(ShowCount);
+  Path := TPath.Combine(Dir, Format('figure-%d-%d-%d.png',
+    [MainThreadID, ShowCount, TThread.GetTickCount64 mod 1000000]));
+  EnsureSkia;
+  SavePng(Scene, W, H, Path);
+  if FrontEnd then
+  begin
+    Writeln(ErrOutput, #3'show ' + Path);
+    Flush(ErrOutput);
+  end
+  else if not OpenWithDefaultApp(Path) then
+    RaiseFmt(ForeignError, 'graphics.show: cannot open a viewer for "%s"', [Path]);
+  Result := StringValue(Path);
+end;
+
 function BTextWidth(const Args: TAxValues): TAxValue;
 var
   Family: string;
@@ -814,6 +862,7 @@ end;
 procedure DefineGraphics(const Define: TProc<string, TAxValue>);
 begin
   Define('save', BuiltinValue('save', BSave, 2, 2));
+  Define('show', BuiltinValue('show', BShow, 1, 1));
   Define('text_width', BuiltinValue('text_width', BTextWidth, 2, 3));
 end;
 

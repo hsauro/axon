@@ -10,7 +10,10 @@ unit uMainForm;
      trace lines are links: clicking one opens the file at that line. After a
      failed run, the error location gets a wavy underline whose tooltip is
      the error.
-   - The plot pane shows the newest PNG the run wrote in its directory.
+   - The plot pane shows figures from plot.show() as they appear: the IDE
+     sets AXON_SHOW_DIR for the programs it starts, and graphics.show then
+     writes a line #3"show <path>" to stderr. Without one, the pane shows
+     the newest PNG the run saved in its directory.
    - The REPL tab drives "axon --repl-protocol" through pipes: a session
      starts on first use in the current file's directory and keeps its
      variables until it is restarted. Send to REPL (Ctrl+Enter) sends the
@@ -99,6 +102,10 @@ type
     FCheckText: string;
     FCheckOutput: string;
     FCheckAgain: Boolean;
+    // Figures from plot.show()
+    FShowDir: string;
+    FFigureShown: Boolean;     // since the current run or REPL command started
+    FFigureCount: Integer;
     procedure BuildUI;
     procedure BuildReplPane(Parent: TFmxObject);
     function ReplWorkDir: string;
@@ -120,6 +127,8 @@ type
     procedure StartCheck(Doc: TDocument);
     procedure CheckOutput(Kind: TOutputKind; const Text: string);
     procedure CheckExit(ExitCode: Integer);
+    procedure SetupShowDir;
+    function TryShowFigure(const Line: string): Boolean;
     procedure BuildMenu;
     function AddMenuItem(Parent: TFmxObject; const Text, ShortCut: string;
       Handler: TNotifyEvent): TMenuItem;
@@ -190,6 +199,11 @@ implementation
 {$R *.fmx}
 
 uses
+{$IFDEF MSWINDOWS}
+  Winapi.Windows,
+{$ELSE}
+  Posix.Stdlib,
+{$ENDIF}
   System.IOUtils, System.IniFiles, System.DateUtils, System.Math,
   FMX.ActnList, FMX.DialogService.Sync,
   uAxonHighlighter;
@@ -237,6 +251,7 @@ begin
   FCheckTimer.Enabled := False;
   FCheckTimer.Interval := 600;
   FCheckTimer.OnTimer := CheckTimerFired;
+  SetupShowDir;
   BuildUI;
   BuildMenu;
   LoadSettings;
@@ -263,6 +278,12 @@ begin
   FHelpLines.Free;
   FCheckTimer.Enabled := False;
   FCheckRunner.Free;
+  // The figures of this session are temporary.
+  if (FShowDir <> '') and TDirectory.Exists(FShowDir) then
+    try
+      TDirectory.Delete(FShowDir, True);
+    except
+    end;
   SaveSettings;
   FRecent.Free;
   FFrames.Free;
@@ -824,6 +845,7 @@ begin
   FErrorMessage := '';
   FFrames.Clear;
   FFirstStdErr := True;
+  FFigureShown := False;
   AddNote(Format('Running %s', [Doc.FilePath]), ColorNote);
   try
     FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir);
@@ -899,7 +921,9 @@ begin
     MarkError;
   end;
   ScrollToEnd(FOutput);
-  ShowNewestPlotIn(FRunDir, FRunStart);
+  // A figure shown with plot.show() takes precedence over saved files.
+  if not FFigureShown then
+    ShowNewestPlotIn(FRunDir, FRunStart);
 end;
 
 procedure TfrmMain.AddOutputLine(Kind: TOutputKind; const Line: string);
@@ -908,6 +932,8 @@ var
   Frame: TFrame;
   Head, Msg: string;
 begin
+  if (Kind = okStdErr) and TryShowFigure(Line) then
+    Exit;
   while FOutput.Count >= MaxOutputLines do
     FOutput.ListItems[0].Free;
   Item := TListBoxItem.Create(FOutput);
@@ -1182,11 +1208,14 @@ begin
         else
         begin
           FReplPrompt.Text := '>';
-          ShowNewestPlotIn(FReplDir, FReplSince);
+          if not FFigureShown then
+            ShowNewestPlotIn(FReplDir, FReplSince);
         end;
       end
       else if L.StartsWith(#2) then
         ReplAddLine(L.Substring(1), ColorError)
+      else if TryShowFigure(L) then
+        // shown in the plot pane
       else if Kind = okStdErr then
         ReplAddLine(L, ColorError)
       else
@@ -1225,6 +1254,7 @@ begin
     Exit;
   FBottomTabs.ActiveTab := FReplTab;
   FReplSince := Now;
+  FFigureShown := False;
   Shown := FReplPrompt.Text;
   for L in Lines do
   begin
@@ -1551,6 +1581,56 @@ begin
     Text := 'No help for ' + FHelpName + ': it is not a built-in, an imported name, or ' +
       'a function or record defined at the top of this file.';
   ShowHelp(Text);
+end;
+
+{ ---------------- figures from plot.show() ---------------- }
+
+{ A folder for this IDE's figures, passed to every axon it starts through
+  the environment (child processes inherit it). }
+procedure TfrmMain.SetupShowDir;
+var
+  D: string;
+begin
+  // Folders left by an IDE that did not close normally, after a day.
+  try
+    for D in TDirectory.GetDirectories(TPath.GetTempPath, 'AxonIDE-*') do
+      if TDirectory.GetLastWriteTime(D) < IncDay(Now, -1) then
+        TDirectory.Delete(D, True);
+  except
+  end;
+  FShowDir := TPath.Combine(TPath.GetTempPath, Format('AxonIDE-%d', [MainThreadID]));
+  try
+    ForceDirectories(FShowDir);
+  except
+    FShowDir := '';
+    Exit;
+  end;
+{$IFDEF MSWINDOWS}
+  SetEnvironmentVariable('AXON_SHOW_DIR', PChar(FShowDir));
+{$ELSE}
+  setenv('AXON_SHOW_DIR', PAnsiChar(UTF8String(FShowDir)), 1);
+{$ENDIF}
+end;
+
+{ True (and the figure shown) for a line #3"show <path>". }
+function TfrmMain.TryShowFigure(const Line: string): Boolean;
+const
+  Marker = #3'show ';
+var
+  Path: string;
+begin
+  Result := Line.StartsWith(Marker);
+  if not Result then
+    Exit;
+  Path := Line.Substring(Length(Marker)).Trim;
+  try
+    FPlotImage.Bitmap.LoadFromFile(Path);
+    Inc(FFigureCount);
+    FPlotCaption.Text := Format('Figure %d (plot.show)', [FFigureCount]);
+    FFigureShown := True;
+  except
+    FPlotCaption.Text := 'Cannot show ' + ExtractFileName(Path);
+  end;
 end;
 
 { ---------------- syntax check as you type ---------------- }

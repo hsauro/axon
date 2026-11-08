@@ -529,6 +529,7 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 `graphics` is a core module that renders a scene to a file through the Skia library. It is the drawing layer under `plot`. Skia loads at the first call that needs it; when it cannot be loaded, that call raises `ForeignError` and the rest of the language is unaffected. On Windows Skia is the shipped `sk4d.dll`; on macOS it is linked into the interpreter.
 
 - **`save(scene, path)`** writes the scene to `path`, whose extension chooses the format: `.png` (raster), `.svg` or `.pdf` (vector, with text kept as text). Any other extension raises `ArgumentError`, and a file that cannot be written raises `IOError`.
+- **`show(scene)`** renders the scene to a PNG and shows it, and returns the file's path. When the environment variable `AXON_SHOW_DIR` is set, as it is for programs run from the IDE, the file is written there and a line holding U+0003, `show `, and the path is written to standard error, so the front end can display it while the program runs. Otherwise the file goes to a temporary folder and opens in the system's image viewer; if no viewer can be started, it raises `ForeignError`.
 - **`text_width(text, size)`** and **`text_width(text, size, font)`** return the width in points of the text as drawn, for layout.
 - **Scenes.** A scene is a record with `width` and `height` in points (1/72 inch; default 640 by 480), `background` (a colour, default `"white"`), `scale` (pixels per point for PNG, default 1) and `items`, a list of item records drawn in order. Coordinates run from the top-left corner with y pointing down.
 - **Items.** Each item has a `kind`:
@@ -583,10 +584,11 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 | `xlim(lo, hi)`, `ylim(lo, hi)` | Fix an axis range; otherwise it is the data range padded by 5% |
 | `grid(on)`, `legend(on)` | Show or hide the grid and the legend (both shown by default) |
 | `save(path; scale = 2)` | Writes the current figure as PNG, SVG or PDF, chosen by the extension; `scale` sets PNG pixels per point |
+| `show(; scale = 2)` | Shows the current figure through `graphics.show`: in the IDE's plot pane, or in the system's image viewer |
 | `gcf()` | The current figure as a record, or `nothing` before the first plotting call |
 
 - **Defaults.** Series without a `color` take the next colour of a ten-colour cycle. A legend lists the series that have a `label`. Axis ticks are round numbers (1, 2 or 5 times a power of ten). Colours are given as for `graphics`.
-- **Errors.** `x` and `y` of different lengths raise `DimensionError`, and so does a `Z` that is not `length(y)` by `length(x)`. Non-real data raises `TypeError`. An unknown style, colour map or marker, a figure that mixes a surface with lines or markers, and `save` with no figure raise `ArgumentError`.
+- **Errors.** `x` and `y` of different lengths raise `DimensionError`, and so does a `Z` that is not `length(y)` by `length(x)`. Non-real data raises `TypeError`. An unknown style, colour map or marker, a figure that mixes a surface with lines or markers, and `save` or `show` with no figure raise `ArgumentError`.
 
 ## Modules and foreign functions
 

@@ -216,6 +216,17 @@ export function legend(on)
   current.legend = on
 end
 
+## Shows the current figure: in the IDE's plot pane when run from the IDE,
+## otherwise in the system's image viewer. scale sets the pixels per point.
+export function show(; scale = 2.0)
+  if typeof(current) == "nothing"
+    fail("ArgumentError", "plot.show: there is no figure; plot something first")
+  end
+  scene = render(current)
+  scene.scale = scale + 0.0
+  graphics.show(scene)
+end
+
 ## The current figure, as a record (nothing before the first plotting call).
 export function gcf()
   return current

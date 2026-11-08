@@ -297,6 +297,8 @@ begin
     SetEnv('AXON_STDLIB', StdLib)
   else
     SetEnv('AXON_STDLIB', '');
+  // graphics.show writes here instead of opening a viewer.
+  SetEnv('AXON_SHOW_DIR', TPath.Combine(TPath.GetTempPath, 'axon-test-figures'));
   Code := RunProcess(ParamStr(0), Args, ExtractFileDir(C.Source), TestTimeoutMs,
     StdOut, StdErr, TimedOut);
   if TimedOut then
