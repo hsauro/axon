@@ -93,6 +93,24 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
+        <DeployFile Include="..\lib\macos\libmir.dylib" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libmir.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libmir.dylib" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libmir.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
         <DeployFile Include="..\examples\05_stiff_and_events.sci" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
             <RemoteName>05_stiff_and_events.sci</RemoteName>
