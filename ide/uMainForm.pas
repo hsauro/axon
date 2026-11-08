@@ -27,6 +27,8 @@ unit uMainForm;
    - The Documentation tab shows the markdown help pages (help folder next to
      the IDE) in a TRhoMarkdownViewer: links to pages, #anchors, web links
      (browser) and examples (a copy opens in the editor), with Back.
+   - On Windows the menu is an FMX TMenuBar, so it is styled with the rest;
+     on macOS it is the native menu bar.
    - View > Dark Theme switches the whole window live: the embedded FMX
      Dark.style, the editors' colours and syntax palette, the help viewer
      and the output panes. The choice is kept in settings.ini.
@@ -510,11 +512,27 @@ end;
 
 procedure TfrmMain.BuildMenu;
 var
-  Menu: TMainMenu;
+  Menu: TFmxObject;
   M: TMenuItem;
+{$IFDEF MSWINDOWS}
+  Bar: TMenuBar;
+{$ENDIF}
 begin
+{$IFDEF MSWINDOWS}
+  // A menu bar FMX draws itself, so it follows the style (dark with the dark
+  // theme); a native Windows menu cannot be restyled. Shortcuts still work:
+  // the form passes keys the focused control does not use to the items.
+  Bar := TMenuBar.Create(Self);
+  Bar.Parent := Self;
+  Bar.Position.Y := -100;          // above the toolbar
+  Bar.Align := TAlignLayout.Top;
+  Menu := Bar;
+{$ELSE}
+  // macOS: the native menu at the top of the screen, which follows the
+  // system appearance.
   Menu := TMainMenu.Create(Self);
   Menu.Parent := Self;
+{$ENDIF}
 
   M := AddMenuItem(Menu, '&File', '', nil);
   AddMenuItem(M, '&New', 'Ctrl+N', CmdNew);

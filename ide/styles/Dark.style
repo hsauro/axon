@@ -17,11 +17,11 @@ object TStyleContainer
     FillOn.Kind = Gradient
     FillOn.Gradient.Points = <
       item
-        Color = xFFF4BB40
+        Color = xFF5AA0E8
         Offset = 0.000000000000000000
       end
       item
-        Color = xFF674704
+        Color = xFF1E4A7A
         Offset = 1.000000000000000000
       end>
     Stroke.Color = xFF222222
@@ -601,7 +601,7 @@ object TStyleContainer
       Stroke.Color = xFF303030
       object TGlowEffect
         Softness = 0.200000002980232200
-        GlowColor = xFFF69E2D
+        GlowColor = xFF3794FF
         Opacity = 0.899999976158142100
         Trigger = 'IsFocused=true'
         Enabled = False
@@ -637,7 +637,7 @@ object TStyleContainer
       Stroke.Color = xFF303030
       object TGlowEffect
         Softness = 0.200000002980232200
-        GlowColor = xFFF69E2D
+        GlowColor = xFF3794FF
         Opacity = 0.899999976158142100
         Trigger = 'IsFocused=true'
         Enabled = False
@@ -1633,7 +1633,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -1715,7 +1715,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -1787,7 +1787,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -1856,7 +1856,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -1937,7 +1937,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -2198,7 +2198,7 @@ object TStyleContainer
     end
     object TBrushObject
       StyleName = 'selection'
-      Brush.Color = x70F69E2D
+      Brush.Color = x703794FF
     end
     object TLayout
       StyleName = 'content'
@@ -2227,7 +2227,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -2345,7 +2345,7 @@ object TStyleContainer
     end
     object TBrushObject
       StyleName = 'selection'
-      Brush.Color = x70F69E2D
+      Brush.Color = x703794FF
     end
     object TLayout
       StyleName = 'content'
@@ -2425,7 +2425,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -2459,7 +2459,7 @@ object TStyleContainer
     end
     object TBrushObject
       StyleName = 'selection'
-      Brush.Color = x70F69E2D
+      Brush.Color = x703794FF
     end
     object TLayout
       StyleName = 'content'
@@ -2512,7 +2512,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -2615,7 +2615,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -2744,11 +2744,11 @@ object TStyleContainer
     end
     object TBrushObject
       StyleName = 'selection'
-      Brush.Color = x70F69E2D
+      Brush.Color = x703794FF
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -2817,7 +2817,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -2915,7 +2915,7 @@ object TStyleContainer
         Size.PlatformDefault = False
         object TRectangle
           StyleName = 'selection'
-          Fill.Color = xFF936639
+          Fill.Color = xFF3A5F85
           HitTest = False
           Size.Width = 50.000000000000000000
           Size.Height = 50.000000000000000000
@@ -2926,7 +2926,7 @@ object TStyleContainer
         end
         object TRectangle
           StyleName = 'focusedselection'
-          Fill.Color = xFF936639
+          Fill.Color = xFF3A5F85
           HitTest = False
           Size.Width = 50.000000000000000000
           Size.Height = 50.000000000000000000
@@ -2987,7 +2987,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -3093,7 +3093,7 @@ object TStyleContainer
         Size.PlatformDefault = False
         object TRectangle
           StyleName = 'selection'
-          Fill.Color = xFF936639
+          Fill.Color = xFF3A5F85
           HitTest = False
           Size.Width = 50.000000000000000000
           Size.Height = 50.000000000000000000
@@ -3102,7 +3102,7 @@ object TStyleContainer
         end
         object TRectangle
           StyleName = 'focusedselection'
-          Fill.Color = xFF936639
+          Fill.Color = xFF3A5F85
           HitTest = False
           Size.Width = 50.000000000000000000
           Size.Height = 50.000000000000000000
@@ -3502,7 +3502,7 @@ object TStyleContainer
         YRadius = 2.000000000000000000
         object TGlowEffect
           Softness = 0.200000002980232200
-          GlowColor = xFFF69E2D
+          GlowColor = xFF3794FF
           Opacity = 0.899999976158142100
           Trigger = 'IsFocused=true'
           Enabled = False
@@ -3529,7 +3529,7 @@ object TStyleContainer
             1F759043010000008DE7A4431F75904302000000C1CAA94339A48B4302000000
             4891AE43AAF1874302000000C73BB343505D854301000000C73BB343505D8543
             030000000000000000000000}
-          Fill.Color = x00F5AB28
+          Fill.Color = x004AA0F0
           Locked = True
           HitTest = False
           Size.Width = 11.000000000000000000
@@ -3539,15 +3539,15 @@ object TStyleContainer
           object TColorAnimation
             Duration = 0.100000001490116100
             PropertyName = 'Fill.Color'
-            StartValue = x00F5AB28
-            StopValue = xFFF5AB28
+            StartValue = x004AA0F0
+            StopValue = xFF4AA0F0
             Trigger = 'IsChecked=true'
           end
           object TColorAnimation
             Duration = 0.000099999997473788
             PropertyName = 'Fill.Color'
-            StartValue = xFFF5AB28
-            StopValue = x00F5AB28
+            StartValue = xFF4AA0F0
+            StopValue = x004AA0F0
             Trigger = 'IsChecked=false'
           end
         end
@@ -3603,7 +3603,7 @@ object TStyleContainer
         Stroke.Color = xFF202020
         object TGlowEffect
           Softness = 0.200000002980232200
-          GlowColor = xFFF69E2D
+          GlowColor = xFF3794FF
           Opacity = 0.899999976158142100
           Trigger = 'IsFocused=true'
           Enabled = False
@@ -3611,7 +3611,7 @@ object TStyleContainer
         object TEllipse
           StyleName = 'checkmark'
           Align = Client
-          Fill.Color = x00F5AB28
+          Fill.Color = x004AA0F0
           Locked = True
           HitTest = False
           Margins.Left = 4.000000000000000000
@@ -3625,15 +3625,15 @@ object TStyleContainer
           object TColorAnimation
             Duration = 0.100000001490116100
             PropertyName = 'Fill.Color'
-            StartValue = x00F5AB28
-            StopValue = xFFF5AB28
+            StartValue = x004AA0F0
+            StopValue = xFF4AA0F0
             Trigger = 'IsChecked=true'
           end
           object TColorAnimation
             Duration = 0.100000001490116100
             PropertyName = 'Fill.Color'
-            StartValue = xFFF5AB28
-            StopValue = x00F5AB28
+            StartValue = xFF4AA0F0
+            StopValue = x004AA0F0
             Trigger = 'IsChecked=false'
           end
         end
@@ -3688,11 +3688,11 @@ object TStyleContainer
         Fill.Kind = Gradient
         Fill.Gradient.Points = <
           item
-            Color = xFFF5CD76
+            Color = xFF8CC4FF
             Offset = 0.000000000000000000
           end
           item
-            Color = xFF9F7009
+            Color = xFF1E5A99
             Offset = 1.000000000000000000
           end>
         Locked = True
@@ -3725,7 +3725,7 @@ object TStyleContainer
                 Offset = 0.000000000000000000
               end
               item
-                Color = xB9F1D384
+                Color = xB9A8D4FF
                 Offset = 0.500000000000000000
               end
               item
@@ -3783,11 +3783,11 @@ object TStyleContainer
         Fill.Kind = Gradient
         Fill.Gradient.Points = <
           item
-            Color = xFFF5CD76
+            Color = xFF8CC4FF
             Offset = 0.000000000000000000
           end
           item
-            Color = xFF9F7009
+            Color = xFF1E5A99
             Offset = 1.000000000000000000
           end>
         Fill.Gradient.StartPosition.Y = 0.500000000000000000
@@ -3823,7 +3823,7 @@ object TStyleContainer
                 Offset = 0.000000000000000000
               end
               item
-                Color = xB9ECC17E
+                Color = xB996C2F0
                 Offset = 0.500000000000000000
               end
               item
@@ -3973,7 +3973,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -3994,7 +3994,7 @@ object TStyleContainer
     end
     object TBrushObject
       StyleName = 'selection'
-      Brush.Color = x70F69E2D
+      Brush.Color = x703794FF
     end
     object TRectangle
       StyleName = 'background'
@@ -4056,7 +4056,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -4201,7 +4201,7 @@ object TStyleContainer
         Size.PlatformDefault = False
         object TRectangle
           StyleName = 'selection'
-          Fill.Color = xFF936639
+          Fill.Color = xFF3A5F85
           HitTest = False
           Size.Width = 50.000000000000000000
           Size.Height = 50.000000000000000000
@@ -4212,7 +4212,7 @@ object TStyleContainer
         end
         object TRectangle
           StyleName = 'focusedselection'
-          Fill.Color = xFF936639
+          Fill.Color = xFF3A5F85
           HitTest = False
           Size.Width = 50.000000000000000000
           Size.Height = 50.000000000000000000
@@ -4275,7 +4275,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -4556,7 +4556,7 @@ object TStyleContainer
     end
     object TBrushObject
       StyleName = 'selection'
-      Brush.Color = x70F69E2D
+      Brush.Color = x703794FF
     end
     object TLayout
       StyleName = 'content'
@@ -4613,7 +4613,7 @@ object TStyleContainer
             1F759043010000008DE7A4431F75904302000000C1CAA94339A48B4302000000
             4891AE43AAF1874302000000C73BB343505D854301000000C73BB343505D8543
             030000000000000000000000}
-          Fill.Color = x00F5AB28
+          Fill.Color = x004AA0F0
           Locked = True
           HitTest = False
           Size.Width = 11.000000000000000000
@@ -4623,15 +4623,15 @@ object TStyleContainer
           object TColorAnimation
             Duration = 0.100000001490116100
             PropertyName = 'Fill.Color'
-            StartValue = x00F5AB28
-            StopValue = xFFF5AB28
+            StartValue = x004AA0F0
+            StopValue = xFF4AA0F0
             Trigger = 'IsChecked=true'
           end
           object TColorAnimation
             Duration = 0.100000001490116100
             PropertyName = 'Fill.Color'
-            StartValue = xFFF5AB28
-            StopValue = x00F5AB28
+            StartValue = xFF4AA0F0
+            StopValue = x004AA0F0
             Trigger = 'IsChecked=false'
           end
         end
@@ -4664,11 +4664,11 @@ object TStyleContainer
         Fill.Kind = Gradient
         Fill.Gradient.Points = <
           item
-            Color = xFFF5CD76
+            Color = xFF8CC4FF
             Offset = 0.000000000000000000
           end
           item
-            Color = xFF9F7009
+            Color = xFF1E5A99
             Offset = 1.000000000000000000
           end>
         Locked = True
@@ -4880,7 +4880,7 @@ object TStyleContainer
         Size.PlatformDefault = False
         object TRectangle
           StyleName = 'selection'
-          Fill.Color = xFF936639
+          Fill.Color = xFF3A5F85
           HitTest = False
           Size.Width = 50.000000000000000000
           Size.Height = 50.000000000000000000
@@ -4956,7 +4956,7 @@ object TStyleContainer
     end
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -5066,7 +5066,7 @@ object TStyleContainer
     TabOrder = 77
     object TRectangle
       Align = Contents
-      Fill.Color = xFF936639
+      Fill.Color = xFF3A5F85
       HitTest = False
       Opacity = 0.000099999997473788
       Size.Width = 73.000000000000000000
@@ -5087,7 +5087,7 @@ object TStyleContainer
     object TRectangle
       StyleName = 'background'
       Align = Contents
-      Fill.Color = xFF936639
+      Fill.Color = xFF3A5F85
       HitTest = False
       Opacity = 0.000099999997473788
       Size.Width = 73.000000000000000000
@@ -5229,7 +5229,7 @@ object TStyleContainer
     TabOrder = 78
     object TRectangle
       Align = Contents
-      Fill.Color = xFF936639
+      Fill.Color = xFF3A5F85
       HitTest = False
       Opacity = 0.000099999997473788
       Size.Width = 73.000000000000000000
@@ -5250,7 +5250,7 @@ object TStyleContainer
     object TRectangle
       StyleName = 'background'
       Align = Contents
-      Fill.Color = xFF936639
+      Fill.Color = xFF3A5F85
       HitTest = False
       Opacity = 0.000099999997473788
       Size.Width = 73.000000000000000000
@@ -5356,6 +5356,7 @@ object TStyleContainer
       Size.Width = 50.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
+      TextSettings.FontColor = xFFB4B4B4
       TextSettings.HorzAlign = Leading
     end
     object TLayout
@@ -5429,7 +5430,7 @@ object TStyleContainer
     TabOrder = 81
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -5511,7 +5512,7 @@ object TStyleContainer
     end
     object TBrushObject
       StyleName = 'selection'
-      Brush.Color = x70F69E2D
+      Brush.Color = x703794FF
     end
     object TCheckBox
       StyleName = 'check'
@@ -5572,7 +5573,7 @@ object TStyleContainer
     TabOrder = 82
     object TGlowEffect
       Softness = 0.200000002980232200
-      GlowColor = xFFF69E2D
+      GlowColor = xFF3794FF
       Opacity = 0.899999976158142100
       Trigger = 'IsFocused=true'
       Enabled = False
@@ -5622,7 +5623,7 @@ object TStyleContainer
     end
     object TBrushObject
       StyleName = 'selection'
-      Brush.Color = x70F69E2D
+      Brush.Color = x703794FF
     end
     object TCheckBox
       StyleName = 'check'
