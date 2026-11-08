@@ -38,7 +38,6 @@ type
     FPid: Integer;
     FInput: Integer;             // write end of stdin, or -1
 {$ENDIF}
-    procedure CloseInput;
     procedure Deliver(Kind: TOutputKind; const Text: string);
     procedure Finished(Code: Integer);
     procedure WaitForThreads;
@@ -51,6 +50,8 @@ type
     { Writes Text to the program's stdin as UTF-8. False if it is not running
       or was started without input. }
     function WriteInput(const Text: string): Boolean;
+    { Closes the program's stdin, so it sees the end of its input. }
+    procedure CloseInput;
     procedure Kill;
     property Running: Boolean read FRunning;
     property Killed: Boolean read FKilled;

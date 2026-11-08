@@ -15,6 +15,10 @@ unit uMainForm;
      starts on first use in the current file's directory and keeps its
      variables until it is restarted. Send to REPL (Ctrl+Enter) sends the
      editor's selection, or the current line.
+   - Help (F1) shows the documentation of the name under the caret in the
+     Help tab: from the editor text for a function or record defined in the
+     file, otherwise from "help name" in a short-lived axon session that
+     first runs the file's import lines, so module names resolve.
 
    The layout is built in code; the .fmx holds only the empty form. *)
 
@@ -25,7 +29,7 @@ uses
   System.Generics.Collections,
   FMX.Types, FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs, FMX.StdCtrls,
   FMX.Layouts, FMX.ListBox, FMX.TabControl, FMX.Menus, FMX.Objects,
-  FMX.Controls.Presentation, FMX.Edit,
+  FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
   uSkiaCodeEditor, uProcessRunner, uRunReport;
 
 type
@@ -78,6 +82,14 @@ type
     FReplHistory: TStringList;
     FReplHistoryPos: Integer;
     FReplSince: TDateTime;
+    // Help
+    FHelpTab: TTabItem;
+    FHelpMemo: TMemo;
+    FHelpRunner: TProcessRunner;
+    FHelpName: string;
+    FHelpSkip: Integer;        // ready markers to pass before the help output
+    FHelpPartial: string;
+    FHelpLines: TStringList;
     procedure BuildUI;
     procedure BuildReplPane(Parent: TFmxObject);
     function ReplWorkDir: string;
@@ -90,6 +102,11 @@ type
       Shift: TShiftState);
     procedure ShowNewestPlotIn(const Dir: string; Since: TDateTime);
     procedure ScrollToEnd(List: TListBox);
+    function WordAtCaret(Doc: TDocument): string;
+    function LocalHelp(Doc: TDocument; const Name: string; out Text: string): Boolean;
+    procedure ShowHelp(const Text: string);
+    procedure HelpOutput(Kind: TOutputKind; const Text: string);
+    procedure HelpExit(ExitCode: Integer);
     procedure BuildMenu;
     function AddMenuItem(Parent: TFmxObject; const Text, ShortCut: string;
       Handler: TNotifyEvent): TMenuItem;
@@ -149,6 +166,7 @@ type
     procedure CmdSendToRepl(Sender: TObject);
     procedure CmdReplRestart(Sender: TObject);
     procedure CmdReplClear(Sender: TObject);
+    procedure CmdHelpWord(Sender: TObject);
   end;
 
 var
@@ -195,6 +213,10 @@ begin
   FRepl.OnOutput := ReplOutput;
   FRepl.OnExit := ReplExit;
   FReplHistory := TStringList.Create;
+  FHelpRunner := TProcessRunner.Create;
+  FHelpRunner.OnOutput := HelpOutput;
+  FHelpRunner.OnExit := HelpExit;
+  FHelpLines := TStringList.Create;
   BuildUI;
   BuildMenu;
   LoadSettings;
@@ -217,6 +239,8 @@ begin
   FRunner.Free;          // kills a running program
   FRepl.Free;            // and the REPL session
   FReplHistory.Free;
+  FHelpRunner.Free;
+  FHelpLines.Free;
   SaveSettings;
   FRecent.Free;
   FFrames.Free;
@@ -330,6 +354,16 @@ begin
   FOutputTab.Text := 'Output';
   FReplTab := FBottomTabs.Add;
   FReplTab.Text := 'REPL';
+  FHelpTab := FBottomTabs.Add;
+  FHelpTab.Text := 'Help';
+  FHelpMemo := TMemo.Create(Self);
+  FHelpMemo.Parent := FHelpTab;
+  FHelpMemo.Align := TAlignLayout.Client;
+  FHelpMemo.ReadOnly := True;
+  FHelpMemo.WordWrap := True;   // long headers, such as ode.solve's
+  FHelpMemo.StyledSettings := FHelpMemo.StyledSettings - [TStyledSetting.Family];
+  FHelpMemo.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
+  FHelpMemo.Text := 'Put the caret on a name in the editor and press F1.';
   FOutput := TListBox.Create(Self);
   FOutput.Parent := FOutputTab;
   FOutput.Align := TAlignLayout.Client;
@@ -403,6 +437,8 @@ begin
   AddMenuItem(M, 'C&lear Output', '', CmdClearOutput);
 
   M := AddMenuItem(Menu, '&Help', '', nil);
+  AddMenuItem(M, '&Help on Word', 'F1', CmdHelpWord);
+  AddMenuItem(M, '-', '', nil);
   AddMenuItem(M, '&About Axon IDE', '', CmdAbout);
 end;
 
@@ -1250,6 +1286,243 @@ end;
 procedure TfrmMain.CmdReplClear(Sender: TObject);
 begin
   FReplList.Clear;
+end;
+
+{ ---------------- help on the word under the caret ---------------- }
+
+function IsNameChar(C: Char): Boolean;
+begin
+  Result := CharInSet(C, ['A'..'Z', 'a'..'z', '0'..'9', '_']);
+end;
+
+{ The (possibly dotted) name at the caret, as in linalg.solve; '' if none. }
+function TfrmMain.WordAtCaret(Doc: TDocument): string;
+var
+  Line: string;
+  Col, A, B: Integer;
+begin
+  Result := '';
+  Line := Doc.Editor.LineText(Doc.Editor.CaretLine);
+  Col := Doc.Editor.CaretColumn;            // 1-based; the caret is before Line[Col]
+  if (Col > Length(Line)) or ((Col >= 1) and not IsNameChar(Line[Col])) then
+    Dec(Col);                               // just after a word
+  if (Col < 1) or (Col > Length(Line)) or not IsNameChar(Line[Col]) then
+    Exit;
+  A := Col;
+  while (A > 1) and (IsNameChar(Line[A - 1]) or
+    ((Line[A - 1] = '.') and (A > 2) and IsNameChar(Line[A - 2]))) do
+    Dec(A);
+  B := Col;
+  while (B < Length(Line)) and IsNameChar(Line[B + 1]) do
+    Inc(B);
+  Result := Copy(Line, A, B - A + 1);
+  if CharInSet(Result[1], ['0'..'9']) then
+    Result := '';
+end;
+
+{ Help for a function or record defined in the document itself, read from
+  the text: the header as written and the ## lines directly above it. }
+function TfrmMain.LocalHelp(Doc: TDocument; const Name: string; out Text: string): Boolean;
+var
+  K, J, Depth, N: Integer;
+  L, T, Header: string;
+  Docs, Fields: TStringList;
+  IsRecord: Boolean;
+  C: Char;
+begin
+  Result := False;
+  if Name.Contains('.') then
+    Exit;
+  N := Doc.Editor.LineCount;
+  for K := 1 to N do
+  begin
+    T := Doc.Editor.LineText(K).Trim;
+    if T.StartsWith('export ') then
+      T := Copy(T, 8, MaxInt).TrimLeft;
+    IsRecord := T.StartsWith('record ') and (Copy(T, 8, MaxInt).Trim = Name);
+    if not (IsRecord or T.StartsWith('function ' + Name + '(') or
+      T.StartsWith('function ' + Name + ' (')) then
+      Continue;
+    Docs := TStringList.Create;
+    Fields := TStringList.Create;
+    try
+      // The ## lines directly above.
+      J := K - 1;
+      while (J >= 1) and Doc.Editor.LineText(J).TrimLeft.StartsWith('##') do
+      begin
+        L := Doc.Editor.LineText(J).TrimLeft.Substring(2);
+        if L.StartsWith(' ') then
+          L := L.Substring(1);
+        Docs.Insert(0, L);
+        Dec(J);
+      end;
+      if IsRecord then
+      begin
+        // record Name(field: type, ...), from the field lines up to "end".
+        J := K + 1;
+        while (J <= N) and (Doc.Editor.LineText(J).Trim <> 'end') do
+        begin
+          L := Doc.Editor.LineText(J).Trim;
+          if (L <> '') and not L.StartsWith('#') then
+            Fields.Add(L);
+          Inc(J);
+        end;
+        Header := 'record ' + Name + '(' + string.Join(', ', Fields.ToStringArray) + ')';
+      end
+      else
+      begin
+        // The header through the closing parenthesis, joining lines.
+        Header := Copy(T, Length('function ') + 1, MaxInt);
+        J := K;
+        Depth := 0;
+        for C in Header do
+          if C = '(' then Inc(Depth) else if C = ')' then Dec(Depth);
+        while (Depth > 0) and (J < N) do
+        begin
+          Inc(J);
+          L := Doc.Editor.LineText(J).Trim;
+          Header := Header + ' ' + L;
+          for C in L do
+            if C = '(' then Inc(Depth) else if C = ')' then Dec(Depth);
+        end;
+        // Drop a comment after the header.
+        J := Header.IndexOf(' #');
+        if J > 0 then
+          Header := Header.Substring(0, J).TrimRight;
+      end;
+      Text := Header;
+      if Docs.Count = 0 then
+        Text := Text + sLineBreak + '  (no documentation)'
+      else
+        for L in Docs do
+          Text := Text + sLineBreak + '  ' + L;
+      Result := True;
+      Exit;
+    finally
+      Docs.Free;
+      Fields.Free;
+    end;
+  end;
+end;
+
+procedure TfrmMain.ShowHelp(const Text: string);
+var
+  First: string;
+  P: Integer;
+begin
+  FHelpMemo.Text := Text;
+  FBottomTabs.ActiveTab := FHelpTab;
+  First := Text;
+  P := First.IndexOf(#10);
+  if P >= 0 then
+    First := First.Substring(0, P);
+  FStatus.Text := First.Trim;
+end;
+
+procedure TfrmMain.CmdHelpWord(Sender: TObject);
+var
+  Doc: TDocument;
+  Name, Text, Exe, Dir, T: string;
+  K: Integer;
+  Imports: TStringList;
+begin
+  Doc := CurrentDoc;
+  if Doc = nil then
+    Exit;
+  Name := WordAtCaret(Doc);
+  if Name = '' then
+  begin
+    ShowHelp('Put the caret on a name, such as sin or ode.solve, and press F1.');
+    Exit;
+  end;
+  if LocalHelp(Doc, Name, Text) then
+  begin
+    ShowHelp(Text);
+    Exit;
+  end;
+  Exe := AxonExecutable;
+  if Exe = '' then
+  begin
+    ShowHelp('Cannot find the axon interpreter next to the IDE.');
+    Exit;
+  end;
+  // A short session: the file's imports, then help. Its output after the
+  // last ready marker before "help" is the answer.
+  FHelpRunner.Kill;
+  Imports := TStringList.Create;
+  try
+    for K := 1 to Doc.Editor.LineCount do
+    begin
+      T := Doc.Editor.LineText(K).Trim;
+      if T.StartsWith('import ') or (T.StartsWith('from ') and T.Contains(' import ')) then
+        Imports.Add(T);
+    end;
+    if Doc.FilePath <> '' then
+      Dir := ExtractFileDir(Doc.FilePath)
+    else
+      Dir := TPath.GetDocumentsPath;
+    FHelpName := Name;
+    FHelpSkip := Imports.Count + 1;
+    FHelpPartial := '';
+    FHelpLines.Clear;
+    FHelpMemo.Text := 'Looking up ' + Name + '...';
+    FBottomTabs.ActiveTab := FHelpTab;
+    if FHelpRunner.Running then
+      Exit;   // the previous lookup is still being stopped; F1 again
+    try
+      FHelpRunner.Start(Exe, ['--repl-protocol'], Dir, True);
+    except
+      on E: Exception do
+      begin
+        ShowHelp('Cannot start axon: ' + E.Message);
+        Exit;
+      end;
+    end;
+    for T in Imports do
+      FHelpRunner.WriteInput(T + #10);
+    FHelpRunner.WriteInput('help ' + Name + #10);
+    FHelpRunner.CloseInput;
+  finally
+    Imports.Free;
+  end;
+end;
+
+procedure TfrmMain.HelpOutput(Kind: TOutputKind; const Text: string);
+var
+  S, L: string;
+  P: Integer;
+begin
+  S := FHelpPartial + Text.Replace(#13#10, #10).Replace(#13, #10);
+  P := S.IndexOf(#10);
+  while P >= 0 do
+  begin
+    L := S.Substring(0, P);
+    S := S.Substring(P + 1);
+    P := S.IndexOf(#10);
+    if L.StartsWith(#1) then
+      Dec(FHelpSkip)                 // one more line read
+    else if FHelpSkip = 0 then       // output of "help name"
+    begin
+      if L.StartsWith(#2) then
+        L := L.Substring(1);
+      FHelpLines.Add(L);
+    end;
+  end;
+  FHelpPartial := S;
+end;
+
+procedure TfrmMain.HelpExit(ExitCode: Integer);
+var
+  Text: string;
+begin
+  if FHelpRunner.Killed then
+    Exit;
+  Text := FHelpLines.Text.TrimRight;
+  // An undefined name answers with a NameError report.
+  if (Text = '') or Text.StartsWith('NameError') then
+    Text := 'No help for ' + FHelpName + ': it is not a built-in, an imported name, or ' +
+      'a function or record defined at the top of this file.';
+  ShowHelp(Text);
 end;
 
 { ---------------- commands ---------------- }
