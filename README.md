@@ -1,5 +1,7 @@
 # Axon
 
+*Axon was developed by Herbert Sauro in collaboration with [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant.*
+
 Axon is a programming language for scientific computing. Matrices, complex numbers and calls into native numerical libraries are part of the language rather than add-ons. The syntax borrows what scientists already read fluently (MATLAB-style matrix literals, 1-based indexing, `end`-delimited blocks) and adds a module system, records, keyword arguments and optional type annotations.
 
 This repository holds the interpreter, written in Delphi, its standard library, and the Axon IDE.
