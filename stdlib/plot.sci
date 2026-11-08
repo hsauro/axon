@@ -1,4 +1,4 @@
-## Line, scatter, bar, histogram and surface plots, saved as PNG, SVG or PDF. Plotting calls
+## Line, scatter, bar, histogram, surface and 3D curve and scatter plots, saved as PNG, SVG or PDF. Plotting calls
 ## add to the current figure; plot.save writes it. See the Language
 ## Reference, "The plot module".
 
@@ -75,7 +75,7 @@ function add_series(s)
   global current
   figure_now()
   if s.three_d != current.three_d and length(current.series) > 0
-    fail("ArgumentError", "a figure cannot mix surfaces with line and scatter plots")
+    fail("ArgumentError", "a figure cannot mix 3D plots (surface, line3, scatter3) with 2D ones")
   end
   current.three_d = s.three_d
   current.series = append(current.series, s)
@@ -308,6 +308,54 @@ export function surface(x, y, Z; label = nothing, colormap = "viridis", edges = 
   current.azim = azim + 0.0
 end
 
+## Adds a curve through the points (x[k], y[k], z[k]) in 3D, such as a
+## trajectory. A NaN in any coordinate leaves a gap. Keywords: label, color,
+## width (points), and marker (a marker shape at each point, with
+## marker_size).
+export function line3(x, y, z; label = nothing, color = nothing, width = 1.5, marker = nothing,
+                      marker_size = 5.0)
+  [xs, ys, zs] = xyz(x, y, z, "plot.line3")
+  check_marker(marker, "plot.line3")
+  fig = figure_now()
+  if typeof(color) == "nothing" color = next_color(fig) end
+  add_series({type: "line3", three_d: true, x: xs, y: ys, z: zs, label: label, color: color,
+              width: width + 0.0, marker: marker, marker_size: marker_size + 0.0})
+end
+
+## Adds a marker at each point (x[k], y[k], z[k]) in 3D. Keywords: label,
+## color, size (points) and marker ("circle", "square", "diamond",
+## "triangle", "plus", "cross").
+export function scatter3(x, y, z; label = nothing, color = nothing, size = 6.0,
+                         marker = "circle")
+  [xs, ys, zs] = xyz(x, y, z, "plot.scatter3")
+  check_marker(marker, "plot.scatter3")
+  fig = figure_now()
+  if typeof(color) == "nothing" color = next_color(fig) end
+  add_series({type: "scatter3", three_d: true, x: xs, y: ys, z: zs, label: label, color: color,
+              size: size + 0.0, marker: marker})
+end
+
+## Sets the viewing direction of a 3D figure: azimuth and elevation in
+## degrees (as MATLAB's view; the default is azim = -60, elev = 30).
+export function view(azim, elev)
+  global current
+  figure_now()
+  current.azim = azim + 0.0
+  current.elev = elev + 0.0
+end
+
+# Three real vectors of one length, for line3 and scatter3.
+function xyz(x, y, z, where)
+  xs = real_vector(x, where + ": x")
+  ys = real_vector(y, where + ": y")
+  zs = real_vector(z, where + ": z")
+  if length(xs) != length(ys) or length(xs) != length(zs)
+    fail("DimensionError", where + ": x, y and z have " + string(length(xs)) + ", " +
+      string(length(ys)) + " and " + string(length(zs)) + " values")
+  end
+  return xs, ys, zs
+end
+
 ## Sets the title of the current figure.
 export function title(text)
   global current
@@ -425,11 +473,11 @@ export function show(; scale = 2.0)
   end
 end
 
-# Whether the IDE's interactive chart can draw the figure: any 2-D figure
-# (lines, scatter, bars, histograms, named ticks); surfaces are shown as the
-# image.
+# Whether the IDE's interactive charts can draw the figure: every 2-D figure
+# goes to the 2-D chart and every 3-D figure (surfaces, line3, scatter3) to
+# the 3-D chart.
 function interactive(fig)
-  return not fig.three_d and length(fig.series) > 0
+  return length(fig.series) > 0
 end
 
 ## The current figure, as a record (nothing before the first plotting call).
@@ -809,6 +857,16 @@ function legend_items(labelled, bx, by, bw, bh)
     if s.type == "bars"
       items = append(items, {kind: "rect", x: bx + 9.0, y: cy - 5.0, w: 16.0, h: 10.0,
                              fill: s.color})
+    elseif s.type == "surface"
+      items = append(items, {kind: "rect", x: bx + 9.0, y: cy - 5.0, w: 16.0, h: 10.0,
+                             fill: colormap_at(s.colormap, 0.5)})
+    elseif s.type == "line3"
+      items = append(items, {kind: "line", x: [bx + 6.0, bx + 28.0], y: [cy, cy],
+                             color: s.color, width: s.width})
+      if typeof(s.marker) != "nothing"
+        items = append(items, {kind: "markers", x: [bx + 17.0], y: [cy], shape: s.marker,
+                               size: s.marker_size, color: s.color})
+      end
     elseif s.type == "line"
       items = append(items, {kind: "line", x: [bx + 6.0, bx + 28.0], y: [cy, cy],
                              color: s.color, width: s.width, dash: dash_for(s.style, s.width)})
@@ -839,20 +897,48 @@ function colormap_at(name, u)
   return (1 - f) * VIRIDIS[k + 1, :] + f * VIRIDIS[k + 2, :]
 end
 
+# The finite range of the values (lo > hi when there are none).
+function finite_range(v, lo, hi)
+  for t in v
+    if t == t and abs(t) < 1.0 / 0.0
+      if t < lo lo = t end
+      if t > hi hi = t end
+    end
+  end
+  return lo, hi
+end
+
+# A 3D figure as a picture (plot.save, and plot.show outside the IDE). Every
+# series shares one box, scaled to the data of all of them; surfaces are
+# drawn back to front, then curves and markers over them. (The IDE's 3D
+# chart sorts everything together, so curves also pass behind surfaces.)
 function render_3d(fig)
   W = fig.width
   H = fig.height
-  s = fig.series[1]
-  xs = s.x
-  ys = s.y
-  Z = s.z
-  [m, n] = size(Z)
-  xmin = min(xs)
-  xmax = max(xs)
-  ymin = min(ys)
-  ymax = max(ys)
-  zmin = min(Z)
-  zmax = max(Z)
+  inf = 1.0 / 0.0
+  xmin = inf
+  xmax = -inf
+  ymin = inf
+  ymax = -inf
+  zmin = inf
+  zmax = -inf
+  for s in fig.series
+    [xmin, xmax] = finite_range(s.x, xmin, xmax)
+    [ymin, ymax] = finite_range(s.y, ymin, ymax)
+    [zmin, zmax] = finite_range(s.z, zmin, zmax)
+  end
+  if xmin > xmax
+    xmin = 0.0
+    xmax = 1.0
+  end
+  if ymin > ymax
+    ymin = 0.0
+    ymax = 1.0
+  end
+  if zmin > zmax
+    zmin = 0.0
+    zmax = 1.0
+  end
   if xmax == xmin xmax = xmin + 1 end
   if ymax == ymin ymax = ymin + 1 end
   if zmax == zmin zmax = zmin + 1 end
@@ -898,26 +984,72 @@ function render_3d(fig)
     items = append(items, {kind: "line", x: [a1, a2], y: [b1, b2], color: "#909090", width: 0.8})
   end
 
-  # Faces, back to front: the loops run away from the viewer first.
+  # Surfaces: faces back to front (the loops run away from the viewer first).
   [vx, vy, vd] = proj(1, 0, 0)
   [ux, uy, ud] = proj(0, 1, 0)
   [ox, oy, od] = proj(0, 0, 0)
-  irange = 1:m - 1
-  jrange = 1:n - 1
-  if ud - od > 0 irange = m - 1:-1:1 end
-  if vd - od > 0 jrange = n - 1:-1:1 end
-  for i in irange
-    for j in jrange
-      zc = (Z[i, j] + Z[i, j + 1] + Z[i + 1, j + 1] + Z[i + 1, j]) / 4
-      col = colormap_at(s.colormap, (zc - zmin) / (zmax - zmin))
-      [p1x, p1y, q1] = proj(nx(xs[j]), ny(ys[i]), nz(Z[i, j]))
-      [p2x, p2y, q2] = proj(nx(xs[j + 1]), ny(ys[i]), nz(Z[i, j + 1]))
-      [p3x, p3y, q3] = proj(nx(xs[j + 1]), ny(ys[i + 1]), nz(Z[i + 1, j + 1]))
-      [p4x, p4y, q4] = proj(nx(xs[j]), ny(ys[i + 1]), nz(Z[i + 1, j]))
-      edge = "none"
-      if s.edges edge = "#00000040" end
-      items = append(items, {kind: "polygon", x: [p1x, p2x, p3x, p4x], y: [p1y, p2y, p3y, p4y],
-                             fill: col, color: edge, width: 0.4})
+  for s in fig.series
+    if s.type == "surface"
+      xs = s.x
+      ys = s.y
+      Z = s.z
+      [m, n] = size(Z)
+      irange = 1:m - 1
+      jrange = 1:n - 1
+      if ud - od > 0 irange = m - 1:-1:1 end
+      if vd - od > 0 jrange = n - 1:-1:1 end
+      for i in irange
+        for j in jrange
+          zc = (Z[i, j] + Z[i, j + 1] + Z[i + 1, j + 1] + Z[i + 1, j]) / 4
+          if zc == zc
+            col = colormap_at(s.colormap, (zc - zmin) / (zmax - zmin))
+            [p1x, p1y, q1] = proj(nx(xs[j]), ny(ys[i]), nz(Z[i, j]))
+            [p2x, p2y, q2] = proj(nx(xs[j + 1]), ny(ys[i]), nz(Z[i, j + 1]))
+            [p3x, p3y, q3] = proj(nx(xs[j + 1]), ny(ys[i + 1]), nz(Z[i + 1, j + 1]))
+            [p4x, p4y, q4] = proj(nx(xs[j]), ny(ys[i + 1]), nz(Z[i + 1, j]))
+            edge = "none"
+            if s.edges edge = "#00000040" end
+            items = append(items, {kind: "polygon", x: [p1x, p2x, p3x, p4x],
+                                   y: [p1y, p2y, p3y, p4y], fill: col, color: edge, width: 0.4})
+          end
+        end
+      end
+    end
+  end
+
+  # Curves (a NaN starts a new run) and markers, over the surfaces.
+  for s in fig.series
+    if s.type == "line3" or s.type == "scatter3"
+      n = length(s.x)
+      px = zeros(n)
+      py = zeros(n)
+      for k in 1:n
+        [px[k], py[k], d] = proj(nx(s.x[k]), ny(s.y[k]), nz(s.z[k]))
+      end
+      if s.type == "line3"
+        k = 1
+        while k <= n
+          while k <= n and not (px[k] == px[k] and py[k] == py[k])
+            k = k + 1
+          end
+          j = k
+          while j <= n and px[j] == px[j] and py[j] == py[j]
+            j = j + 1
+          end
+          if j - k >= 2
+            items = append(items, {kind: "line", x: px[k:j - 1], y: py[k:j - 1], color: s.color,
+                                   width: s.width})
+          end
+          k = j
+        end
+        if typeof(s.marker) != "nothing"
+          items = append(items, {kind: "markers", x: px, y: py, shape: s.marker,
+                                 size: s.marker_size, color: s.color})
+        end
+      else
+        items = append(items, {kind: "markers", x: px, y: py, shape: s.marker, size: s.size,
+                               color: s.color})
+      end
     end
   end
 
@@ -935,6 +1067,11 @@ function render_3d(fig)
     items = append(items, {kind: "text", x: W / 2, y: top / 2, text: fig.title,
                            size: TITLE_SIZE, anchor: "middle", baseline: "middle",
                            bold: true, color: "black"})
+  end
+  # A legend of the labelled series, top right.
+  [labelled, lw, lh] = legend_size(fig.series)
+  if fig.legend and length(labelled) > 0
+    items = append(items, legend_items(labelled, W - lw - 12.0, top + 8.0, lw, lh))
   end
   return {width: W, height: H, background: "white", items: items}
 end

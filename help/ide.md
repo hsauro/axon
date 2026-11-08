@@ -102,7 +102,19 @@ Line, scatter, bar and histogram plots are shown in an interactive chart:
 | Click a legend entry | Hide or show that series |
 | Right-click | Copy the image, or export it as PNG or PDF |
 
-Surface plots are shown as an image.
+3D plots (`plot.surface`, `plot.line3`, `plot.scatter3`) are shown in an
+interactive 3D chart:
+
+| Action | Effect |
+| --- | --- |
+| Drag | Rotate |
+| Right-drag, or <kbd>Shift</kbd>+drag | Pan |
+| Mouse wheel | Zoom |
+| Hover | Show the coordinates of the nearest point |
+| Double-click | Edit titles, axes, series styles, lighting and the legend |
+| <kbd>Ctrl</kbd>+double-click | Back to the starting view |
+| Arrow keys, <kbd>+</kbd>/<kbd>-</kbd>, <kbd>R</kbd>, <kbd>1</kbd>–<kbd>4</kbd> | Rotate, zoom, reset, preset views (isometric, top, front, side) |
+| Right-click | Copy the image, export PNG or PDF, and more |
 
 ## Help
 
@@ -116,6 +128,9 @@ Reference that documents the name, when there is one: the whole module's
 section for a module function such as `ode.solve` (keywords, result, events,
 errors), and for built-ins such as `println` or `zeros` the section that covers
 them. Its last link opens that section in the Documentation tab.
+
+**Edit > Preferences** sets the text size of the Documentation tab
+(**Documentation font size**) and of the Help pane (**Output font size**).
 
 ## Shortcuts
 

@@ -19,17 +19,23 @@ unit uFigureChart;
 interface
 
 uses
-  SkPlotPaintBox;
+  System.JSON, System.UITypes, SkPlotPaintBox;
 
-// Replaces the chart's contents with the figure in FileName. False (with the
-// chart unchanged) when the file cannot be read as a figure.
+// Replaces the chart's contents with the 2-D figure in FileName. False (with
+// the chart unchanged) when the file cannot be read as a 2-D figure (a 3-D
+// figure goes to uFigureChart3D).
 function LoadFigure(Plot: TSkPlotPaintBox; const FileName: string): Boolean;
+
+// Reading the figure JSON, shared with uFigureChart3D.
+function ParseColor(J: TJSONValue; Default: TAlphaColor): TAlphaColor;
+function Num(J: TJSONValue; Default: Double): Double;
+function Str(J: TJSONValue): string;
+function Bool(J: TJSONValue; Default: Boolean): Boolean;
 
 implementation
 
 uses
-  System.SysUtils, System.Math, System.JSON, System.IOUtils, System.UITypes,
-  System.UIConsts,
+  System.SysUtils, System.Math, System.IOUtils, System.UIConsts,
   uPlotSeries, uPlotMapper;
 
 function ByteOf(V: Double): Cardinal;
@@ -234,7 +240,7 @@ begin
     if not (Root is TJSONObject) then
       Exit;
     Fig := TJSONObject(Root);
-    if not (Fig.GetValue('series') is TJSONArray) then
+    if not (Fig.GetValue('series') is TJSONArray) or Bool(Fig.GetValue('three_d'), False) then
       Exit;
     Series := TJSONArray(Fig.GetValue('series'));
 

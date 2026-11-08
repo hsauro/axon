@@ -56,7 +56,7 @@ uses
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
   uSkiaCodeEditor, uCodeEditorTypes, uFindBar, uProcessRunner, uRunReport,
   uRhoMarkdownViewer, uPreferences, uRefSections, Axon.Version, SkPlotPaintBox,
-  uFigureChart;
+  uFigureChart, Rho3DPlot, uFigureChart3D;
 
 type
   { Text colours of the output panes, per theme. }
@@ -84,7 +84,8 @@ type
     FTabs: TTabControl;
     FOutput: TListBox;
     FPlotImage: TImage;
-    FPlotChart: TSkPlotPaintBox;   // line and scatter figures, interactive
+    FPlotChart: TSkPlotPaintBox;   // 2-D figures, interactive
+    FPlot3D: TRho3DPlot;           // 3-D figures, interactive
     FPlotCaption: TLabel;
     FStatus: TLabel;
     FCaretInfo: TLabel;
@@ -274,6 +275,7 @@ type
     procedure TabMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
       X, Y: Single);
     procedure CloseTab(Tab: TTabItem);
+    procedure FreeEditorTab(Tab: TTabItem);
 {$IFNDEF MACOS}
     procedure CmdExit(Sender: TObject);
 {$ENDIF}
@@ -654,6 +656,13 @@ begin
   FPlotChart.Margins.Rect := TRectF.Create(4, 4, 4, 4);
   FPlotChart.ZoomPanEnabled := True;
   FPlotChart.Visible := False;
+  // 3-D figures (surfaces, line3, scatter3): drag rotates, right-drag pans,
+  // wheel zooms, double-click edits; see uFigureChart3D.
+  FPlot3D := TRho3DPlot.Create(Self);
+  FPlot3D.Parent := Right;
+  FPlot3D.Align := TAlignLayout.Client;
+  FPlot3D.Margins.Rect := TRectF.Create(4, 4, 4, 4);
+  FPlot3D.Visible := False;
   Split := TSplitter.Create(Self);
   Split.Parent := Body;
   Split.Align := TAlignLayout.Right;
@@ -941,7 +950,7 @@ begin
   if FCheckDoc = Doc then
     FCheckDoc := nil;
   FDocs.Extract(Doc);
-  Doc.Tab.Free;
+  FreeEditorTab(Doc.Tab);
   Doc.Free;
   if FDocs.Count = 0 then
     ShowWelcome;
@@ -987,6 +996,26 @@ begin
       end);
 end;
 
+{ Frees an editor-area tab. When it is the active one, its neighbour (the
+  tab to the left, else the one to the right) is activated first: freeing the
+  active tab moves TTabControl's index without showing that tab's content. }
+procedure TfrmMain.FreeEditorTab(Tab: TTabItem);
+var
+  K: Integer;
+begin
+  if Tab = nil then
+    Exit;
+  if (FTabs.ActiveTab = Tab) and (FTabs.TabCount > 1) then
+  begin
+    K := Tab.Index;
+    if K > 0 then
+      FTabs.ActiveTab := FTabs.Tabs[K - 1]
+    else
+      FTabs.ActiveTab := FTabs.Tabs[K + 1];
+  end;
+  Tab.Free;
+end;
+
 { Closes an editor-area tab: a file (asking to save it), the Documentation
   tab, or the Welcome tab. }
 procedure TfrmMain.CloseTab(Tab: TTabItem);
@@ -998,7 +1027,7 @@ begin
   if Tab = FDocsTab then
   begin
     FDocsViewer := nil;
-    FDocsTab.Free;
+    FreeEditorTab(FDocsTab);
     FDocsTab := nil;
     if FDocs.Count = 0 then
       ShowWelcome;
@@ -1175,6 +1204,8 @@ begin
       Round(FPrefs.EditorFontSize)), MinFontSize, MaxFontSize);
     FPrefs.OutputFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'OutputFontSize',
       Round(FPrefs.OutputFontSize)), MinFontSize, MaxFontSize);
+    FPrefs.DocsFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'DocsFontSize',
+      Round(FPrefs.DocsFontSize)), MinFontSize, MaxFontSize);
     FPrefs.ShowRunNotes := Ini.ReadBool('Preferences', 'ShowRunNotes', True);
     FPrefs.ShowJitReport := Ini.ReadBool('Preferences', 'ShowJitReport', True);
     ApplyPreferences;
@@ -1230,6 +1261,8 @@ begin
     Round(FPrefs.EditorFontSize)), MinFontSize, MaxFontSize);
   FPrefs.OutputFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'OutputFontSize',
     Round(FPrefs.OutputFontSize)), MinFontSize, MaxFontSize);
+  FPrefs.DocsFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'DocsFontSize',
+    Round(FPrefs.DocsFontSize)), MinFontSize, MaxFontSize);
   FPrefs.ShowRunNotes := Ini.ReadBool('Preferences', 'ShowRunNotes', True);
   FPrefs.ShowJitReport := Ini.ReadBool('Preferences', 'ShowJitReport', True);
   ApplyPreferences;
@@ -1263,6 +1296,7 @@ begin
     Ini.WriteString('Window', 'Theme', 'light');
   Ini.WriteInteger('Preferences', 'EditorFontSize', Round(FPrefs.EditorFontSize));
   Ini.WriteInteger('Preferences', 'OutputFontSize', Round(FPrefs.OutputFontSize));
+  Ini.WriteInteger('Preferences', 'DocsFontSize', Round(FPrefs.DocsFontSize));
   Ini.WriteBool('Preferences', 'ShowRunNotes', FPrefs.ShowRunNotes);
   Ini.WriteBool('Preferences', 'ShowJitReport', FPrefs.ShowJitReport);
   Ini.WriteBool('Preferences', 'Jit', FJit);
@@ -1599,6 +1633,7 @@ begin
   try
     FPlotImage.Bitmap.LoadFromFile(Newest);
     FPlotChart.Visible := False;
+    FPlot3D.Visible := False;
     FPlotImage.Visible := True;
     FPlotCaption.Text := ExtractFileName(Newest);
   except
@@ -2321,9 +2356,22 @@ begin
   // A figure with its data next to the PNG (line and scatter plots) goes to
   // the interactive chart; any other figure is shown as the image.
   if TFile.Exists(TPath.ChangeExtension(Path, '.json')) and
+    LoadFigure3D(FPlot3D, TPath.ChangeExtension(Path, '.json')) then
+  begin
+    FPlotImage.Visible := False;
+    FPlotChart.Visible := False;
+    FPlot3D.Visible := True;
+    Inc(FFigureCount);
+    FPlotCaption.Text := Format('Figure %d: drag rotates, wheel zooms, double-click edits',
+      [FFigureCount]);
+    FFigureShown := True;
+    Exit;
+  end;
+  if TFile.Exists(TPath.ChangeExtension(Path, '.json')) and
     LoadFigure(FPlotChart, TPath.ChangeExtension(Path, '.json')) then
   begin
     FPlotImage.Visible := False;
+    FPlot3D.Visible := False;
     FPlotChart.Visible := True;
     Inc(FFigureCount);
     FPlotCaption.Text := Format('Figure %d: wheel zooms, drag pans, double-click edits',
@@ -2334,6 +2382,7 @@ begin
   try
     FPlotImage.Bitmap.LoadFromFile(Path);
     FPlotChart.Visible := False;
+    FPlot3D.Visible := False;
     FPlotImage.Visible := True;
     Inc(FFigureCount);
     FPlotCaption.Text := Format('Figure %d (plot.show)', [FFigureCount]);
@@ -2577,7 +2626,7 @@ begin
     Exit;
   FWelcomeList := nil;
   FExamplesList := nil;
-  FWelcomeTab.Free;
+  FreeEditorTab(FWelcomeTab);
   FWelcomeTab := nil;
   UpdateTitle;
 end;
@@ -2833,6 +2882,7 @@ begin
     FDocsViewer.Align := TAlignLayout.Client;
     FDocsViewer.OnLinkClick := DocsLinkClick;
     FDocsViewer.OnSearchChange := DocsSearchChange;
+    FDocsViewer.FontSize := FPrefs.DocsFontSize;
     // Find (Ctrl+F): the editor's find bar without its replace row, below the
     // toolbar. Typing highlights; Enter / Shift+Enter or Next / Prev move
     // (F3 / Shift+F3 in the page too); Escape or Close clears.
@@ -3058,6 +3108,8 @@ begin
   FReplPrompt.StyledSettings := FReplPrompt.StyledSettings - [TStyledSetting.Size];
   FReplPrompt.TextSettings.Font.Size := FPrefs.OutputFontSize;
   FHelpViewer.FontSize := FPrefs.OutputFontSize;
+  if FDocsViewer <> nil then
+    FDocsViewer.FontSize := FPrefs.DocsFontSize;
 end;
 
 procedure TfrmMain.CmdPreferences(Sender: TObject);

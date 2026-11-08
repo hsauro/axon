@@ -3,7 +3,7 @@ unit uPreferences;
 (* The IDE's preferences and the dialog that edits them (Edit > Preferences).
 
    The dialog is built in code and shown modally. Each size has a spin box and
-   a preview line in the monospace font that follows it as it changes. Two
+   a preview line in the font that follows it as it changes. Two
    checkboxes choose which of the IDE's own notes (the grey lines) a run
    writes to the Output pane. Reset restores the defaults. The caller applies
    the result and saves it. *)
@@ -14,6 +14,7 @@ type
   TIdePreferences = record
     EditorFontSize: Single;
     OutputFontSize: Single;     // Output, REPL and Help panes
+    DocsFontSize: Single;       // the Documentation tab's pages
     ShowRunNotes: Boolean;      // "Running ..." and "Finished in ..."
     ShowJitReport: Boolean;     // "JIT compiled: ..." and "Interpreted: ..."
     class function Defaults: TIdePreferences; static;
@@ -37,6 +38,7 @@ class function TIdePreferences.Defaults: TIdePreferences;
 begin
   Result.EditorFontSize := 13;
   Result.OutputFontSize := 12;
+  Result.DocsFontSize := 14;
   Result.ShowRunNotes := True;
   Result.ShowJitReport := True;
 end;
@@ -46,13 +48,13 @@ type
   TPreferencesDialog = class(TComponent)
   private
     FForm: TForm;
-    FEditorSize, FOutputSize: TSpinBox;
-    FEditorPreview, FOutputPreview: TLabel;
+    FEditorSize, FOutputSize, FDocsSize: TSpinBox;
+    FEditorPreview, FOutputPreview, FDocsPreview: TLabel;
     FRunNotes, FJitReport: TCheckBox;
     FMono: string;
     FNextRowY: Single;          // Top-aligned rows keep the order of their Position.Y
     function AddRow(const Caption, Sample: string; Value: Single;
-      out Preview: TLabel): TSpinBox;
+      out Preview: TLabel; const Family: string = ''): TSpinBox;
     function AddCheck(const Caption: string; Value: Boolean): TCheckBox;
     procedure SizeChanged(Sender: TObject);
     procedure ResetClick(Sender: TObject);
@@ -73,7 +75,7 @@ begin
   FForm := TForm.CreateNew(nil);
   FForm.Caption := 'Preferences';
   FForm.ClientWidth := 560;
-  FForm.ClientHeight := 290;
+  FForm.ClientHeight := 340;
   FForm.Position := TFormPosition.MainFormCenter;
   FForm.BorderStyle := TFmxFormBorderStyle.Single;
   FForm.BorderIcons := [TBorderIcon.biSystemMenu];
@@ -83,6 +85,8 @@ begin
     FEditorPreview);
   FOutputSize := AddRow('Output font size', 'NameError: output', Prefs.OutputFontSize,
     FOutputPreview);
+  FDocsSize := AddRow('Documentation font size', 'Help pages and the reference',
+    Prefs.DocsFontSize, FDocsPreview, {$IFDEF MSWINDOWS}'Segoe UI'{$ELSE}'Helvetica Neue'{$ENDIF});
 
   Note := TLabel.Create(FForm);
   Note.Parent := FForm;
@@ -147,7 +151,7 @@ end;
 
 { A row: caption, spin box and a preview in the monospace font. }
 function TPreferencesDialog.AddRow(const Caption, Sample: string; Value: Single;
-  out Preview: TLabel): TSpinBox;
+  out Preview: TLabel; const Family: string): TSpinBox;
 var
   Row: TLayout;
   L: TLabel;
@@ -161,7 +165,7 @@ begin
   L := TLabel.Create(FForm);
   L.Parent := Row;
   L.Align := TAlignLayout.Left;
-  L.Width := 130;
+  L.Width := 160;
   L.Text := Caption;
   Result := TSpinBox.Create(FForm);
   Result.Parent := Row;
@@ -178,7 +182,10 @@ begin
   Preview.Align := TAlignLayout.Client;
   Preview.Margins.Left := 16;
   Preview.StyledSettings := Preview.StyledSettings - [TStyledSetting.Family, TStyledSetting.Size];
-  Preview.TextSettings.Font.Family := FMono;
+  if Family <> '' then
+    Preview.TextSettings.Font.Family := Family
+  else
+    Preview.TextSettings.Font.Family := FMono;
   Preview.TextSettings.Font.Size := Round(Value);
   Preview.TextSettings.WordWrap := False;
   Preview.Text := Sample;
@@ -188,6 +195,7 @@ procedure TPreferencesDialog.SizeChanged(Sender: TObject);
 begin
   FEditorPreview.TextSettings.Font.Size := FEditorSize.Value;
   FOutputPreview.TextSettings.Font.Size := FOutputSize.Value;
+  FDocsPreview.TextSettings.Font.Size := FDocsSize.Value;
 end;
 
 procedure TPreferencesDialog.ResetClick(Sender: TObject);
@@ -197,6 +205,7 @@ begin
   D := TIdePreferences.Defaults;
   FEditorSize.Value := D.EditorFontSize;
   FOutputSize.Value := D.OutputFontSize;
+  FDocsSize.Value := D.DocsFontSize;
   FRunNotes.IsChecked := D.ShowRunNotes;
   FJitReport.IsChecked := D.ShowJitReport;
 end;
@@ -208,6 +217,7 @@ begin
   begin
     Prefs.EditorFontSize := EnsureRange(FEditorSize.Value, MinFontSize, MaxFontSize);
     Prefs.OutputFontSize := EnsureRange(FOutputSize.Value, MinFontSize, MaxFontSize);
+    Prefs.DocsFontSize := EnsureRange(FDocsSize.Value, MinFontSize, MaxFontSize);
     Prefs.ShowRunNotes := FRunNotes.IsChecked;
     Prefs.ShowJitReport := FJitReport.IsChecked;
   end;

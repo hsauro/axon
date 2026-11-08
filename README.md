@@ -27,10 +27,10 @@ println("steps:", sol.nsteps, "prey at t = 50:", format(sol.y[1, end], 2))
 
 - **Numbers and arrays.** `int`, `real` and `complex` scalars; dense vectors and matrices with broadcasting, BLAS products and LAPACK-backed `\`, `/` and `^`; sparse matrices with a built-in sparse LU.
 - **Language.** Functions with keyword arguments, closures, records, lists and dictionaries, `try`/`catch`, optional type annotations, and modules with explicit exports.
-- **Standard library.** `linalg` (solve, eig, svd, qr, lu, chol, expm, ...), `ode` (RK45 and stiff BDF through SUNDIALS CVODE, with events and dense output), `plot` (line, scatter, bar, histogram and surface plots to PNG, SVG or PDF), `random`, `time` and `io`.
+- **Standard library.** `linalg` (solve, eig, svd, qr, lu, chol, expm, ...), `ode` (RK45 and stiff BDF through SUNDIALS CVODE, with events and dense output), `plot` (line, scatter, bar, histogram, surface, and 3D curve and scatter plots to PNG, SVG or PDF), `random`, `time` and `io`.
 - **Speed.** A JIT compiler built on [MIR](https://github.com/vnmakarov/mir) compiles numeric functions to native code at their first call, often hundreds of times faster than interpreting them, with identical results. ODE stepping loops run natively.
 - **Native code.** `extern` blocks call C libraries directly, including callbacks.
-- **IDE.** An editor with syntax colouring and as-you-type checks, a REPL that can run whole files and keep their variables, a plot pane with an interactive chart (zoom, pan, editing) for line, scatter, bar and histogram plots, F1 help that shows the matching section of the Language Reference, a searchable documentation viewer, and light and dark themes.
+- **IDE.** An editor with syntax colouring and as-you-type checks, a REPL that can run whole files and keep their variables, a plot pane with interactive charts (zoom, pan, rotate, editing) for line, scatter, bar, histogram, surface and 3D curve plots, F1 help that shows the matching section of the Language Reference, a searchable documentation viewer, and light and dark themes.
 
 ## Platforms
 
@@ -45,13 +45,14 @@ Axon is built with Embarcadero RAD Studio 13 (Delphi, BDS 37.0).
 - **From the command line:** `build.cmd` builds Win64 Debug, and `build.cmd Release` builds Release.
 - **Tests:** `test.cmd` runs the test suite; `test.cmd -jit` runs it with the JIT off, on and forced.
 
-The IDE uses three components of mine that live in their own repositories: the [RhoSkiaCodeEditor](https://github.com/hsauro/RhoSkiaCodeEditor) code editor, the [RhoMarkdownViewer](https://github.com/hsauro/RhoMarkdownViewer) markdown viewer, and the [Plot2DComponent](https://github.com/hsauro/Plot2DComponent) interactive chart. The IDE project finds their source through its unit search path, in a `RhodyComponents` folder next to the Axon folder, so clone them there under these names:
+The IDE uses four components of mine that live in their own repositories: the [RhoSkiaCodeEditor](https://github.com/hsauro/RhoSkiaCodeEditor) code editor, the [RhoMarkdownViewer](https://github.com/hsauro/RhoMarkdownViewer) markdown viewer, the [Plot2DComponent](https://github.com/hsauro/Plot2DComponent) interactive chart, and the [Rho3DPlotter](https://github.com/hsauro/Rho3DPlotter) interactive 3D chart. The IDE project finds their source through its unit search path, in a `RhodyComponents` folder next to the Axon folder, so clone them there under these names:
 
 ```
 cd ..
 git clone https://github.com/hsauro/RhoSkiaCodeEditor.git RhodyComponents/RhoEditor
 git clone https://github.com/hsauro/RhoMarkdownViewer.git RhodyComponents/RhoMarkDownViewer
 git clone https://github.com/hsauro/Plot2DComponent.git RhodyComponents/PlottingComponent
+git clone https://github.com/hsauro/Rho3DPlotter.git RhodyComponents/Rho3DPlotter
 ```
 
 The interpreter (`axon.dproj`) needs neither.

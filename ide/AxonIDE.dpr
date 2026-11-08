@@ -22,6 +22,7 @@ uses
   uPreferences in 'uPreferences.pas',
   uRefSections in 'uRefSections.pas',
   uFigureChart in 'uFigureChart.pas',
+  uFigureChart3D in 'uFigureChart3D.pas',
   Axon.Version in '..\src\Axon.Version.pas';
 
 // The build's resources (AxonIDE.res: icon, version information and the
