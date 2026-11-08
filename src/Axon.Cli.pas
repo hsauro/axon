@@ -6,6 +6,7 @@ unit Axon.Cli;
     axon file.sci           run a program
     axon --tokens file.sci  print the token stream (M1)
     axon --ast file.sci     print the syntax tree (M2)
+    axon --jir file.sci     print the JIT's typed IR of each top-level function (L2)
     axon test [-v] [path]   run the conformance tests
     axon --jit-selftest     check that the MIR JIT works here (L2, J0)
     axon --version | --help
@@ -23,7 +24,7 @@ uses
   Axon.Version, Axon.Errors, Axon.Platform, Axon.Source, Axon.TestRunner,
   System.Math,
   Axon.Tokens, Axon.Lexer, Axon.Ast, Axon.Parser, Axon.AstDump, Axon.Interp,
-  Axon.Repl, Axon.JitSelfTest;
+  Axon.Repl, Axon.JitSelfTest, Axon.Jit.Ir, Axon.Jit.Lower, System.Classes;
 
 procedure PrintUsage;
 begin
@@ -33,6 +34,7 @@ begin
   Writeln('  axon file.sci           run a program (.sci or .txt)');
   Writeln('  axon --tokens file.sci  print the token stream');
   Writeln('  axon --ast file.sci     print the syntax tree');
+  Writeln('  axon --jir file.sci     print the JIT''s typed IR, or why a function is not compiled');
   Writeln('  axon --transcript file  replay the input lines of a REPL transcript');
   Writeln('  axon --repl-protocol    the REPL for front ends such as the IDE');
   Writeln('  axon --check file|-     check the syntax without running (- reads stdin)');
@@ -125,6 +127,40 @@ begin
   Result := ExitOk;
 end;
 
+{ --jir: each named function at the top level of the program, lowered to
+  JIR, or the reason it is not compiled. Blank lines separate functions. }
+function DumpJir(Prog: TProgram): string;
+var
+  S: TStmt;
+  J: TJFunction;
+  Lines: TStringList;
+begin
+  Lines := TStringList.Create;
+  try
+    for S in Prog.Body do
+      if S is TFunctionStmt then
+      begin
+        if Lines.Count > 0 then
+          Lines.Add('');
+        try
+          J := LowerFunction(TFunctionStmt(S).Func);
+          try
+            J.Dump(Lines);
+          finally
+            J.Free;
+          end;
+        except
+          on E: EJitReject do
+            Lines.Add(Format('function %s: not compiled: %s (%d:%d)',
+              [TFunctionStmt(S).Func.Name, E.Message, E.Line, E.Col]));
+        end;
+      end;
+    Result := Lines.Text;
+  finally
+    Lines.Free;
+  end;
+end;
+
 function FrontEndDump(const Option, FileName: string): Integer;
 var
   Source: string;
@@ -142,6 +178,16 @@ begin
   begin
     for T in Tokenize(Source, FileName) do
       Writeln(DumpToken(T));
+    Result := ExitOk;
+  end
+  else if Option = '--jir' then
+  begin
+    Prog := ParseProgram(Tokenize(Source, FileName), FileName);
+    try
+      Write(DumpJir(Prog));
+    finally
+      Prog.Free;
+    end;
     Result := ExitOk;
   end
   else
@@ -178,7 +224,7 @@ begin
   end
   else if Cmd = 'test' then
     Result := RunTestCommand(Copy(Args, 1, MaxInt))
-  else if (Cmd = '--tokens') or (Cmd = '--ast') then
+  else if (Cmd = '--tokens') or (Cmd = '--ast') or (Cmd = '--jir') then
     Result := FrontEndDump(Cmd, Arg1)
   else if Cmd = '--jit-selftest' then
     Result := RunJitSelfTest

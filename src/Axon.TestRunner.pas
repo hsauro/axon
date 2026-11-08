@@ -18,6 +18,7 @@ unit Axon.TestRunner;
     name.out                     - must exit normally with exactly this stdout
     name.tokens                  - output of `axon --tokens name.sci`
     name.ast                     - output of `axon --ast name.sci`
+    name.jir                     - output of `axon --jir name.sci` (L2)
 
   A name.repl file is a REPL transcript: `axon --transcript name.repl` must
   reproduce it, ignoring trailing spaces and trailing blank lines.
@@ -41,12 +42,12 @@ const
   ErrorDirective = '#! error:';
 
 type
-  TTestKind = (tkOutput, tkError, tkTokens, tkAst, tkTranscript);
+  TTestKind = (tkOutput, tkError, tkTokens, tkAst, tkTranscript, tkJir);
 
   TTestCase = record
     Source: string;          // full path of the .sci (or .repl) file
     Kind: TTestKind;
-    ExpectedFile: string;    // .out / .tokens / .ast, or '' for none
+    ExpectedFile: string;    // .out / .tokens / .ast / .jir, or '' for none
     ExpectedKind: string;    // for tkError
     ExpectedErrFile: string; // for tkError: optional .err, compared with stderr
   end;
@@ -58,7 +59,7 @@ type
   end;
 
 const
-  KindNames: array[TTestKind] of string = ('output', 'error', 'tokens', 'ast', 'transcript');
+  KindNames: array[TTestKind] of string = ('output', 'error', 'tokens', 'ast', 'transcript', 'jir');
 
 function Normalize(const S: string): string;
 begin
@@ -139,7 +140,7 @@ function IsMilestoneDir(const Name: string): Boolean;
 var
   I: Integer;
 begin
-  Result := (Length(Name) >= 2) and (Name[1] = 'm');
+  Result := (Length(Name) >= 2) and CharInSet(Name[1], ['m', 'j']);
   if Result then
     for I := 2 to Length(Name) do
       if not CharInSet(Name[I], ['0'..'9']) then
@@ -191,12 +192,14 @@ begin
     Found := True;
   end;
 
-  for Expected in ['.tokens', '.ast'] do
+  for Expected in ['.tokens', '.ast', '.jir'] do
     if TFile.Exists(Base + Expected) then
     begin
       C := Default(TTestCase);
       C.Source := SciFile;
-      if Expected = '.tokens' then C.Kind := tkTokens else C.Kind := tkAst;
+      if Expected = '.tokens' then C.Kind := tkTokens
+      else if Expected = '.ast' then C.Kind := tkAst
+      else C.Kind := tkJir;
       C.ExpectedFile := Base + Expected;
       List.Add(C);
       Found := True;
@@ -285,6 +288,7 @@ begin
   case C.Kind of
     tkTokens: Args := ['--tokens', ExtractFileName(C.Source)];
     tkAst:    Args := ['--ast', ExtractFileName(C.Source)];
+    tkJir:    Args := ['--jir', ExtractFileName(C.Source)];
     tkTranscript: Args := ['--transcript', ExtractFileName(C.Source)];
   else
     Args := [ExtractFileName(C.Source)];

@@ -106,10 +106,30 @@ Each milestone ends with every test passing with the JIT off, on and forced, on 
 
 ### J1 — Typed IR and inference (no code generation yet)
 
-- [ ] `src/Axon.Jit.Ir.pas`: JIR, with typed virtual registers, blocks and branches, and a site table mapping each instruction that can fail to (line, col)
-- [ ] `src/Axon.Jit.Lower.pas`: the syntax tree of one function lowered to JIR. Covers scalar `bool`/`int`/`real` parameters and locals, literals, arithmetic with promotion, comparisons, `and`/`or`/`not` with short-circuiting, `if`/`elseif`/`else`, `while`, `for` over `int` ranges and `real` step ranges, `break`, `continue` and `return`
-- [ ] Inference rejects with a reason, for example: "x is int at 3:5 and real at 7:5", "`^` with a variable exponent has a value-dependent type", "reads global `g`", or "captures `count`"
-- [ ] `axon --jir` dumps, with `.jir` expected files written by hand from the reference, including rejection reasons
+- [x] `src/Axon.Jit.Ir.pas`: JIR, a linear list of three-address instructions over typed virtual registers, with labels and branches. Instructions that can fail carry a site, the line and column of the innermost enclosing statement, which is where the interpreter locates errors raised without a position
+- [x] `src/Axon.Jit.Lower.pas`: the syntax tree of one function lowered to JIR. It covers:
+  - scalar `bool`, `int` and `real` parameters and locals, and literals
+  - arithmetic with promotion, comparisons, and `and`/`or`/`not` with short-circuiting
+  - `if`/`elseif`/`else`, `while`, and `for` over `int` and `real` ranges
+  - `break`, `continue` and `return`
+  - `local`, and `x: T = e` with widening
+- [x] Inference rejects with a reason and a position, for example:
+  - "x is int at 6:3 and real at 7:3"
+  - "int ^ int with a variable exponent …"
+  - "reads offset, which is not a local variable"
+  - "y may be read before it is assigned"
+  - "returns int at 46:5 but can also reach the end and return nothing"
+- [x] `axon --jir file.sci` dumps every top-level function, and `.jir` tests (`tests/j01`, expected output written by hand) cover lowering and rejections. The test runner accepts `jNN` folders and `.jir` expected files
+
+Resolving names statically needs care, because the interpreter resolves them at run time. A plain assignment creates a variable in the function's outermost scope when it first runs (rule 5), and a read of a name that has no local variable goes to the module (rule 6). So JIR accepts a read only where the variable is *definitely assigned* on every path. This is tracked structurally:
+
+- after an `if`, the intersection over the branches that fall through;
+- after a loop, what held before it, since the body may run zero times.
+
+Any other read could reach the module at run time, so the function is rejected. `local`, `x: T = e` and the loop variable of a `for` live in their block (rules 2 and 3); a later `local` of the same name shadows, and the dump shows it as `name.2`. Two more rules keep compiled code identical to the interpreter:
+
+- The bounds of a `for` range are copied before the loop, so assignments in the body cannot change the iteration, as the interpreter's range object guarantees.
+- Element k is computed as `start + k*step`, exactly as `TRangeObj.ItemAt` does, not by accumulating.
 
 ### J2 — Scalar code generation
 

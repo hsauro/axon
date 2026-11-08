@@ -1,0 +1,23 @@
+function no_annot: not compiled: parameter x has no type annotation (1:19)
+
+function changes_type: not compiled: x is int at 6:3 and real at 7:3 (7:3)
+
+function maybe_unset: not compiled: y may be read before it is assigned (15:10)
+
+function reads_global: not compiled: reads offset, which is not a local variable (19:14)
+
+function var_power: not compiled: int ^ int with a variable exponent is an int or a real depending on the exponent's sign; use a literal exponent, or make an operand real (23:10)
+
+function calls: not compiled: calls sin; calls are not compiled yet (27:10)
+
+function bad_cond: not compiled: the condition is int, not bool, a TypeError (31:6)
+
+function mixed_returns: not compiled: returns int at 39:5 and real at 41:3 (41:3)
+
+function falls_off: not compiled: returns int at 46:5 but can also reach the end and return nothing (44:1)
+
+function narrows: not compiled: returns real, but the result is declared int, a TypeError (51:3)
+
+function loop_var_after: not compiled: reads i, which is not a local variable (57:10)
+
+function nested: not compiled: defines the nested function g; nested functions are not compiled (61:3)

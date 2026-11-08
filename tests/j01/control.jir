@@ -1,0 +1,41 @@
+function sign(x: real): int
+  var s: int
+  %0 = gt.real x, 0.0
+  bf %0, L1
+  s = 1
+  jmp L0
+L1:
+  %1 = lt.real x, 0.0
+  bf %1, L2
+  s = -1
+  jmp L0
+L2:
+  s = 0
+L0:
+  ret s
+
+function count_up(n: int): int
+  var i: int
+  var total: int
+  i = 0
+  total = 0
+L0:
+  bf true, L1
+  i = add.int i, 1  @16:5
+  %0 = gt.int i, n
+  bt %0, L3
+  %0 = ge.int total, 1000
+L3:
+  bf %0, L4
+  jmp L1
+L4:
+L2:
+  %1 = eq.int i, 3
+  bf %1, L6
+  jmp L0
+L6:
+L5:
+  total = add.int total, i  @23:5
+  jmp L0
+L1:
+  ret total

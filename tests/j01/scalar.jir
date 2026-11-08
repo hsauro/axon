@@ -1,0 +1,26 @@
+function f(a: int, b: real, c: bool): real
+  var x: int
+  var y: int
+  var z: real
+  var w: int
+  var p: int
+  var q: real
+  x = add.int a, 1  @2:3
+  %0 = neg.int x  @3:3
+  y = mul.int %0, 2  @3:3
+  %1 = i2r a
+  z = div.real %1, 2.0
+  %2 = b2i c
+  w = add.int %2, a  @5:3
+  p = pow.int a, 3  @6:3
+  %3 = i2r a
+  q = pow.real %3, -1.0
+  %4 = i2r y
+  %5 = sub.real b, %4
+  %6 = add.real %5, z
+  %7 = i2r w
+  %8 = add.real %6, %7
+  %9 = i2r p
+  %10 = add.real %8, %9
+  %11 = add.real %10, q
+  ret %11

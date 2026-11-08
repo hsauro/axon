@@ -1,0 +1,40 @@
+function sum_odd(n: int): int
+  var s: int
+  var k: int
+  s = 0
+  %0 = count.int 1, 2, n  @3:3
+  %1 = 0
+L0:
+  %2 = ge.int %1, %0
+  bt %2, L2
+  k = elem.int 1, 2, %1
+  s = add.int s, k  @4:5
+L1:
+  %1 = add.int %1, 1
+  jmp L0
+L2:
+  ret s
+
+function trapezoid(a: real, b: real, m: int): real
+  var h: real
+  var s: real
+  var x: real
+  %0 = sub.real b, a
+  %1 = i2r m
+  h = div.real %0, %1
+  s = 0.0
+  %2 = a
+  %3 = h
+  %4 = count.real %2, %3, b  @12:3
+  %5 = 0
+L0:
+  %6 = ge.int %5, %4
+  bt %6, L2
+  x = elem.real %2, %3, %5
+  s = add.real s, x
+L1:
+  %5 = add.int %5, 1
+  jmp L0
+L2:
+  %7 = mul.real s, h
+  ret %7

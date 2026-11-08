@@ -43,7 +43,9 @@ uses
   Axon.SparseLU in 'src\Axon.SparseLU.pas',
   Axon.Native.Cvode in 'src\native\Axon.Native.Cvode.pas',
   Axon.Native.Mir in 'src\native\Axon.Native.Mir.pas',
-  Axon.JitSelfTest in 'src\Axon.JitSelfTest.pas';
+  Axon.JitSelfTest in 'src\Axon.JitSelfTest.pas',
+  Axon.Jit.Ir in 'src\Axon.Jit.Ir.pas',
+  Axon.Jit.Lower in 'src\Axon.Jit.Lower.pas';
 
 begin
   ExitCode := RunCli;
