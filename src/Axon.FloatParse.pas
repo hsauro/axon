@@ -1,7 +1,8 @@
 unit Axon.FloatParse;
 
 (* Decimal text to the nearest Double, correctly rounded (ties to even), for
-   real and imaginary literals. Delphi's TryStrToFloat is off by one unit in
+   real and imaginary literals; and the reverse, a Double as text with a
+   fixed number of decimals (format, display_decimals), also exact. Delphi's TryStrToFloat is off by one unit in
    the last place for some 17-digit inputs, so a printed value read back could
    change.
 
@@ -22,6 +23,17 @@ interface
 // exponent. Returns False for anything else. Overflow gives +Inf, and
 // underflow 0 or a subnormal.
 function TryDecimalToDouble(const S: string; out D: Double): Boolean;
+
+// X with exactly Decimals digits after the point, rounded from X's exact
+// binary value (ties to even): FormatFixed(2.675, 2) is '2.67' because the
+// double nearest 2.675 is just below it. Decimals = 0 gives no point. A
+// result whose digits are all zero has no minus sign. NaN, Inf and -Inf are
+// written as words.
+function FormatFixed(X: Double; Decimals: Integer): string;
+
+// X as d.ddd...e<exp> with Decimals digits after the point (exponent form),
+// rounded exactly as FormatFixed.
+function FormatExponent(X: Double; Decimals: Integer): string;
 
 implementation
 
@@ -395,6 +407,165 @@ begin
     end;
   end;
   D := DecimalToDouble(A);
+end;
+
+{ ---- formatting ---- }
+
+{ The exact decimal value of |X| (finite, nonzero) in A. }
+procedure ExactDecimal(X: Double; var A: TDecimal);
+var
+  Bits, Mant: UInt64;
+  E2, I: Integer;
+  S: string;
+begin
+  Move(X, Bits, 8);
+  E2 := Integer((Bits shr 52) and $7FF);
+  Mant := Bits and ((UInt64(1) shl 52) - 1);
+  if E2 = 0 then
+    E2 := -1074                       // subnormal: Mant * 2^-1074
+  else
+  begin
+    Mant := Mant or (UInt64(1) shl 52);
+    E2 := E2 - 1075;                  // Mant * 2^(E - 1023 - 52)
+  end;
+  S := UIntToStr(Mant);
+  A.ND := Length(S);
+  for I := 1 to Length(S) do
+    A.D[I - 1] := Ord(S[I]) - Ord('0');
+  A.DP := A.ND;
+  A.Trunc := False;
+  A.Trim;
+  A.Shift(E2);                        // exact: at most 767 significant digits
+end;
+
+{ Rounds A to its first N digits (N may be 0 or beyond ND), ties to even. }
+procedure RoundTo(var A: TDecimal; N: Integer);
+var
+  I: Integer;
+begin
+  if N < 0 then
+  begin
+    A.ND := 0;
+    A.DP := 0;
+    Exit;
+  end;
+  if N >= A.ND then
+    Exit;
+  if A.ShouldRoundUp(N) then
+  begin
+    I := N - 1;
+    while (I >= 0) and (A.D[I] = 9) do
+      Dec(I);
+    if I < 0 then
+    begin
+      // All nines: 999 rounds up to 1000.
+      A.D[0] := 1;
+      A.ND := 1;
+      Inc(A.DP);
+      Exit;
+    end;
+    Inc(A.D[I]);
+    A.ND := I + 1;
+  end
+  else
+  begin
+    A.ND := N;
+    A.Trim;
+  end;
+end;
+
+function Digit(const A: TDecimal; I: Integer): Char;
+begin
+  if (I >= 0) and (I < A.ND) then
+    Result := Char(Ord('0') + A.D[I])
+  else
+    Result := '0';
+end;
+
+function SpecialText(X: Double; out S: string): Boolean;
+begin
+  Result := True;
+  if IsNan(X) then
+    S := 'NaN'
+  else if IsInfinite(X) then
+  begin
+    if X > 0 then S := 'Inf' else S := '-Inf';
+  end
+  else
+    Result := False;
+end;
+
+function FormatFixed(X: Double; Decimals: Integer): string;
+var
+  A: TDecimal;
+  SB: TStringBuilder;
+  I: Integer;
+begin
+  if SpecialText(X, Result) then
+    Exit;
+  A.ND := 0;
+  A.DP := 0;
+  A.Trunc := False;
+  if X <> 0 then
+  begin
+    ExactDecimal(Abs(X), A);
+    RoundTo(A, A.DP + Decimals);
+  end;
+  SB := TStringBuilder.Create;
+  try
+    if (X < 0) and (A.ND > 0) then
+      SB.Append('-');
+    if A.DP <= 0 then
+      SB.Append('0')
+    else
+      for I := 0 to A.DP - 1 do
+        SB.Append(Digit(A, I));
+    if Decimals > 0 then
+    begin
+      SB.Append('.');
+      for I := A.DP to A.DP + Decimals - 1 do
+        SB.Append(Digit(A, I));
+    end;
+    Result := SB.ToString;
+  finally
+    SB.Free;
+  end;
+end;
+
+function FormatExponent(X: Double; Decimals: Integer): string;
+var
+  A: TDecimal;
+  SB: TStringBuilder;
+  I, E: Integer;
+begin
+  if SpecialText(X, Result) then
+    Exit;
+  A.ND := 0;
+  A.DP := 0;
+  A.Trunc := False;
+  E := 0;
+  if X <> 0 then
+  begin
+    ExactDecimal(Abs(X), A);
+    RoundTo(A, 1 + Decimals);
+    E := A.DP - 1;
+  end;
+  SB := TStringBuilder.Create;
+  try
+    if (X < 0) and (A.ND > 0) then
+      SB.Append('-');
+    SB.Append(Digit(A, 0));
+    if Decimals > 0 then
+    begin
+      SB.Append('.');
+      for I := 1 to Decimals do
+        SB.Append(Digit(A, I));
+    end;
+    SB.Append('e').Append(E);
+    Result := SB.ToString;
+  finally
+    SB.Free;
+  end;
 end;
 
 procedure InitPow10;

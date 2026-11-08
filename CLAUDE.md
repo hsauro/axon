@@ -27,7 +27,7 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - `src/Axon.TestRunner.pas`: `axon test`
 - `src/Axon.Lexer.pas`, `Axon.Parser.pas`, `Axon.Ast.pas`, `Axon.AstDump.pas`: the front end
 - `src/Axon.FloatParse.pas`: decimal text to the nearest double for real literals (Clinger's fast path, else Go strconv's decimal-shift algorithm). Delphi's `TryStrToFloat` is not correctly rounded; don't use it for literals.
-- `src/Axon.Values.pas`: `TAxValue`, a tagged record holding scalars inline and other payloads in reference-counted objects; also the display forms
+- `src/Axon.Values.pas`: `TAxValue`, a tagged record holding scalars inline and other payloads in reference-counted objects; also the display forms. Displayed reals go through `ShownReal`, which applies `display_decimals` (`DisplayDecimals`, with `DisplayRows`/`DisplayCols` for `display_size`); error messages use `FormatReal`, which ignores the settings. Exact fixed-decimal text (`format`, `display_decimals`) is `FormatFixed` in `Axon.FloatParse`
 - `src/Axon.Ops.pas`: operators, promotion, checked integer arithmetic. Array and range operands are passed on to `Axon.Arrays`.
 - `src/Axon.Arrays.pas`: dense arrays. `TArrayObj` (declared in `Axon.Values`) is column-major, with one typed buffer per element type. This unit holds literals, broadcasting, `MatMul`, transpose, index resolution and reductions. Elementwise operations call the scalar operators per element.
 - Assignment to `a[i].f[j] = v` and similar goes through `AssignPath`/`SetIn`. `SetIn` walks the path, calling `MakeUnique` on each level before writing; that function copies one level of a list, record or dictionary when it is shared. Arrays at the leaf go to `AssignArraySlot`.

@@ -203,6 +203,19 @@ function TypeName(const V: TAxValue): string;
   Digits = 6 for their elements. }
 function FormatReal(X: Double; Digits: Integer = 15): string;
 
+const
+  DefaultDisplayRows = 10;
+  DefaultDisplayCols = 8;
+
+var
+  { Display settings (display_size, display_decimals), per process: an array
+    with more rows or columns than these shows its first and last ones;
+    DisplayDecimals >= 0 shows every displayed real with that many decimals
+    instead of its significant digits. }
+  DisplayRows: Integer = DefaultDisplayRows;
+  DisplayCols: Integer = DefaultDisplayCols;
+  DisplayDecimals: Integer = -1;
+
 var
   { Number of array copies made by copy-on-write (the __copies() test hook). }
   ArrayCopies: Int64;
@@ -221,7 +234,7 @@ implementation
 
 uses
   System.Math,
-  Axon.Tokens;
+  Axon.Tokens, Axon.FloatParse;
 
 constructor TStringObj.Create(const S: string);
 begin
@@ -815,16 +828,29 @@ begin
     Result := '-' + Result;
 end;
 
+{ A real as displayed: Digits significant digits, or the decimals set by
+  display_decimals (exponent form from 1e15 in magnitude). Error messages
+  use FormatReal, unaffected by the setting. }
+function ShownReal(X: Double; Digits: Integer = 15): string;
+begin
+  if DisplayDecimals < 0 then
+    Exit(FormatReal(X, Digits));
+  if not IsNan(X) and not IsInfinite(X) and (Abs(X) >= 1e15) then
+    Result := FormatExponent(X, DisplayDecimals)
+  else
+    Result := FormatFixed(X, DisplayDecimals);
+end;
+
 function FormatComplex(const C: TComplex; Digits: Integer = 15): string;
 var
   ImNeg: Boolean;
 begin
   ImNeg := (not IsNan(C.Im)) and ((C.Im < 0) or ((C.Im = 0) and (PUInt64(@C.Im)^ shr 63 = 1)));
-  Result := FormatReal(C.Re, Digits);
+  Result := ShownReal(C.Re, Digits);
   if ImNeg then
-    Result := Result + ' - ' + FormatReal(-C.Im, Digits) + 'i'
+    Result := Result + ' - ' + ShownReal(-C.Im, Digits) + 'i'
   else
-    Result := Result + ' + ' + FormatReal(C.Im, Digits) + 'i';
+    Result := Result + ' + ' + ShownReal(C.Im, Digits) + 'i';
 end;
 
 function FormatRange(R: TRangeObj): string;
@@ -837,22 +863,18 @@ begin
       Result := Format('%d:%d:%d', [R.IStart, R.IStep, R.IStop]);
   end
   else
-    Result := FormatReal(R.RStart) + ':' + FormatReal(R.RStep) + ':' + FormatReal(R.RStop);
+    Result := ShownReal(R.RStart) + ':' + ShownReal(R.RStep) + ':' + ShownReal(R.RStop);
 end;
 
 const
   ArrayDigits = 6;     // significant digits of array elements
-  MaxRowsShown = 10;   // more rows than this are elided
-  MaxColsShown = 8;    // more columns than this are elided
-  EdgeRows = 5;
-  EdgeCols = 4;
 
 function ElementText(A: TArrayObj; K: Integer): string;
 begin
   case A.ElemType of
     etBool:    if A.B[K] then Result := 'true' else Result := 'false';
     etInt:     Result := IntToStr(A.I[K]);
-    etReal:    Result := FormatReal(A.R[K], ArrayDigits);
+    etReal:    Result := ShownReal(A.R[K], ArrayDigits);
   else
     Result := FormatComplex(A.C[K], ArrayDigits);
   end;
@@ -866,9 +888,10 @@ begin
     Result := Format('%d' + #$00D7 + '%d matrix{%s}', [A.Rows, A.Cols, ElemTypeName(A.ElemType)]);
 end;
 
-{ Indices shown along a dimension of length N: all of them, or the first and
-  last Edge with -1 marking the elision. }
-function ShownIndices(N, MaxShown, Edge: Integer): TArray<Integer>;
+{ Indices shown along a dimension of length N: all of them, or, when N is
+  above MaxShown, the first (MaxShown + 1) div 2 and the last MaxShown div 2,
+  with -1 marking the elision. }
+function ShownIndices(N, MaxShown: Integer): TArray<Integer>;
 var
   K: Integer;
 begin
@@ -881,10 +904,10 @@ begin
   end
   else
   begin
-    for K := 0 to Edge - 1 do
+    for K := 0 to (MaxShown + 1) div 2 - 1 do
       Result := Result + [K];
     Result := Result + [-1];
-    for K := N - Edge to N - 1 do
+    for K := N - MaxShown div 2 to N - 1 do
       Result := Result + [K];
   end;
 end;
@@ -902,8 +925,8 @@ begin
   Result := ArrayHeader(A);
   if A.Count = 0 then
     Exit;
-  RowIdx := ShownIndices(A.Rows, MaxRowsShown, EdgeRows);
-  ColIdx := ShownIndices(A.Cols, MaxColsShown, EdgeCols);
+  RowIdx := ShownIndices(A.Rows, DisplayRows);
+  ColIdx := ShownIndices(A.Cols, DisplayCols);
   SetLength(Cells, Length(RowIdx), Length(ColIdx));
   SetLength(Widths, Length(ColIdx));
   for RI := 0 to High(RowIdx) do
@@ -1015,7 +1038,7 @@ begin
     if S.IsComplex then
       Vals[K] := FormatComplex(S.V[P], ArrayDigits)
     else
-      Vals[K] := FormatReal(S.V[P].Re, ArrayDigits);
+      Vals[K] := ShownReal(S.V[P].Re, ArrayDigits);
     if Length(Keys[K]) > KW then KW := Length(Keys[K]);
     if Length(Vals[K]) > VW then VW := Length(Vals[K]);
   end;
@@ -1089,7 +1112,7 @@ begin
     vkNothing: Result := 'nothing';
     vkBool:    if V.B then Result := 'true' else Result := 'false';
     vkInt:     Result := IntToStr(V.I);
-    vkReal:    Result := FormatReal(V.R);
+    vkReal:    Result := ShownReal(V.R);
     vkComplex: Result := FormatComplex(V.C);
     vkString:
       if Quoted then

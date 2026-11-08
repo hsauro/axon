@@ -323,7 +323,7 @@ Output tests compare text exactly, so every value has one display form.
 
 Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print` and `println` write values in these forms; see [Printing](#printing). Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. A dictionary displays as the call that builds it, `dict("Km" => 0.5, "Vm" => 10.0)`, with entries in insertion order; an empty one is `dict()`.
 
-Arrays display as a header line, then one line per row with each entry right-aligned in its column and preceded by two spaces. The header is `R×C matrix{T}` or `N-vector{T}`. Elements show up to 6 significant digits, following the same rules as scalars, and complex elements show both parts that way. Above 10 rows, only the first and last 5 are shown, with a `  ⋮` line between; above 8 columns, only the first and last 4, with a `…` column between. An empty array shows only its header. At the REPL an assignment shows `A = ` before the header:
+Arrays display as a header line, then one line per row with each entry right-aligned in its column and preceded by two spaces. The header is `R×C matrix{T}` or `N-vector{T}`. Elements show up to 6 significant digits, following the same rules as scalars, and complex elements show both parts that way. Above 10 rows, only the first and last 5 are shown, with a `  ⋮` line between; above 8 columns, only the first and last 4, with a `…` column between. `display_size` and `display_decimals` change these limits and the digits shown (see Printing). An empty array shows only its header. At the REPL an assignment shows `A = ` before the header:
 
 ```
 A = 2×2 matrix{int}
@@ -354,7 +354,24 @@ println()                             # 1 2 3
 println("Total: " + string(42))       # Total: 42
 ```
 
-To control spacing exactly, build one string with `+` and `string(x)` and print that. An array argument is written in its full display form, header and rows, starting where the line is; inside a list or record it is written inline. At the REPL, and before an error report, a line that `print` left open is ended first, so prompts and messages always start on a new line. Error reports go to standard error, not standard output.
+To control spacing exactly, build one string with `+` and `string(x)` (or `format`, below) and print that. An array argument is written in its full display form, header and rows, starting where the line is; inside a list or record it is written inline. At the REPL, and before an error report, a line that `print` left open is ended first, so prompts and messages always start on a new line. Error reports go to standard error, not standard output.
+
+Three prelude functions control how numbers appear:
+
+| Call | Effect |
+| --- | --- |
+| `display_size(rows, cols)` | Arrays with at most `rows` rows and `cols` columns are displayed in full. A larger dimension n shows its first `(n + 1) div 2` and last `n div 2` rows or columns, around the `⋮` line or `…` column. `display_size()` restores 10 rows and 8 columns |
+| `display_decimals(n)` | Every displayed `real` (scalars, array entries, the parts of complex numbers, range bounds) shows exactly `n` decimals, 1 to 15, instead of significant digits; magnitudes from 1e15 keep the exponent form, as in `1.000e20`. `int` values are unaffected. `display_decimals()` restores significant digits |
+| `format(x, decimals)` | The `int` or `real` `x` as a string with exactly `decimals` digits after the point (0 to 100; no point for 0), whatever the display settings |
+
+```axon
+display_decimals(3)
+println(1 / 3, [1.0, 22.5])         # 0.333, then the matrix as 1.000  22.500
+display_decimals()
+println("pi is about " + format(3.14159265, 2))   # pi is about 3.14
+```
+
+The settings return `nothing` and last until changed: for the rest of a program, or of a REPL session. They change every display form, including `string(x)`, but not the text of error messages. `format` rounds the exact binary value of `x` to the nearest, ties to even, so `format(0.125, 2)` is `"0.12"`, and `format(2.675, 2)` is `"2.67"` because the double nearest 2.675 is slightly below it. A result whose digits are all zero has no minus sign, in `format` and in the display alike. Invalid counts raise `ArgumentError`, and arguments of the wrong type `TypeError`.
 
 ## Arithmetic, broadcasting and comparison
 

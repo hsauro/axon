@@ -25,7 +25,7 @@ const
   // Anchor, then the built-ins it documents. Keep in step with the
   // reference's headings: a stale anchor only means no section is shown.
   Sections: array[0..9] of string = (
-    'printing: print println',
+    'printing: print println display_size display_decimals format',
     'strings-1: string',
     'vectors-and-matrices: zeros ones eye rand linspace size length reshape ' +
       'eltype sum prod mean min max all any',

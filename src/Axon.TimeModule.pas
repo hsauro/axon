@@ -177,7 +177,8 @@ begin
   Define('sleep', BuiltinValue('sleep', BSleep, 1, 1));
   Define('elapsed', BuiltinValue('elapsed', BElapsed, 1, -1));
   Define('bench', BuiltinValue('bench', BBench, 1, -1));
-  Define('format', BuiltinValue('format', BFormat, 1, 1));
+  // Named time.format so that help tells it from the prelude's format.
+  Define('format', BuiltinValue('time.format', BFormat, 1, 1));
 end;
 
 initialization

@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..86] of TBuiltinDoc = (
+  BuiltinDocs: array[0..89] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -68,6 +68,9 @@ const
     (Name: 'dict';     Params: '(key => value, ...)'; Text: 'A dictionary with the given entries'),
     (Name: 'print';    Params: '(a, b, ...)'; Text: 'Writes the values separated by spaces, without a newline'),
     (Name: 'println';  Params: '(a, b, ...)'; Text: 'Writes the values separated by spaces, then a newline'),
+    (Name: 'display_size'; Params: '(rows, cols)'; Text: 'Arrays up to rows' + #$00D7 + 'cols are displayed in full; display_size() restores 10' + #$00D7 + '8'),
+    (Name: 'display_decimals'; Params: '(n)'; Text: 'Displayed reals show n decimals (1 to 15); display_decimals() restores significant digits'),
+    (Name: 'format';   Params: '(x, decimals)'; Text: 'x as text with exactly that many decimals, rounded: format(3.14159, 2) is "3.14"'),
     (Name: 'error';    Params: '(kind, message)'; Text: 'Raises an error; error("text") raises a UserError'),
     (Name: 'string';   Params: '(x)';     Text: 'The display form of a value, as a string'),
     (Name: 'length';   Params: '(x)';     Text: 'The number of elements of an array, list, string or dictionary'),
@@ -119,7 +122,7 @@ const
     (Name: 'sleep';   Params: '(seconds)'; Text: 'Pauses for the given number of seconds'),
     (Name: 'elapsed'; Params: '(f, args...)'; Text: 'Seconds taken by one call f(args...)'),
     (Name: 'bench';   Params: '(f, args...)'; Text: 'Times repeated calls of f(args...): a record of per-call seconds best, mean and worst, with loops and runs'),
-    (Name: 'format';  Params: '(seconds)'; Text: 'Seconds as text in a fitting unit, such as "12.3 ms"'),
+    (Name: 'time.format'; Params: '(seconds)'; Text: 'Seconds as text in a fitting unit, such as "12.3 ms"'),
     // random (rand shares the prelude's row)
     (Name: 'seed';    Params: '(n)'; Text: 'Seeds the random generator with an int, so later draws (rand included) repeat'),
     (Name: 'randn';   Params: '(m, n)'; Text: 'Standard normal random numbers: a scalar, an n-vector or an m' + #$00D7 + 'n matrix'),
@@ -235,10 +238,12 @@ function BuiltinHelp(const Name: string): TArray<string>;
 var
   D: TBuiltinDoc;
 begin
+  // A module built-in may be registered as m.f to tell it from a prelude
+  // function of the same name; its header shows f, as for other modules.
   for D in BuiltinDocs do
     if D.Name = Name then
     begin
-      Result := [D.Name + D.Params, '  ' + D.Text];
+      Result := [D.Name.Substring(D.Name.LastIndexOf('.') + 1) + D.Params, '  ' + D.Text];
       Exit;
     end;
   Result := [Name + '(...)', NoDoc];

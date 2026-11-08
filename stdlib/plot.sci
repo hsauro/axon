@@ -446,9 +446,15 @@ function tick_label(v, step)
   if step >= 1 and abs(v) < 1e15
     return string(round(v))
   end
+  # As many decimals as the step needs (format, so display_decimals does
+  # not change the labels).
   d = -floor(log(step) / log(10.0) + 1e-9)
-  scale = 10.0 ^ d
-  return string(round(v * scale) / scale)
+  if d <= 0
+    # Huge values (1e15 and up): the exponent form of the display.
+    scale = 10.0 ^ d
+    return string(round(v * scale) / scale)
+  end
+  return format(v, d)
 end
 
 # The data range of the 2-D series, padded by 5%, or the limits set.
