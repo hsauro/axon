@@ -123,6 +123,7 @@ begin
   MIR_load_external(Ctx, 'rt_make_unique', H.MakeUnique);
   MIR_load_external(Ctx, 'rt_leave', H.Leave);
   MIR_load_external(Ctx, 'rt_index_error', H.IndexError);
+  MIR_load_external(Ctx, 'rt_new_array', H.NewArray);
   for N in ElementaryNames do
     MIR_load_external(Ctx, PAnsiChar(AnsiString('rt_' + N)), ElementaryRealFunction(N));
 end;
@@ -167,7 +168,7 @@ type
     CountRealProto, CountRealImport, PowProto, PowImport,
     CallProto, CallImport, FrameProto, FrameImport, RecProto, RecImport, D1Proto: TMirItem;
     PtrProto, PtrPtrProto, AssignImport, MoveImport, ClearImport, UniqueImport,
-    LeaveProto, LeaveImport, IndexErrProto, IndexErrImport: TMirItem;
+    LeaveProto, LeaveImport, IndexErrProto, IndexErrImport, NewArrayProto, NewArrayImport: TMirItem;
     // Arrays: the frame of value slots, and the single exit that releases it.
     SlotOf: TArray<Integer>;          // per JIR register: its slot, or -1
     NSlots, JunkSlot: Integer;
@@ -181,6 +182,7 @@ type
     procedure GenBound(I: TJInsn);
     procedure GenElem(I: TJInsn; IsStore: Boolean);
     procedure GenOp(I: TJInsn);
+    procedure GenArray(I: TJInsn);
     procedure SetupResultDests(I: TJInsn; const ResultTypes: TArray<TJType>);
     procedure ClearJunk(I: TJInsn; const ResultTypes: TArray<TJType>);
     function C(const Name: AnsiString): Int32;
@@ -564,6 +566,23 @@ begin
   E('call', [RefOp(CallProto), RefOp(CallImport), RegOp(St), IntOp(NativeInt(CS)),
     IntOp(Fid), IntOp(I.Site), RegOp(ArgBuf), RegOp(ResBuf)]);
   E('bne', [LabelOp(FailLabel), RegOp(St), IntOp(0)]);
+end;
+
+{ A vector or matrix literal: the entries in the argument slots, then
+  rt_new_array builds it in the destination slot. }
+procedure TGen.GenArray(I: TJInsn);
+var
+  K: Integer;
+  IsReal: Boolean;
+begin
+  IsReal := ElemOf(I.Typ) = jtReal;
+  for K := 2 to High(I.Ops) do
+    if IsReal then
+      E('dmov', [MemOp(MIR_T_D, 8 * (K - 2), ArgBuf), Opnd(I.Ops[K])])
+    else
+      E('mov', [MemOp(MIR_T_I64, 8 * (K - 2), ArgBuf), Opnd(I.Ops[K])]);
+  E('call', [RefOp(NewArrayProto), RefOp(NewArrayImport), RegOp(SlotAddr(SlotOf[I.Dst])),
+    Opnd(I.Ops[0]), Opnd(I.Ops[1]), IntOp(Ord(IsReal)), RegOp(ArgBuf)]);
 end;
 
 { Array results are written by the callee into slots whose addresses the
@@ -952,6 +971,8 @@ begin
       GenOp(I);
     joClear:
       E('call', [RefOp(PtrProto), RefOp(ClearImport), RegOp(SlotAddr(SlotOf[I.Ops[0].Reg]))]);
+    joArray:
+      GenArray(I);
   else
     raise EMirError.CreateFmt('JIT: no code for JIR op %d', [Ord(I.Op)]);
   end;
@@ -1023,6 +1044,9 @@ begin
   V := Vars([MIR_T_I64, MIR_T_I64, MIR_T_I64, MIR_T_I64], ['fid', 'site', 'index', 'len']);
   IndexErrProto := MIR_new_proto_arr(Ctx, 'rt_index_error_p', 0, nil, 4, @V[0]);
   IndexErrImport := MIR_new_import(Ctx, 'rt_index_error');
+  V := Vars([MIR_T_P, MIR_T_I64, MIR_T_I64, MIR_T_I64, MIR_T_P], ['dst', 'rows', 'cols', 'isreal', 'args']);
+  NewArrayProto := MIR_new_proto_arr(Ctx, 'rt_new_array_p', 0, nil, 5, @V[0]);
+  NewArrayImport := MIR_new_import(Ctx, 'rt_new_array');
   DeclareCalls;
 
   // A slot for every array register, and a junk slot for array results that
@@ -1096,6 +1120,11 @@ begin
       HasCalls := True;
       if MaxArgs < 2 then MaxArgs := 2;
       if MaxRes < 1 then MaxRes := 1;
+    end
+    else if Insn.Op = joArray then
+    begin
+      HasCalls := True;
+      if MaxArgs < Length(Insn.Ops) - 2 then MaxArgs := Length(Insn.Ops) - 2;
     end;
   if NSlots > 0 then
   begin

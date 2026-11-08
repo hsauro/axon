@@ -56,10 +56,22 @@ unit Axon.Jit.Lower;
      unannotated parameter is an untyped variable: it starts with the
      argument's type and must keep it, as any untyped variable must.
 
+   - Captures and closures (J7c). A read of a name that is not local, or of
+     a field path on one (p.a), whose value has a type that compiles, is a
+     capture: a hidden parameter read when the function is entered. That is
+     exact because nothing the compiled code runs can change it: a function
+     with captures may not call anything through the interpreter (or itself,
+     directly). A name both read from outside and assigned locally is
+     rejected. Lambdas and nested functions compile too; one that assigns a
+     variable of an enclosing scope (rule 5 reaching outward) does not, and
+     the names a closure creates locally are checked at each call to still be
+     absent outside (TJFunction.LocalNames).
+   - Vector and matrix literals whose entries are all numbers.
+
    Not compiled yet, and rejected: ranges, masks and colons as indices,
-   fields, strings other than print and error arguments, complex numbers,
-   ranges as values, lambdas and nested functions, try, global and keyword
-   arguments.
+   fields of local records, strings other than print and error arguments,
+   complex numbers, ranges as values, nested function definitions, try,
+   global and keyword arguments.
 
    A TJSession lowers functions on demand and keeps the results, so a call
    can ask for its callee's types; the JIT keeps one session for the
@@ -115,6 +127,7 @@ type
     Reason: string;          // esRejected
     RejectLine, RejectCol: Integer;
     Code: TObject;           // set by the JIT once generated (a TJitCode, not owned)
+    IsClosure: Boolean;      // a lambda or nested function: rule 5 reaches outward
     destructor Destroy; override;
   end;
 
@@ -129,7 +142,7 @@ type
     { Lowers Decl for the parameter types, or returns what an earlier call
       found. Never raises for a rejection: the entry's State says. }
     function Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
-      const ParamTypes: TArray<TJType>): TJEntry;
+      const ParamTypes: TArray<TJType>; IsClosure: Boolean = False): TJEntry;
     function Resolve(Context: TObject; const Name: string): TJResolved;
   end;
 
@@ -196,6 +209,8 @@ type
     Context: TObject;
     LastCallRaises: Boolean;            // the last call lowered was error(...)
     EndStack: TList<TJValue>;           // the value of `end` in the index being lowered
+    CaptureRegs: TDictionary<string, Integer>;   // by path text: its hidden parameter
+    OutsideNames: TList<string>;        // names read from outside (captured)
     Vars: TObjectList<TJVar>;
     Scopes: TObjectList<TScopeMap>;     // [0] is the function's outermost scope
     Assigned: TArray<Boolean>;           // by TJVar.Id: definitely assigned here
@@ -243,6 +258,10 @@ type
     function TryInlineBuiltin(E: TCallExpr; const Name: string; const Args: TArray<TJValue>;
       Want: Integer; out Vals: TArray<TJValue>): Boolean;
     procedure LowerForEach(S: TForStmt);
+    function Capture(E: TExpr; const Path: TArray<string>): TJValue;
+    function LowerField(E: TFieldExpr): TJValue;
+    function LowerMatrix(E: TMatrixExpr): TJValue;
+    procedure CheckCaptures;
     procedure LowerDestructure(S: TDestructureStmt);
     // statements
     procedure LowerBody(Body: TStmtList; NewScope: Boolean);
@@ -343,6 +362,8 @@ begin
   Entry := AEntry;
   Context := AContext;
   EndStack := TList<TJValue>.Create;
+  CaptureRegs := TDictionary<string, Integer>.Create;
+  OutsideNames := TList<string>.Create;
   Vars := TObjectList<TJVar>.Create(True);
   Scopes := TObjectList<TScopeMap>.Create(True);
   Loops := TList<TLoop>.Create;
@@ -350,6 +371,8 @@ end;
 
 destructor TLowerer.Destroy;
 begin
+  OutsideNames.Free;
+  CaptureRegs.Free;
   EndStack.Free;
   Loops.Free;
   Scopes.Free;
@@ -540,9 +563,11 @@ begin
       Result := EndStack.Last;
     end
     else if C = TFieldExpr then
-      Reject('field access is not compiled yet', E)
-    else if (C = TMatrixExpr) or (C = TListExpr) or (C = TRecordExpr) then
-      Reject('matrix, list and record literals are not compiled yet', E)
+      Result := LowerField(TFieldExpr(E))
+    else if C = TMatrixExpr then
+      Result := LowerMatrix(TMatrixExpr(E))
+    else if (C = TListExpr) or (C = TRecordExpr) then
+      Reject('list and record literals are not compiled', E)
     else if C = TStringLit then
       Reject('strings are not compiled', E)
     else if C = TImagLit then
@@ -550,7 +575,7 @@ begin
     else if C = TNothingLit then
       Reject('nothing is not compiled', E)
     else if C = TLambdaExpr then
-      Reject('lambdas are not compiled', E)
+      Reject('a lambda inside a function is not compiled', E)
     else if C = TRangeExpr then
       Reject('a range used as a value is not compiled', E)
     else
@@ -564,7 +589,7 @@ var
 begin
   V := Lookup(E.Name);
   if V = nil then
-    Reject('reads %s, which is not a local variable', [E.Name], E);
+    Exit(Capture(E, [E.Name]));
   if not IsAssigned(V) then
     Reject('%s may be read before it is assigned', [E.Name], E);
   Result := MakeValue(V.Typ, RegOperand(V.Reg));
@@ -1028,6 +1053,9 @@ begin
     Callee := Session.Lower(R.Decl, R.FuncObj, R.FileName, Params);
     case Callee.State of
       esLowered:
+        if Callee.Func.Captures.Count > 0 then
+          Why := 'it reads values from outside'
+        else
         begin
           Compiled := True;
           SetLength(Params, Callee.Func.Params.Count);
@@ -1043,7 +1071,7 @@ begin
             Reject('calls itself before its result type is known; declare the result ' +
               'type, or return a value before the recursive call', E);
           Compiled := True;
-          SetLength(Params, F.Params.Count);
+          SetLength(Params, F.Params.Count - F.Captures.Count);
           for K := 0 to High(Params) do
             Params[K] := F.Regs[F.Params[K]].Typ;
           Result := F.ResultTypes.ToArray;
@@ -1320,6 +1348,147 @@ begin
   Reachable := True;
 end;
 
+{ ---- captures and literals ---- }
+
+{ A value read from outside: Path[0] resolved as a call in this function
+  would resolve it, then each field. Its current type is the type the code
+  is compiled for; the JIT checks it again at each call. }
+function TLowerer.Capture(E: TExpr; const Path: TArray<string>): TJValue;
+var
+  R: TJResolved;
+  V: TAxValue;
+  K, Idx, Reg: Integer;
+  Key: string;
+  T: TJType;
+  C: TJCapture;
+begin
+  Key := string.Join('.', Path);
+  if CaptureRegs.TryGetValue(Key, Reg) then
+    Exit(MakeValue(F.Regs[Reg].Typ, RegOperand(Reg)));
+  R := Session.Resolve(Context, Path[0]);
+  if R.Kind = rkNone then
+    Reject('reads %s, which is not a local variable', [Path[0]], E);
+  V := R.Value;
+  for K := 1 to High(Path) do
+  begin
+    if V.Kind <> vkRecord then
+      Reject('reads %s, but %s is not a record', [Key, string.Join('.', Copy(Path, 0, K))], E);
+    Idx := AsRecord(V).IndexOf(Path[K]);
+    if Idx < 0 then
+      Reject('reads %s, which has no field %s', [string.Join('.', Copy(Path, 0, K)), Path[K]], E);
+    V := AsRecord(V).Values[Idx];
+  end;
+  T := JTypeOfValue(V);
+  if T = jtNothing then
+    Reject('reads %s, which holds %s, a type that is not compiled', [Key, TypeName(V)], E);
+  if not OutsideNames.Contains(Path[0]) then
+    OutsideNames.Add(Path[0]);
+  Reg := F.NewReg(T, Key, True);
+  F.Params.Add(Reg);
+  C.Path := Path;
+  C.Reg := Reg;
+  C.Typ := T;
+  F.Captures.Add(C);
+  CaptureRegs.Add(Key, Reg);
+  Result := MakeValue(T, RegOperand(Reg));
+end;
+
+{ p.a.b: a capture when p is not local; fields of local values do not compile. }
+function TLowerer.LowerField(E: TFieldExpr): TJValue;
+var
+  Path: TArray<string>;
+  X: TExpr;
+begin
+  Path := [E.Name];
+  X := E.Target;
+  while X is TFieldExpr do
+  begin
+    Path := [TFieldExpr(X).Name] + Path;
+    X := TFieldExpr(X).Target;
+  end;
+  if not (X is TNameExpr) or (Lookup(TNameExpr(X).Name) <> nil) then
+    Reject('field access on a local value is not compiled', E);
+  Result := Capture(E, [TNameExpr(X).Name] + Path);
+end;
+
+{ [a; b], [a, b; c, d]: entries that are numbers, evaluated row by row, of
+  the widest type. One entry per row gives a vector; anything else a matrix,
+  which compiles when it is real. }
+function TLowerer.LowerMatrix(E: TMatrixExpr): TJValue;
+var
+  Rows, Cols, R, C: Integer;
+  Vals: TArray<TJValue>;
+  V: TJValue;
+  Widest, T, Elem: TJType;
+  Ops: TArray<TJOperand>;
+  Dst, K: Integer;
+begin
+  Rows := E.Rows.Count;
+  if Rows = 0 then
+    Reject('an empty matrix literal is not compiled', E);
+  Cols := E.Rows[0].Count;
+  Widest := jtBool;
+  Vals := nil;
+  for R := 0 to Rows - 1 do
+  begin
+    if E.Rows[R].Count <> Cols then
+      Reject('rows of different widths, a DimensionError', E);
+    for C := 0 to Cols - 1 do
+    begin
+      V := LowerExpr(E.Rows[R][C]);
+      if not Numeric(V.Typ) then
+        Reject('a matrix literal of %s entries is not compiled', [JTypeName(V.Typ)], E);
+      if Rank(V.Typ) > Rank(Widest) then
+        Widest := V.Typ;
+      Vals := Vals + [V];
+    end;
+  end;
+  if Cols = 1 then
+  begin
+    if Widest = jtReal then T := jtVecReal
+    else if Widest = jtInt then T := jtVecInt
+    else T := jtNothing;
+  end
+  else if Widest = jtReal then
+    T := jtMatReal
+  else
+    T := jtNothing;
+  if T = jtNothing then
+    Reject('a literal of %s entries in %d column(s) is not compiled', [JTypeName(Widest), Cols], E);
+  Elem := ElemOf(T);
+  SetLength(Ops, 2 + Length(Vals));
+  Ops[0] := IntOperand(Rows);
+  Ops[1] := IntOperand(Cols);
+  for K := 0 to High(Vals) do
+    Ops[2 + K] := Convert(Vals[K], Elem).Opnd;
+  Dst := Temp(T);
+  F.Emit(joArray, T, Dst, Ops);
+  Result := MakeValue(T, RegOperand(Dst));
+end;
+
+{ A function with captures runs nothing that could change them: no call
+  through the interpreter, and no direct call to itself (which would need
+  them passed on). }
+procedure TLowerer.CheckCaptures;
+var
+  Insn: TJInsn;
+  S: TJSite;
+begin
+  if F.Captures.Count = 0 then
+    Exit;
+  for Insn in F.Insns do
+    if Insn.Op = joCall then
+    begin
+      S := F.Sites[Insn.Site];
+      if Insn.Target.Kind = ckInterp then
+        raise EJitReject.Create(Format('reads %s from outside and calls %s through the ' +
+          'interpreter, which could change it', [F.Captures[0].Text, Insn.Target.Name]), S.Line, S.Col);
+      if (Insn.Target.Kind = ckCompiled) and (Insn.Target.Callee = Entry) then
+        raise EJitReject.Create(Format('reads %s from outside and calls itself', [F.Captures[0].Text]),
+          S.Line, S.Col);
+    end;
+end;
+
 { ---- statements ---- }
 
 { Constructs anywhere in the body that change name resolution for the whole
@@ -1455,6 +1624,8 @@ begin
     // x: T = e declares x in the current scope.
     if not TypeOfRef(S.TypeRef, T) then
       Reject('variable %s: %s', [Name, TypeHint(S.TypeRef)], S);
+    if OutsideNames.Contains(Name) then
+      Reject('%s is read from outside the function and declared in it', [Name], S);
     if Scopes.Last.TryGetValue(Name, V) and V.Declared and (V.Typ = T) then
       // the same declaration again: the same variable
     else if (Scopes.Count = 1) and Scopes.Last.ContainsKey(Name) then
@@ -1478,7 +1649,18 @@ var
 begin
   V := Lookup(Name);
   if V = nil then
+  begin
+    if OutsideNames.Contains(Name) then
+      Reject('%s is read from outside the function and assigned in it', [Name], N);
+    if Entry.IsClosure then
+    begin
+      // Rule 5 in a closure: an existing variable outside is assigned there.
+      if Session.Resolve(Context, Name).Kind <> rkNone then
+        Reject('assigns %s, a variable of an enclosing scope', [Name], N);
+      F.LocalNames.Add(Name);
+    end;
     V := NewVar(Name, Val.Typ, False, N, 0);
+  end;
   StoreVar(V, Val, N);
 end;
 
@@ -1789,6 +1971,7 @@ begin
   // Reaching the final end returns nothing.
   if Reachable then
     EmitReturn([], Decl);
+  CheckCaptures;
   Result := F;
   F := nil;
 end;
@@ -1914,7 +2097,7 @@ begin
 end;
 
 function TJSession.Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
-  const ParamTypes: TArray<TJType>): TJEntry;
+  const ParamTypes: TArray<TJType>; IsClosure: Boolean): TJEntry;
 var
   L: TLowerer;
   Key: string;
@@ -1928,6 +2111,7 @@ begin
   Result.ParamTypes := ParamTypes;
   Result.FuncObj := FuncObj;
   Result.FileName := FileName;
+  Result.IsClosure := IsClosure;
   Result.State := esLowering;
   Entries.Add(Key, Result);
   Order.Add(Result);

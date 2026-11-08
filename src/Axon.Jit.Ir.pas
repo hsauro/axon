@@ -47,7 +47,18 @@ unit Axon.Jit.Ir;
      store.real v, i, x                  v[i] = x (copy-on-write first)
      %3 = len.int v, 0                   0: the element count, 1: rows, 2: cols
      %4 = op.vector{real} .*(v, w)  @6:3 an operator on arrays, by Axon.Ops
-     clear %5                            releases a hidden reference *)
+     clear %5                            releases a hidden reference
+
+   Captures (J7c): a value the function reads from an enclosing scope or the
+   module (a name, or a field path such as p.a) is a hidden parameter after
+   the real ones, read when the function is entered. The header lists them
+   in brackets:
+
+     function anonymous(t: real, y: vector{real}) [p.a: real, g: real]: vector{real}
+
+   A vector or matrix literal of scalar entries builds an array:
+
+     %3 = array.vector{real} 2, 1 (%1, %2)  rows, columns, then the entries row by row *)
 
 interface
 
@@ -117,7 +128,8 @@ type
     joLen,                        // Dst := element count (Ops[1] = 0), rows (1) or cols (2) of Ops[0]
     joOp,                         // Dst := Ops.Ops[1] applied to Ops[0] (and Ops[2]) by Axon.Ops; Ops[1] is the token
     joClear,                      // Ops[0] (an array register) := nothing
-    joBound                       // IndexError unless 1 <= Ops[0] <= Ops[1]
+    joBound,                      // IndexError unless 1 <= Ops[0] <= Ops[1]
+    joArray                       // Dst := a Typ array of Ops[0] rows and Ops[1] columns from Ops[2..] (row by row)
   );
 
   TJInsn = class
@@ -142,6 +154,15 @@ type
     Line, Col: Integer;
   end;
 
+  { A captured value: Path[0] is a name in an enclosing scope or the module,
+    the rest field names. }
+  TJCapture = record
+    Path: TArray<string>;
+    Reg: Integer;
+    Typ: TJType;
+    function Text: string;
+  end;
+
   TJFunction = class
   public
     Name: string;
@@ -151,6 +172,8 @@ type
     Insns: TObjectList<TJInsn>;
     Sites: TList<TJSite>;
     Targets: TObjectList<TJCallTarget>;   // owned
+    Captures: TList<TJCapture>;           // hidden parameters, after the real ones
+    LocalNames: TList<string>;            // closures: names a plain assignment creates locally
     LabelCount: Integer;
     constructor Create(const AName: string);
     destructor Destroy; override;
@@ -172,6 +195,8 @@ function StringOperand(const V: string): TJOperand;
 
 function JTypeName(T: TJType): string;
 function IsArrayType(T: TJType): Boolean; inline;
+{ The JIR type of a value; jtNothing for one that does not compile. }
+function JTypeOfValue(const V: TAxValue): TJType;
 { The element type of an array type. }
 function ElemOf(T: TJType): TJType;
 
@@ -237,6 +262,32 @@ begin
   Result := T in [jtVecReal, jtVecInt, jtMatReal];
 end;
 
+function JTypeOfValue(const V: TAxValue): TJType;
+var
+  A: TArrayObj;
+begin
+  case V.Kind of
+    vkBool: Result := jtBool;
+    vkInt:  Result := jtInt;
+    vkReal: Result := jtReal;
+    vkArray:
+      begin
+        A := AsArray(V);
+        if A.IsVector and (A.ElemType = etReal) then Result := jtVecReal
+        else if A.IsVector and (A.ElemType = etInt) then Result := jtVecInt
+        else if not A.IsVector and (A.ElemType = etReal) then Result := jtMatReal
+        else Result := jtNothing;
+      end;
+  else
+    Result := jtNothing;
+  end;
+end;
+
+function TJCapture.Text: string;
+begin
+  Result := string.Join('.', Path);
+end;
+
 function ElemOf(T: TJType): TJType;
 begin
   if T = jtVecInt then
@@ -257,6 +308,8 @@ begin
   Insns := TObjectList<TJInsn>.Create(True);
   Sites := TList<TJSite>.Create;
   Targets := TObjectList<TJCallTarget>.Create(True);
+  Captures := TList<TJCapture>.Create;
+  LocalNames := TList<string>.Create;
 end;
 
 destructor TJFunction.Destroy;
@@ -267,6 +320,8 @@ begin
   Insns.Free;
   Sites.Free;
   Targets.Free;
+  Captures.Free;
+  LocalNames.Free;
   inherited;
 end;
 
@@ -325,7 +380,7 @@ const
     'add', 'sub', 'mul', 'neg', 'div', 'pow',
     'eq', 'ne', 'lt', 'le', 'gt', 'ge',
     'not', 'jmp', 'bt', 'bf', 'count', 'elem', 'ret', 'call', 'load', 'store', 'len', 'op',
-    'clear', 'bound');
+    'clear', 'bound', 'array');
 
 procedure TJFunction.Dump(Lines: TStrings);
 var
@@ -425,13 +480,25 @@ var
   S: TJSite;
 begin
   Header := 'function ' + Name + '(';
-  for K := 0 to Params.Count - 1 do
+  for K := 0 to Params.Count - Captures.Count - 1 do
   begin
     if K > 0 then
       Header := Header + ', ';
     Header := Header + Regs[Params[K]].Name + ': ' + JTypeName(Regs[Params[K]].Typ);
   end;
-  Header := Header + '): ';
+  Header := Header + ')';
+  if Captures.Count > 0 then
+  begin
+    Header := Header + ' [';
+    for K := 0 to Captures.Count - 1 do
+    begin
+      if K > 0 then
+        Header := Header + ', ';
+      Header := Header + Captures[K].Text + ': ' + JTypeName(Captures[K].Typ);
+    end;
+    Header := Header + ']';
+  end;
+  Header := Header + ': ';
   if ResultTypes.Count = 0 then
     Header := Header + 'nothing'
   else
@@ -468,6 +535,18 @@ begin
           Line := Line + OperandText(Insn.Ops[0]);
         joB2I, joB2R, joI2R, joJmp, joBrTrue, joBrFalse, joNot, joClear, joBound:
           Line := Line + OpNames[Insn.Op] + ' ' + OperandList(Insn.Ops);
+        joArray:
+          begin
+            Line := Line + 'array.' + JTypeName(Insn.Typ) + ' ' + OperandText(Insn.Ops[0]) + ', ' +
+              OperandText(Insn.Ops[1]) + ' (';
+            for K := 2 to High(Insn.Ops) do
+            begin
+              if K > 2 then
+                Line := Line + ', ';
+              Line := Line + OperandText(Insn.Ops[K]);
+            end;
+            Line := Line + ')';
+          end;
         joOp:
           begin
             Line := Line + 'op.' + JTypeName(Insn.Typ) + ' ' + Insn.Ops[1].S + '(' +

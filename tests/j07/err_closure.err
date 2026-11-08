@@ -1,0 +1,3 @@
+OverflowError: integer overflow in *
+  at err_closure.sci:4:18 in anonymous function
+  at err_closure.sci:6:1

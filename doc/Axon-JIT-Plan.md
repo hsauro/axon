@@ -232,11 +232,43 @@ Every kernel in `bench/` now compiles. In the full suite with the JIT forced on,
 
 In the full suite with the JIT forced on, 127 functions compile (85 after J4). Most of the remaining rejections are calls with arguments of types the JIT does not compile, such as strings, lists and records.
 
-### J7 — ODE right-hand sides
+### J7 — Fast ODE solves
 
-- [ ] `ode.solve` with `rk45` runs its stepper loop compiled, once `ode.sci`'s helpers compile
-- [ ] For `bdf`, a compiled `f(t, y)` is handed to CVODE through a generated native wrapper, `int rhs(t, y, ydot, user)`, which reads and writes the `N_Vector` data directly, skipping the trampoline and the per-call array boxing
-- [ ] Results identical to interpreted runs within the solver tolerances, checked with the `tests/m10/testing.sci` helpers
+**Profiling changed the plan.** The original J7 would have compiled `f` and handed it to CVODE natively. Profiling Win64 Release showed this would barely help, because a solve's time goes into the solver's own interpreted Axon code: per-step slices, growing storage, a closure per step, record and list operations, and the `call_rhs` checks.
+
+| Solve | Time per evaluation of `f`, overall | `f` itself |
+| --- | --- | --- |
+| Lotka–Volterra, `rk45` (3608 evaluations, 175 ms) | 48.6 µs | 5.8 µs (12%) |
+| Robertson, `bdf` (592 evaluations, 122 ms) | 206 µs | 6.8 µs (3%) |
+
+**Decision (Nov 7, 2026).** The solver loops move into Delphi, as a native core module `odecore`, the way CVODE is native. `stdlib/ode.sci` keeps the API: argument checks, the result record, and `sol.at` from the per-step data. The native loops reproduce the Axon code operation for operation, so step counts and results are unchanged. This revises the White Paper's "RK45 written in Axon".
+
+- [x] **J7a.** The RK45 stepper in `odecore` (`src/Axon.OdeCore.pas`): Dormand–Prince 5(4) with step-size control, DOPRI5 dense output, `t_eval`, events located with the Illinois method, and terminal events. It calls `f` and the event functions as the interpreter does, with `call_rhs`'s checks and messages. A right-hand side that returns a scalar for one equation is now accepted, as the reference says; the Axon code had rejected it
+- [x] **J7b.** The BDF loop in `odecore`: CVODE called from Delphi (`src/native/Axon.Native.Cvode.pas`), with cdecl right-hand-side and root callbacks that find their solve through CVODE's user data, so solves nest without `current`. A callback never lets an exception into CVODE: it keeps the exception and returns -1, and the loop re-raises it. `ode.sci` lost its `extern` blocks and glue, and keeps the API, the result record and `sol.at`
+- [x] Both loops reproduce the Axon code operation for operation. A comparison against the old `ode.sci` gives identical step and evaluation counts, and zero difference in every output value, `t_eval` point, `sol.at` value and event, for these cases:
+  - Lotka–Volterra
+  - backward integration
+  - `t_eval` output
+  - events, including a terminal one
+  - `first_step` and `max_step`
+  - the stiff Robertson problem
+  - a solve nested inside a right-hand side
+- [x] **J7c.** Compiled right-hand sides:
+  - **Captures.** Closures compile, and so do reads of captured and module values and their field paths (`p.a`). Captures are hidden parameters read on entry, and are exact because the function runs nothing that could change them.
+  - **Literals.** Vector and matrix literals compile.
+  - **Fast calls.** `Invoke` has a fast path (`FastCall`) for compiled code that takes its arguments as they are: no scope or parameter cells, and no file switch. It cuts a trivial compiled call from 736 ns to 333 ns.
+  - **Capture cache.** The cells captures are found in are cached per function object, valid while no scope of the chain gains a name.
+
+  `tests/j07` covers captures that change value and type, field paths, a closure assigning outward, the rule-5 shadowing case, literals, error traces, and ODE solves compiled against interpreted
+
+J7 measurements, Win64 Release:
+
+| Solve | Axon loops | Native loops (J7a, J7b) | Plus compiled `f` (J7c) |
+| --- | --- | --- | --- |
+| Lotka–Volterra, `rk45` (3608 evaluations) | 175 ms | 23.3 ms | 8.75 ms (20×) |
+| Robertson, `bdf` (592 evaluations) | 122 ms | 6.58 ms | 4.31 ms (28×) |
+
+What remains per evaluation is mostly the call itself: about 0.4 µs for a compiled call, plus the arrays for `y` and the result. Calling compiled right-hand sides with raw vectors would take it further.
 
 ### J8 — Benchmarks and closing
 

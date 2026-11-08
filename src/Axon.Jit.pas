@@ -43,6 +43,12 @@ type
     ResultTypes: TArray<TJType>;
     Sites: TArray<TJSite>;
     CallSites: TObjectList<TObject>;   // TJitCallSite, owned
+    // J7c: values read from outside, passed after the parameters (whose
+    // types are the first NParams of ParamTypes); and, for a closure, the
+    // names it creates locally, which must not exist outside when it runs.
+    NParams: Integer;
+    Captures: TArray<TJCapture>;
+    LocalNames: TArray<string>;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -65,7 +71,7 @@ type
   { Addresses of the helpers, for the code generator. }
   TJitHelpers = record
     Error, CountInt, CountReal, PowReal, Call, Frame, Recursion: Pointer;
-    Assign, Move, Clear, MakeUnique, Leave, IndexError: Pointer;
+    Assign, Move, Clear, MakeUnique, Leave, IndexError, NewArray: Pointer;
   end;
 
 var
@@ -88,7 +94,7 @@ function JitTypeOf(const V: TAxValue): TJType;
   arguments it is called with, or returns nil, with the reason, when it is
   rejected or MIR is unavailable. }
 function JitCompile(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
-  const ArgTypes: TArray<TJType>; out Reason: string): TJitCode;
+  const ArgTypes: TArray<TJType>; IsClosure: Boolean; out Reason: string): TJitCode;
 
 { The compiled code of a function, or nil: also for a function compiled
   only as a callee, which the interpreter has not called yet. }
@@ -341,6 +347,30 @@ begin
   end;
 end;
 
+{ A vector or matrix literal: Rows×Cols entries in the argument slots, row
+  by row, as reals (IsReal) or ints. A single column is a vector. }
+procedure RtNewArray(Dst: PAxValue; Rows, Cols, IsReal: Int64; Args: PInt64); cdecl;
+var
+  A: TArrayObj;
+  R, C: Integer;
+  Slot: PInt64;
+begin
+  if IsReal <> 0 then
+    A := TArrayObj.Create(etReal, Rows, Cols, Cols = 1)
+  else
+    A := TArrayObj.Create(etInt, Rows, Cols, Cols = 1);
+  Dst^ := ArrayValue(A);
+  for R := 0 to Rows - 1 do
+    for C := 0 to Cols - 1 do
+    begin
+      Slot := PInt64(PByte(Args) + 8 * (R * Cols + C));
+      if IsReal <> 0 then
+        A.R[C * Rows + R] := PDouble(Slot)^
+      else
+        A.I[C * Rows + R] := Slot^;
+    end;
+end;
+
 procedure RtIndexError(Fid, Site, Index, Len: Int64); cdecl;
 begin
   Pending(Fid, Site, IndexError, Format('index %d is out of bounds for a dimension of length %d',
@@ -460,6 +490,7 @@ begin
   Result.MakeUnique := @RtMakeUnique;
   Result.Leave := @RtLeave;
   Result.IndexError := @RtIndexError;
+  Result.NewArray := @RtNewArray;
 end;
 
 { ---- compiling ---- }
@@ -522,6 +553,9 @@ begin
       Code.FileName := E.FileName;
       Code.ResultTypes := E.Func.ResultTypes.ToArray;
       Code.Sites := E.Func.Sites.ToArray;
+      Code.Captures := E.Func.Captures.ToArray;
+      Code.LocalNames := E.Func.LocalNames.ToArray;
+      Code.NParams := E.Func.Params.Count - E.Func.Captures.Count;
       SetLength(Code.ParamTypes, E.Func.Params.Count);
       for P := 0 to E.Func.Params.Count - 1 do
         Code.ParamTypes[P] := E.Func.Regs[E.Func.Params[P]].Typ;
@@ -557,38 +591,24 @@ begin
 end;
 
 function JitTypeOf(const V: TAxValue): TJType;
-var
-  A: TArrayObj;
 begin
-  case V.Kind of
-    vkBool: Result := jtBool;
-    vkInt:  Result := jtInt;
-    vkReal: Result := jtReal;
-    vkArray:
-      begin
-        A := AsArray(V);
-        if A.IsVector and (A.ElemType = etReal) then Result := jtVecReal
-        else if A.IsVector and (A.ElemType = etInt) then Result := jtVecInt
-        else if not A.IsVector and (A.ElemType = etReal) then Result := jtMatReal
-        else Result := jtNothing;
-      end;
-  else
-    Result := jtNothing;
-  end;
+  Result := JTypeOfValue(V);
 end;
 
 { The name in logs and reports: with its parameter types when they come
   from the arguments. }
 function DisplayName(E: TJEntry): string;
 begin
-  if IsSpecialised(E.Decl) then
-    Result := E.Decl.Name + '(' + TypesText(E.ParamTypes) + ')'
+  if E.Decl.Name = '' then
+    Result := Format('anonymous function at %d:%d', [E.Decl.Line, E.Decl.Col])
   else
     Result := E.Decl.Name;
+  if IsSpecialised(E.Decl) then
+    Result := Result + '(' + TypesText(E.ParamTypes) + ')';
 end;
 
 function JitCompile(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
-  const ArgTypes: TArray<TJType>; out Reason: string): TJitCode;
+  const ArgTypes: TArray<TJType>; IsClosure: Boolean; out Reason: string): TJitCode;
 var
   E: TJEntry;
   Types: TArray<TJType>;
@@ -604,7 +624,7 @@ begin
     LogDecision(Format('rejected %s: %s', [Decl.Name, Reason]));
     Exit;
   end;
-  E := Session.Lower(Decl, FuncObj, FileName, Types);
+  E := Session.Lower(Decl, FuncObj, FileName, Types, IsClosure);
   if E.State <> esLowered then
   begin
     Reason := Format('%s (%d:%d)', [E.Reason, E.RejectLine, E.RejectCol]);

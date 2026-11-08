@@ -563,10 +563,10 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 
 ### The ode module
 
-`ode` is a standard-library module written in Axon. `ode.solve(f, y0, tspan; …)` solves y' = f(t, y) from `tspan[1]` to `tspan[2]` with y(`tspan[1]`) = `y0` and returns a result record.
+`ode` is a standard-library module. Its interface is written in Axon, and its stepping loops run natively in the interpreter's core module `odecore`. `ode.solve(f, y0, tspan; …)` solves y' = f(t, y) from `tspan[1]` to `tspan[2]` with y(`tspan[1]`) = `y0` and returns a result record.
 
 - **Problem.** `f(t, y)` receives a real `t` and a real vector `y` and returns the derivative as a real vector of the same length (a scalar for one equation). `y0` is a real scalar or vector. `tspan` holds two different times; integration may run backwards.
-- **Methods.** `method = "rk45"` (the default) is the explicit Dormand–Prince 5(4) pair with step-size control and its fourth-order dense output, written in Axon. `method = "bdf"` uses the variable-order BDF method of SUNDIALS CVODE with a dense direct linear solver, for stiff problems; CVODE is called through `extern`, with the right-hand side as a callback.
+- **Methods.** `method = "rk45"` (the default) is the explicit Dormand–Prince 5(4) pair with step-size control and its fourth-order dense output. `method = "bdf"` uses the variable-order BDF method of SUNDIALS CVODE with a dense direct linear solver, for stiff problems. `f` and the event functions are called as ordinary Axon functions, so a right-hand side that compiles (see Compilation) runs as native code.
 - **Keywords.**
 
 | Keyword | Meaning (default) |
@@ -643,16 +643,17 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 The interpreter compiles functions to native code at their first call (a just-in-time compiler built on MIR). Compilation changes only speed: a compiled function gives the same results, prints the same output, raises the same errors with the same traces, and makes the same array copies (`__copies()`) as when it is interpreted. A function that cannot be compiled with these guarantees runs interpreted, silently.
 
 - **What compiles.**
-  - **Functions.** Named top-level functions.
+  - **Functions.** Named top-level functions, lambdas and nested functions.
   - **Parameters.** A parameter annotated `bool`, `int`, `real`, `vector{real}`, `vector{int}` or `matrix{real}` has that type. A parameter without an annotation, or annotated plain `vector` or `matrix`, takes the type of the argument it is called with. Such a function is compiled separately for each set of argument types it meets, up to eight; further calls run interpreted. An unannotated parameter is an untyped variable, so a function that assigns it a value of another type stays interpreted for that call.
   - **Bodies.** Arithmetic and comparisons, `and`/`or`/`not`, `if`, `while`, `for` over ranges and arrays, `break`, `continue` and `return` (with several values).
   - **Variables.** Local and typed variables.
-  - **Arrays.** Element reads and writes with int indices and `end`, and operators on real arrays.
+  - **Arrays.** Element reads and writes with int indices and `end`, operators on real arrays, and vector and matrix literals of numbers.
+  - **Values from outside.** Reads of module variables and captured variables, and of their record fields (`p.a`), when the values are numbers or arrays that compile. They are read when the function is entered, and a function that reads them does not call anything that runs interpreted, so it sees exactly the values the interpreter would.
   - **Calls.** Calls to other functions, recursion included, and the scalar built-ins: the elementary functions, `abs`, `floor`, `ceil`, `round`, `int`, `real`, `min`, `max`, `div`, `mod`, `length`, `size`, `zeros`, `ones`, `sum`, `print` and `error`.
 - **What stays interpreted.**
   - **Types.** A function whose variable changes type, or whose result type depends on a value: `n ^ k` with `int` operands and a variable exponent is an `int` for `k >= 0` and a `real` otherwise. A call whose arguments include a string, list, record, dictionary, complex number, range, or an array other than a real vector, int vector or real matrix.
-  - **Names.** A function that reads a module variable, or reads a variable that may be unassigned on some path.
-  - **Constructs.** Closures, `try`, `global`, strings beyond `print` and `error` arguments, complex numbers, lists, records, dictionaries, and indexing with ranges, colons or masks.
+  - **Names.** A function that reads a variable that may be unassigned on some path, that both reads a variable from outside and assigns it, or (a closure) that assigns a variable of an enclosing scope.
+  - **Constructs.** `try`, `global`, strings beyond `print` and `error` arguments, complex numbers, lists, record and dictionary literals, and indexing with ranges, colons or masks.
 
   A compiled function may still call one that runs interpreted, as long as the callee's result type is declared or its result is unused.
 - **Control.** `axon --jit=off file.sci`, or the environment variable `AXON_JIT=off`, turns compilation off; `on` is the default. `axon --jir file.sci` prints the compiled form of each function, or the reason it is not compiled.

@@ -60,6 +60,7 @@ type
     procedure AddRef; inline;
     procedure Release;
     function Find(const Name: string): TVarCell; inline;
+    function VarCount: Integer;           // grows only: a name, once defined, stays
     function Define(const Name: string): TVarCell;
   end;
 
@@ -79,6 +80,13 @@ type
     JitLastCode: TObject;
     JitHaveLast: Boolean;
     JitReason: string;        // why it was not compiled
+    HasKeywordParams: Boolean;
+    // The cells the captured values of JitCapFor (a TJitCode) were found in,
+    // valid while no scope of the defining chain has gained a name.
+    JitCapFor: TObject;
+    JitCapCells: TArray<TVarCell>;
+    JitCapScopes: TArray<TScope>;
+    JitCapCounts: TArray<Integer>;
     constructor Create(ADecl: TFunctionDecl; AClosure: TScope; AIsClosure: Boolean);
     destructor Destroy; override;
   end;
@@ -173,8 +181,12 @@ type
   public
     { Calls any function value with positional arguments (used for callbacks). }
     function CallValue(const Fn: TAxValue; const Args: TAxValues): TAxValue;
-    function RunCompiled(Code: TObject; const Args: TAxValues): TAxValues;
+    function RunCompiled(Code: TObject; const Args, Caps: TAxValues): TAxValues;
+    function FastCall(F: TFunctionObj; const Pos: TAxValues; out Res: TAxValues): Boolean;
+    function InvokeSlow(F: TFunctionObj; const Pos: TAxValues;
+      const KwNames: TArray<string>; const KwValues: TAxValues): TAxValues;
     function CompiledFor(F: TFunctionObj; const Args: TAxValues): TObject;
+    function CapturesFor(F: TFunctionObj; Code: TObject; out Caps: TAxValues): Boolean;
   private
     function MakeRange(E: TRangeExpr; Scope: TScope): TAxValue;
     function EvalLogical(E: TBinaryExpr; Scope: TScope): TAxValue;
@@ -376,6 +388,14 @@ begin
     Result := nil;
 end;
 
+function TScope.VarCount: Integer;
+begin
+  if FVars = nil then
+    Result := 0
+  else
+    Result := FVars.Count;
+end;
+
 function TScope.Define(const Name: string): TVarCell;
 begin
   if FVars = nil then
@@ -398,6 +418,9 @@ begin
   Closure := AClosure;
   Closure.AddRef;
   IsClosure := AIsClosure;
+  for var P in ADecl.Params do
+    if P.IsKeyword then
+      HasKeywordParams := True;
 end;
 
 destructor TFunctionObj.Destroy;
@@ -1015,14 +1038,11 @@ var
   Same: Boolean;
   Key: string;
 begin
-  SetLength(Types, Length(Args));
-  for K := 0 to High(Args) do
-    Types[K] := JitTypeOf(Args[K]);
-  if F.JitHaveLast and (Length(Types) = Length(F.JitLastTypes)) then
+  if F.JitHaveLast and (Length(Args) = Length(F.JitLastTypes)) then
   begin
     Same := True;
-    for K := 0 to High(Types) do
-      if Types[K] <> F.JitLastTypes[K] then
+    for K := 0 to High(Args) do
+      if JitTypeOf(Args[K]) <> F.JitLastTypes[K] then
       begin
         Same := False;
         Break;
@@ -1030,6 +1050,9 @@ begin
     if Same then
       Exit(F.JitLastCode);
   end;
+  SetLength(Types, Length(Args));
+  for K := 0 to High(Args) do
+    Types[K] := JitTypeOf(Args[K]);
   if F.JitCodes = nil then
     F.JitCodes := TDictionary<string, TObject>.Create;
   Key := '';
@@ -1037,7 +1060,7 @@ begin
     Key := Key + Chr(Ord('a') + Ord(Types[K]));
   if not F.JitCodes.TryGetValue(Key, Result) then
   begin
-    Result := JitCompile(F.Decl, F, F.FileName, Types, F.JitReason);
+    Result := JitCompile(F.Decl, F, F.FileName, Types, F.IsClosure, F.JitReason);
     F.JitCodes.Add(Key, Result);
   end;
   F.JitLastTypes := Types;
@@ -1045,32 +1068,164 @@ begin
   F.JitHaveLast := True;
 end;
 
-{ Calls compiled code with the bound arguments. An error it reports is
-  raised here, at its site, inside Invoke's frame handling, so the report and
-  trace match the interpreter's. }
-function TInterpreter.RunCompiled(Code: TObject; const Args: TAxValues): TAxValues;
+{ The values compiled code reads from outside (J7c), resolved now as the
+  function's own lookups would resolve them: each path's name through the
+  defining scope, then its fields. False when one is missing or has another
+  type than the code was compiled for, or when a name a closure creates
+  locally now exists outside; the call is then interpreted. }
+function TInterpreter.CapturesFor(F: TFunctionObj; Code: TObject; out Caps: TAxValues): Boolean;
 var
   C: TJitCode;
-  ArgSlots, ResSlots: TArray<Int64>;
-  ResVals: TAxValues;
-  K: Integer;
+  K, J, Idx: Integer;
+  Cell: TVarCell;
+  V: TAxValue;
+
+  function FindOutside(const Name: string): TVarCell;
+  var
+    Sc: TScope;
+  begin
+    Sc := F.Closure;
+    Result := nil;
+    while (Sc <> nil) and (Result = nil) do
+    begin
+      Result := Sc.Find(Name);
+      Sc := Sc.Parent;
+    end;
+  end;
+
+  { True when no scope of the chain has gained a name since the cells were
+    found, so every name still resolves to the same cell. }
+  function ChainUnchanged: Boolean;
+  var
+    J: Integer;
+  begin
+    for J := 0 to High(F.JitCapScopes) do
+      if F.JitCapScopes[J].VarCount <> F.JitCapCounts[J] then
+        Exit(False);
+    Result := True;
+  end;
+
+  procedure Snapshot;
+  var
+    Sc: TScope;
+  begin
+    F.JitCapScopes := nil;
+    F.JitCapCounts := nil;
+    Sc := F.Closure;
+    while Sc <> nil do
+    begin
+      F.JitCapScopes := F.JitCapScopes + [Sc];
+      F.JitCapCounts := F.JitCapCounts + [Sc.VarCount];
+      Sc := Sc.Parent;
+    end;
+  end;
+
 begin
   C := TJitCode(Code);
-  SetLength(ArgSlots, Length(Args) + 1);
-  SetLength(ResSlots, Length(C.ResultTypes) + 1);
-  SetLength(ResVals, Length(C.ResultTypes));
-  // Arrays go by the address of their value; compiled code shares it.
-  for K := 0 to High(Args) do
-    case C.ParamTypes[K] of
-      jtBool: ArgSlots[K] := Ord(Args[K].B);
-      jtInt:  ArgSlots[K] := Args[K].I;
-      jtReal: PDouble(@ArgSlots[K])^ := Args[K].R;
-      jtVecReal, jtVecInt, jtMatReal: ArgSlots[K] := NativeInt(@Args[K]);
+  Caps := nil;
+  if (Length(C.LocalNames) = 0) and (Length(C.Captures) = 0) then
+    Exit(True);
+  if (F.JitCapFor <> Code) or not ChainUnchanged then
+  begin
+    // Find the cells again (and check the closure's local names are still
+    // absent outside), then remember where.
+    F.JitCapFor := nil;
+    for K := 0 to High(C.LocalNames) do
+      if FindOutside(C.LocalNames[K]) <> nil then
+        Exit(False);
+    SetLength(F.JitCapCells, Length(C.Captures));
+    for K := 0 to High(C.Captures) do
+    begin
+      F.JitCapCells[K] := FindOutside(C.Captures[K].Path[0]);
+      if F.JitCapCells[K] = nil then
+        Exit(False);
     end;
-  for K := 0 to High(C.ResultTypes) do
+    Snapshot;
+    F.JitCapFor := Code;
+  end;
+  if Length(C.Captures) = 0 then
+    Exit(True);
+  SetLength(Caps, Length(C.Captures));
+  for K := 0 to High(C.Captures) do
+  begin
+    Cell := F.JitCapCells[K];
+    V := Cell.Value;
+    for J := 1 to High(C.Captures[K].Path) do
+    begin
+      if V.Kind <> vkRecord then
+        Exit(False);
+      Idx := AsRecord(V).IndexOf(C.Captures[K].Path[J]);
+      if Idx < 0 then
+        Exit(False);
+      V := AsRecord(V).Values[Idx];
+    end;
+    if JTypeOfValue(V) <> C.Captures[K].Typ then
+      Exit(False);
+    Caps[K] := V;
+  end;
+  Result := True;
+end;
+
+type
+  TSlots = array[0..MaxInt div 16] of Int64;
+  PSlots = ^TSlots;
+
+{ Calls compiled code with the bound arguments and the captured values. An
+  error it reports is raised here, at its site, inside Invoke's frame
+  handling, so the report and trace match the interpreter's. }
+function TInterpreter.RunCompiled(Code: TObject; const Args, Caps: TAxValues): TAxValues;
+const
+  Small = 16;
+var
+  C: TJitCode;
+  // Slots on the stack for the usual small calls, on the heap beyond.
+  ArgBuf, ResBuf: array[0..Small - 1] of Int64;
+  ArgHeap, ResHeap: TArray<Int64>;
+  ArgSlots, ResSlots: PSlots;
+  ResVals: TAxValues;          // only when there are array results
+  K, NArgs, NRes: Integer;
+
+  procedure Pack(Slot: Integer; T: TJType; const V: TAxValue);
+  begin
+    // Arrays go by the address of their value; compiled code shares it.
+    case T of
+      jtBool: ArgSlots[Slot] := Ord(V.B);
+      jtInt:  ArgSlots[Slot] := V.I;
+      jtReal: PDouble(@ArgSlots[Slot])^ := V.R;
+      jtVecReal, jtVecInt, jtMatReal: ArgSlots[Slot] := NativeInt(@V);
+    end;
+  end;
+
+begin
+  C := TJitCode(Code);
+  NArgs := Length(Args) + Length(Caps);
+  NRes := Length(C.ResultTypes);
+  if NArgs <= Small then
+    ArgSlots := @ArgBuf
+  else
+  begin
+    SetLength(ArgHeap, NArgs);
+    ArgSlots := @ArgHeap[0];
+  end;
+  if NRes <= Small then
+    ResSlots := @ResBuf
+  else
+  begin
+    SetLength(ResHeap, NRes);
+    ResSlots := @ResHeap[0];
+  end;
+  for K := 0 to High(Args) do
+    Pack(K, C.ParamTypes[K], Args[K]);
+  for K := 0 to High(Caps) do
+    Pack(Length(Args) + K, C.Captures[K].Typ, Caps[K]);
+  for K := 0 to NRes - 1 do
     if C.ResultTypes[K] in [jtVecReal, jtVecInt, jtMatReal] then
+    begin
+      if ResVals = nil then
+        SetLength(ResVals, NRes);
       ResSlots[K] := NativeInt(@ResVals[K]);
-  if C.Entry(@ArgSlots[0], @ResSlots[0]) <> 0 then
+    end;
+  if C.Entry(ArgSlots, ResSlots) <> 0 then
     raise TakeJitError;
   if Length(C.ResultTypes) = 0 then
   begin
@@ -1116,9 +1271,60 @@ begin
   Result := StringValue(Old);
 end;
 
+{ The fast path (J7c): compiled code that takes these arguments as they are,
+  positional and needing no conversion, with its captured values as
+  compiled. Binding would change nothing, so no scope or parameter cells are
+  made; the depth check and the trace frame are Invoke's. FFile is not
+  switched: compiled code evaluates no Axon source, and what it calls sets
+  its own. False when the call must take the ordinary path. }
+function TInterpreter.FastCall(F: TFunctionObj; const Pos: TAxValues; out Res: TAxValues): Boolean;
+var
+  Code: TObject;
+  Caps: TAxValues;
+  I: Integer;
+begin
+  Result := False;
+  if (Length(Pos) <> F.Decl.Params.Count) or F.HasKeywordParams then
+    Exit;
+  Code := CompiledFor(F, Pos);
+  if Code = nil then
+    Exit;
+  for I := 0 to High(Pos) do
+    if JitTypeOf(Pos[I]) <> TJitCode(Code).ParamTypes[I] then
+      Exit;
+  if not CapturesFor(F, Code, Caps) then
+    Exit;
+  Inc(FCallDepth);
+  try
+    if FCallDepth > MaxCallDepth then
+      RaiseFmt(RecursionError, 'calls nested more than %d deep (in %s)',
+        [MaxCallDepth, DescribeFunction(F)]);
+    try
+      Res := RunCompiled(Code, Pos, Caps);
+    except
+      on E: EAxonError do
+      begin
+        E.LeaveFunction(DescribeFunction(F));
+        raise;
+      end;
+    end;
+  finally
+    Dec(FCallDepth);
+  end;
+  Result := True;
+end;
+
 { Binds arguments (reference, "Argument binding"), runs the body and returns
   its values. }
 function TInterpreter.Invoke(F: TFunctionObj; const Pos: TAxValues;
+  const KwNames: TArray<string>; const KwValues: TAxValues): TAxValues;
+begin
+  if (JitMode <> jmOff) and (Length(KwNames) = 0) and FastCall(F, Pos, Result) then
+    Exit;
+  Result := InvokeSlow(F, Pos, KwNames, KwValues);
+end;
+
+function TInterpreter.InvokeSlow(F: TFunctionObj; const Pos: TAxValues;
   const KwNames: TArray<string>; const KwValues: TAxValues): TAxValues;
 var
   SavedFile, SavedPath: string;
@@ -1134,6 +1340,7 @@ var
   Cell: TVarCell;
   Bound: TAxValues;            // the bound parameter values, for compiled code
   JitCode: TObject;
+  Caps: TAxValues;
 begin
   D := F.Decl;
   Fn := DescribeFunction(F);
@@ -1212,13 +1419,16 @@ begin
       end;
 
       // Compiled code, when the JIT is on and the function compiles for
-      // these argument types. Closures are never compiled: their
-      // assignments can reach enclosing scopes.
+      // these argument types and its captured values are as compiled.
       JitCode := nil;
-      if (JitMode <> jmOff) and not F.IsClosure then
+      if JitMode <> jmOff then
+      begin
         JitCode := CompiledFor(F, Bound);
+        if (JitCode <> nil) and not CapturesFor(F, JitCode, Caps) then
+          JitCode := nil;
+      end;
       if JitCode <> nil then
-        Result := RunCompiled(JitCode, Bound)
+        Result := RunCompiled(JitCode, Bound, Caps)
       else if ExecBody(D.Body, Root) = sigReturn then
       begin
         Result := FReturn;

@@ -481,7 +481,7 @@ The first implementation is an interpreter. A tree-walking interpreter stabilise
 
 Once the interpreter is complete, native code generation targets [MIR](https://github.com/vnmakarov/mir), a lightweight JIT compiler with an MIT-licensed C API. Hot, annotated, type-stable functions are translated to MIR and compiled in-process, with no external assembler or linker. Functions that cannot be compiled fall back to the interpreter.
 
-Heavy numerical work already runs in BLAS, LAPACK and the sparse solvers, so the JIT's job is the scalar loops and ODE right-hand sides around those calls. A compiled right-hand side can also be handed straight to CVODE as a native callback, skipping the trampoline.
+Heavy numerical work already runs in BLAS, LAPACK and the sparse solvers, so the JIT's job is the scalar loops and ODE right-hand sides around those calls. The ODE solvers' stepping loops run natively in the interpreter, and they call a compiled right-hand side directly.
 
 MIR covers x86-64 on Windows, macOS and Linux and arm64 on macOS and Linux. Windows on ARM is not supported.
 

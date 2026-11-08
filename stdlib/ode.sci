@@ -1,56 +1,11 @@
-## Ordinary differential equation solvers: RK45 (Dormand-Prince, written in
-## Axon) and BDF (SUNDIALS CVODE through extern). See the Language Reference,
-## "The ode module".
+## Ordinary differential equation solvers: RK45 (Dormand-Prince) and BDF
+## (SUNDIALS CVODE). See the Language Reference, "The ode module". The
+## stepping loops run natively in the core module odecore; this module checks
+## the arguments and builds the result.
 
-# ---------------------------------------------------------------- CVODE
-
-extern "sundials_core"
-  function SUNContext_Create(comm: ptr void, ctx: ref ptr void): int32
-  function SUNContext_Free(ctx: ref ptr void): int32
-  function SUNContext_ClearErrHandlers(ctx: ptr void): int32
-  function N_VGetArrayPointer(v: ptr void): ptr void
-  function N_VDestroy(v: ptr void)
-  function SUNMatDestroy(a: ptr void)
-  function SUNLinSolFree(ls: ptr void): int32
-end
-
-extern "sundials_cvode"
-  type RhsFn = callback(t: float64, y: ptr void, ydot: ptr void, user: ptr void): int32
-  type RootFn = callback(t: float64, y: ptr void, gout: ptr void, user: ptr void): int32
-  function N_VNew_Serial(n: int64, ctx: ptr void): ptr void
-  function SUNDenseMatrix(m: int64, n: int64, ctx: ptr void): ptr void
-  function SUNLinSol_Dense(y: ptr void, a: ptr void, ctx: ptr void): ptr void
-  function CVodeCreate(lmm: int32, ctx: ptr void): ptr void
-  function CVodeInit(mem: ptr void, f: RhsFn, t0: float64, y0: ptr void): int32
-  function CVodeSStolerances(mem: ptr void, rtol: float64, atol: float64): int32
-  function CVodeSetLinearSolver(mem: ptr void, ls: ptr void, a: ptr void): int32
-  function CVodeSetMaxNumSteps(mem: ptr void, mxsteps: clong): int32
-  function CVodeSetMaxStep(mem: ptr void, hmax: float64): int32
-  function CVodeSetInitStep(mem: ptr void, h: float64): int32
-  function CVodeSetStopTime(mem: ptr void, tstop: float64): int32
-  function CVodeRootInit(mem: ptr void, nrtfn: int32, g: RootFn): int32
-  function CVodeGetRootInfo(mem: ptr void, rootsfound: ptr int32): int32
-  function CVode(mem: ptr void, tout: float64, yout: ptr void, tret: ref float64, itask: int32): int32
-  function CVodeGetDky(mem: ptr void, t: float64, k: int32, dky: ptr void): int32
-  function CVodeGetNumRhsEvals(mem: ptr void, n: ref clong): int32
-  function CVodeGetReturnFlagName(flag: clong): cstring
-  function CVodeFree(mem: ref ptr void)
-end
-
-extern "libc"
-  function copy_from_native(dst: ptr float64, src: ptr void, bytes: csize): ptr void name "memcpy"
-  function copy_to_native(dst: ptr void, src: ptr float64, bytes: csize): ptr void name "memcpy"
-end
+import odecore
 
 EPS = 2.220446049250313e-16
-CV_BDF = 2
-CV_ONE_STEP = 2
-CV_ROOT_RETURN = 2
-
-# The problem being solved by CVODE. CVODE keeps its callbacks between calls,
-# so they are two kept module functions that dispatch to this record; a solve
-# saves and restores it, so a solve inside a right-hand side also works.
-current = nothing
 
 # ---------------------------------------------------------------- helpers
 
@@ -198,203 +153,17 @@ end
 
 # ---------------------------------------------------------------- RK45
 
-# Dormand-Prince 5(4) with Hairer's dense output (DOPRI5).
+# Dormand-Prince 5(4) with Hairer's dense output (DOPRI5). The stepper runs
+# in odecore (native); it returns the output points, the events and, per
+# accepted step, its start, length and the five dense-output coefficients.
 function rk45(f, t0, t1, y0, o)
   n = length(y0)
   s = 1.0
   if t1 < t0 s = -1.0 end
-  out = new_output(n)
-  next_eval = 1
-  if typeof(o.t_eval) == "nothing"
-    out = add_point(out, t0, y0)
-  else
-    while next_eval <= length(o.t_eval) and o.t_eval[next_eval] == t0
-      out = add_point(out, t0, y0)
-      next_eval = next_eval + 1
-    end
-  end
-
-  # Dense output: per step its start, length and the five DOPRI5 coefficients.
-  steps = 0
-  T0 = zeros(64)
-  H = zeros(64)
-  R1 = zeros(n, 64)
-  R2 = zeros(n, 64)
-  R3 = zeros(n, 64)
-  R4 = zeros(n, 64)
-  R5 = zeros(n, 64)
-
-  t = t0
-  y = y0
-  k1 = call_rhs(f, t, y, n)
-  nfev = 1
-
-  # Initial step (Hairer and Wanner, II.4).
-  h = o.first_step
-  if typeof(h) == "nothing"
-    sk = o.atol + o.rtol * abs(y)
-    d0 = wrms(y, sk)
-    d1 = wrms(k1, sk)
-    if d0 < 1e-5 or d1 < 1e-5
-      h0 = 1e-6
-    else
-      h0 = 0.01 * d0 / d1
-    end
-    h0 = min(h0, abs(t1 - t0))
-    y1 = y + s * h0 * k1
-    f1 = call_rhs(f, t + s * h0, y1, n)
-    nfev = nfev + 1
-    d2 = wrms(f1 - k1, sk) / h0
-    if max(d1, d2) <= 1e-15
-      h1 = max(1e-6, h0 * 1e-3)
-    else
-      h1 = (0.01 / max(d1, d2)) ^ 0.2
-    end
-    h = min(100 * h0, h1)
-  end
-  h = min(min(abs(h), o.max_step), abs(t1 - t0))
-
-  ng = length(o.events)
-  gold = zeros(max(ng, 1))
-  for k in 1:ng
-    gold[k] = call_event(o.events[k], t, y, k)
-  end
-  te_list = {}
-  ye_list = {}
-  for k in 1:ng
-    te_list = append(te_list, zeros(0))
-    ye_list = append(ye_list, zeros(n, 0))
-  end
-
-  status = "success"
-  facmax = 10.0
-  done = false
-  nsteps = 0
-  while not done
-    if nsteps >= o.max_steps
-      fail("SolverError", "more than " + string(o.max_steps) + " steps before t = " + string(t1) +
-        " (stopped at t = " + string(t) + ")")
-    end
-    if h < 16 * EPS * max(abs(t), 1e-300)
-      fail("SolverError", "the step size became too small at t = " + string(t))
-    end
-    last = false
-    if h >= abs(t1 - t)
-      h = abs(t1 - t)
-      last = true
-    end
-    hs = s * h
-
-    k2 = call_rhs(f, t + hs / 5, y + hs * (k1 / 5), n)
-    k3 = call_rhs(f, t + 3 * hs / 10, y + hs * (3 / 40 * k1 + 9 / 40 * k2), n)
-    k4 = call_rhs(f, t + 4 * hs / 5, y + hs * (44 / 45 * k1 - 56 / 15 * k2 + 32 / 9 * k3), n)
-    k5 = call_rhs(f, t + 8 * hs / 9, y + hs * (19372 / 6561 * k1 - 25360 / 2187 * k2 +
-      64448 / 6561 * k3 - 212 / 729 * k4), n)
-    k6 = call_rhs(f, t + hs, y + hs * (9017 / 3168 * k1 - 355 / 33 * k2 + 46732 / 5247 * k3 +
-      49 / 176 * k4 - 5103 / 18656 * k5), n)
-    ynew = y + hs * (35 / 384 * k1 + 500 / 1113 * k3 + 125 / 192 * k4 - 2187 / 6784 * k5 +
-      11 / 84 * k6)
-    tnew = t + hs
-    if last tnew = t1 end
-    k7 = call_rhs(f, tnew, ynew, n)
-    nfev = nfev + 6
-    errv = hs * (71 / 57600 * k1 - 71 / 16695 * k3 + 71 / 1920 * k4 - 17253 / 339200 * k5 +
-      22 / 525 * k6 - 1 / 40 * k7)
-    sk = o.atol + o.rtol * max(abs(y), abs(ynew))
-    err = wrms(errv, sk)
-    if err != err
-      fail("SolverError", "the solution is not finite at t = " + string(t))
-    end
-
-    if err > 1
-      # Rejected: retry with a smaller step.
-      h = h * max(0.2, 0.9 * err ^ (-0.2))
-      facmax = 1.0
-      continue
-    end
-
-    # Accepted.
-    nsteps = nsteps + 1
-    ydiff = ynew - y
-    bspl = hs * k1 - ydiff
-    steps = steps + 1
-    T0 = grow_vector(T0, steps)
-    H = grow_vector(H, steps)
-    R1 = grow_matrix(R1, steps)
-    R2 = grow_matrix(R2, steps)
-    R3 = grow_matrix(R3, steps)
-    R4 = grow_matrix(R4, steps)
-    R5 = grow_matrix(R5, steps)
-    T0[steps] = t
-    H[steps] = tnew - t
-    R1[:, steps] = y
-    R2[:, steps] = ydiff
-    R3[:, steps] = bspl
-    R4[:, steps] = ydiff - hs * k7 - bspl
-    R5[:, steps] = hs * (-12715105075 / 11282082432 * k1 + 87487479700 / 32700410799 * k3 -
-      10690763975 / 1880347072 * k4 + 701980252875 / 199316789632 * k5 -
-      1453857185 / 822651844 * k6 + 69997945 / 29380423 * k7)
-    j = steps
-    yat = function(tq)
-      th = (tq - T0[j]) / H[j]
-      th1 = 1 - th
-      return R1[:, j] + th * (R2[:, j] + th1 * (R3[:, j] + th * (R4[:, j] + th1 * R5[:, j])))
-    end
-
-    # Events in this step, earliest first.
-    tstop = tnew
-    ystop = ynew
-    found = {}
-    for k in 1:ng
-      gnew = call_event(o.events[k], tnew, ynew, k)
-      if crosses(gold[k], gnew, o.direction[k])
-        found = append(found, {k: k, t: locate(o.events[k], k, yat, t, gold[k], tnew, gnew)})
-      end
-      gold[k] = gnew
-    end
-    if length(found) > 0
-      # Sort by time in the direction of integration (few events: insertion sort).
-      for a in 2:length(found)
-        b = a
-        while b > 1 and s * (found[b].t - found[b - 1].t) < 0
-          tmp = found[b]
-          found[b] = found[b - 1]
-          found[b - 1] = tmp
-          b = b - 1
-        end
-      end
-      for e in found
-        ye = yat(e.t)
-        te_list[e.k] = append(te_list[e.k], e.t)
-        ye_list[e.k] = reshape([ye_list[e.k], ye], n, length(te_list[e.k]))
-        if o.terminal[e.k]
-          tstop = e.t
-          ystop = ye
-          status = "event"
-          break
-        end
-      end
-    end
-
-    [out, next_eval] = add_step_output(out, o.t_eval, next_eval, s, t, tstop, ystop, yat)
-    if status == "event"
-      H[steps] = tstop - t
-      break
-    end
-
-    t = tnew
-    y = ynew
-    k1 = k7
-    if last
-      done = true
-    else
-      fac = min(facmax, max(0.2, 0.9 * err ^ (-0.2)))
-      if err == 0 fac = facmax end
-      h = min(h * fac, o.max_step)
-      facmax = 10.0
-    end
-  end
-
+  [ot, oy, status, te_list, ye_list, nfev, nsteps, T0, H, R1, R2, R3, R4, R5] = odecore.rk45(
+    f, t0, t1, y0, o)
+  out = {t: ot, y: oy, count: length(ot)}
+  steps = length(T0)
   at = function(tq)
     return dense_at(tq, n, s, T0, H, steps, function(j, th)
       th1 = 1 - th
@@ -443,199 +212,29 @@ end
 
 # ---------------------------------------------------------------- BDF (CVODE)
 
-function cvode_check(flag, what)
-  if flag < 0
-    fail("SolverError", "CVODE " + what + " failed (" + CVodeGetReturnFlagName(flag) + ")")
-  end
-end
-
-function native_vector(v, n)
-  y = zeros(n)
-  copy_from_native(y, N_VGetArrayPointer(v), 8 * n)
-  return y
-end
-
-function cvode_rhs(t, yv, ydotv, user)
-  global current
-  try
-    y = native_vector(yv, current.n)
-    d = call_rhs(current.f, t, y, current.n)
-    copy_to_native(N_VGetArrayPointer(ydotv), d, 8 * current.n)
-    current.nfev = current.nfev + 1
-    return 0
-  catch e
-    current.err = e
-    return -1
-  end
-end
-
-function cvode_roots(t, yv, goutv, user)
-  global current
-  try
-    y = native_vector(yv, current.n)
-    g = zeros(length(current.events))
-    for k in 1:length(current.events)
-      g[k] = call_event(current.events[k], t, y, k)
-    end
-    copy_to_native(goutv, g, 8 * length(g))
-    return 0
-  catch e
-    current.err = e
-    return -1
-  end
-end
-
-RHS = keep(cvode_rhs)
-ROOTS = keep(cvode_roots)
-
+# CVODE's variable-order BDF, one step at a time, in odecore (native). The
+# per-step data are the step's start and end states and derivatives, for a
+# cubic Hermite sol.at.
 function bdf(f, t0, t1, y0, o)
-  global current
   n = length(y0)
   s = 1.0
   if t1 < t0 s = -1.0 end
-  ng = length(o.events)
-  saved = current
-  current = {f: f, n: n, events: o.events, nfev: 0, err: nothing}
-
-  ctx = nothing
-  mem = nothing
-  cvode_check(SUNContext_Create(nothing, ctx), "SUNContext_Create")
-  # Failures come back as return codes; SUNDIALS should not also print them.
-  SUNContext_ClearErrHandlers(ctx)
-  yv = N_VNew_Serial(n, ctx)
-  dky = N_VNew_Serial(n, ctx)
-  A = SUNDenseMatrix(n, n, ctx)
-  LS = SUNLinSol_Dense(yv, A, ctx)
-  result = nothing
-  failure = nothing
-  try
-    copy_to_native(N_VGetArrayPointer(yv), y0, 8 * n)
-    mem = CVodeCreate(CV_BDF, ctx)
-    cvode_check(CVodeInit(mem, RHS, t0, yv), "CVodeInit")
-    cvode_check(CVodeSStolerances(mem, o.rtol, o.atol), "CVodeSStolerances")
-    cvode_check(CVodeSetLinearSolver(mem, LS, A), "CVodeSetLinearSolver")
-    cvode_check(CVodeSetMaxNumSteps(mem, o.max_steps), "CVodeSetMaxNumSteps")
-    cvode_check(CVodeSetStopTime(mem, t1), "CVodeSetStopTime")
-    if o.max_step < 1.0 / 0.0
-      cvode_check(CVodeSetMaxStep(mem, o.max_step), "CVodeSetMaxStep")
-    end
-    if typeof(o.first_step) != "nothing"
-      cvode_check(CVodeSetInitStep(mem, s * abs(o.first_step)), "CVodeSetInitStep")
-    end
-    if ng > 0
-      cvode_check(CVodeRootInit(mem, ng, ROOTS), "CVodeRootInit")
-    end
-
-    out = new_output(n)
-    next_eval = 1
-    if typeof(o.t_eval) == "nothing"
-      out = add_point(out, t0, y0)
-    else
-      while next_eval <= length(o.t_eval) and o.t_eval[next_eval] == t0
-        out = add_point(out, t0, y0)
-        next_eval = next_eval + 1
-      end
-    end
-    # Dense output: cubic Hermite through the steps, with CVODE's derivative.
-    steps = 0
-    T0 = zeros(64)
-    H = zeros(64)
-    YA = zeros(n, 64)
-    YB = zeros(n, 64)
-    DA = zeros(n, 64)
-    DB = zeros(n, 64)
-    te_list = {}
-    ye_list = {}
-    for k in 1:ng
-      te_list = append(te_list, zeros(0))
-      ye_list = append(ye_list, zeros(n, 0))
-    end
-
-    t = t0
-    y = y0
-    dy = call_rhs(f, t0, y0, n)
-    status = "success"
-    tret = t0
-    roots = int(zeros(max(ng, 1)))
-    nsteps = 0
-    while s * (t1 - t) > 0
-      flag = CVode(mem, t1, yv, tret, CV_ONE_STEP)
-      if typeof(current.err) != "nothing"
-        error(current.err)
-      end
-      if flag < 0
-        fail("SolverError", "CVODE failed at t = " + string(tret) + " (" +
-          CVodeGetReturnFlagName(flag) + ")")
-      end
-      nsteps = nsteps + 1
-      if nsteps > o.max_steps
-        fail("SolverError", "more than " + string(o.max_steps) + " steps before t = " + string(t1) +
-          " (stopped at t = " + string(tret) + ")")
-      end
-      ynew = native_vector(yv, n)
-      cvode_check(CVodeGetDky(mem, tret, 1, dky), "CVodeGetDky")
-      dnew = native_vector(dky, n)
-      steps = steps + 1
-      T0 = grow_vector(T0, steps)
-      H = grow_vector(H, steps)
-      YA = grow_matrix(YA, steps)
-      YB = grow_matrix(YB, steps)
-      DA = grow_matrix(DA, steps)
-      DB = grow_matrix(DB, steps)
-      T0[steps] = t
-      H[steps] = tret - t
-      YA[:, steps] = y
-      YB[:, steps] = ynew
-      DA[:, steps] = dy
-      DB[:, steps] = dnew
-      # Requested times inside this step come from CVODE's own interpolant.
-      yat = function(tq)
-        cvode_check(CVodeGetDky(mem, tq, 0, dky), "CVodeGetDky")
-        return native_vector(dky, n)
-      end
-      tstop = tret
-      if flag == CV_ROOT_RETURN
-        cvode_check(CVodeGetRootInfo(mem, roots), "CVodeGetRootInfo")
-        for k in 1:ng
-          dir = roots[k]
-          if dir != 0 and (o.direction[k] == 0 or o.direction[k] == dir)
-            te_list[k] = append(te_list[k], tret)
-            ye_list[k] = reshape([ye_list[k], ynew], n, length(te_list[k]))
-            if o.terminal[k] status = "event" end
-          end
-        end
-      end
-      [out, next_eval] = add_step_output(out, o.t_eval, next_eval, s, t, tret, ynew, yat)
-      t = tret
-      y = ynew
-      dy = dnew
-      if status == "event" break end
-    end
-    nfev = current.nfev
-    at = function(tq)
-      return dense_at(tq, n, s, T0, H, steps, function(j, th)
-        # Cubic Hermite on step j.
-        h = H[j]
-        h00 = (1 + 2 * th) * (1 - th) ^ 2
-        h10 = th * (1 - th) ^ 2
-        h01 = th ^ 2 * (3 - 2 * th)
-        h11 = th ^ 2 * (th - 1)
-        return h00 * YA[:, j] + h10 * h * DA[:, j] + h01 * YB[:, j] + h11 * h * DB[:, j]
-      end)
-    end
-    result = {out: out, status: status, te: te_list, ye: ye_list, nfev: nfev, nsteps: nsteps, at: at}
-  catch e
-    failure = e
+  [ot, oy, status, te_list, ye_list, nfev, nsteps, T0, H, YA, YB, DA, DB] = odecore.bdf(
+    f, t0, t1, y0, o)
+  out = {t: ot, y: oy, count: length(ot)}
+  steps = length(T0)
+  at = function(tq)
+    return dense_at(tq, n, s, T0, H, steps, function(j, th)
+      # Cubic Hermite on step j.
+      h = H[j]
+      h00 = (1 + 2 * th) * (1 - th) ^ 2
+      h10 = th * (1 - th) ^ 2
+      h01 = th ^ 2 * (3 - 2 * th)
+      h11 = th ^ 2 * (th - 1)
+      return h00 * YA[:, j] + h10 * h * DA[:, j] + h01 * YB[:, j] + h11 * h * DB[:, j]
+    end)
   end
-  if typeof(mem) != "nothing" CVodeFree(mem) end
-  SUNLinSolFree(LS)
-  SUNMatDestroy(A)
-  N_VDestroy(yv)
-  N_VDestroy(dky)
-  SUNContext_Free(ctx)
-  current = saved
-  if typeof(failure) != "nothing" error(failure) end
-  return result.out, result.status, result.te, result.ye, result.nfev, result.nsteps, result.at
+  return out, status, te_list, ye_list, nfev, nsteps, at
 end
 
 # ---------------------------------------------------------------- solve
