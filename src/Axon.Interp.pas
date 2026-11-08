@@ -421,10 +421,17 @@ begin
   FModules := TDictionary<string, TAxValue>.Create;
   FLoadStack := TList<string>.Create;
   FPrograms := TObjectList<TProgram>.Create;
+  // Native modules call functions through the latest interpreter.
+  CallAxon :=
+    function(const Fn: TAxValue; const Args: TAxValues): TAxValue
+    begin
+      Result := CallValue(Fn, Args);
+    end;
 end;
 
 destructor TInterpreter.Destroy;
 begin
+  CallAxon := nil;
   FHoisted.Free;
   FHoistedRecords.Free;
   FHoistedExterns.Free;

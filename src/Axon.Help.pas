@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..71] of TBuiltinDoc = (
+  BuiltinDocs: array[0..77] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -109,6 +109,13 @@ const
     (Name: 'write_file';  Params: '(path, text)'; Text: 'Writes a string to a file as UTF-8, replacing it'),
     (Name: 'file_exists'; Params: '(path)'; Text: 'True when the file exists'),
     (Name: 'delete_file'; Params: '(path)'; Text: 'Deletes a file; false when there was no such file'),
+    // time
+    (Name: 'clock';   Params: '()'; Text: 'Seconds on a monotonic high-resolution clock; subtract two readings'),
+    (Name: 'now';     Params: '()'; Text: 'Wall-clock seconds since 1970-01-01 UTC'),
+    (Name: 'sleep';   Params: '(seconds)'; Text: 'Pauses for the given number of seconds'),
+    (Name: 'elapsed'; Params: '(f, args...)'; Text: 'Seconds taken by one call f(args...)'),
+    (Name: 'bench';   Params: '(f, args...)'; Text: 'Times repeated calls of f(args...): a record of per-call seconds best, mean and worst, with loops and runs'),
+    (Name: 'format';  Params: '(seconds)'; Text: 'Seconds as text in a fitting unit, such as "12.3 ms"'),
     // graphics
     (Name: 'save';       Params: '(scene, path)'; Text: 'Renders a scene to a .png, .svg or .pdf file'),
     (Name: 'text_width'; Params: '(text, size, font)'; Text: 'The width of text in points, for layout'),

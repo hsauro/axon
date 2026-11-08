@@ -91,6 +91,7 @@ xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md" "$(MSBuil
         <DCCReference Include="src\Axon.Help.pas"/>
         <DCCReference Include="src\Axon.NativeModules.pas"/>
         <DCCReference Include="src\Axon.IoModule.pas"/>
+        <DCCReference Include="src\Axon.TimeModule.pas"/>
         <DCCReference Include="src\Axon.Graphics.pas"/>
         <DCCReference Include="src\Axon.Packages.pas"/>
         <DCCReference Include="src\Axon.Ffi.pas"/>

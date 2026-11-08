@@ -524,6 +524,21 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 | `file_exists(path)` | `true` when the file exists |
 | `delete_file(path)` | Deletes the file and returns `true`, or returns `false` when there was no such file |
 
+### The time module
+
+`time` is a core module, written in the interpreter, for clocks and for timing code.
+
+| Function | Result |
+| --- | --- |
+| `clock()` | Seconds, as a `real`, on a monotonic high-resolution clock with an arbitrary origin. Only differences of two readings are meaningful; they are not affected by changes to the system clock |
+| `now()` | Wall-clock time as `real` seconds since 1970-01-01 00:00 UTC, with millisecond resolution |
+| `sleep(seconds)` | Pauses for at least the given number of seconds (`int` or `real`) and returns `nothing`; a negative or NaN value raises `DomainError` |
+| `elapsed(f, args…)` | Calls `f(args…)` once and returns the seconds it took. The result of `f` is discarded, and an error inside `f` propagates |
+| `bench(f, args…)` | Times repeated calls of `f(args…)` and returns a record `{best, mean, worst, loops, runs}`. The number of calls per run, `loops`, doubles from 1 until a run lasts at least 0.2 s; then `runs` = 5 runs of `loops` calls are timed, the calibrating run counting as the first. `best`, `mean` and `worst` are seconds per call over those runs. A call that takes longer than 0.2 s is therefore made 5 times |
+| `format(seconds)` | The time as text with three significant digits in the largest unit that keeps it at 1 or above: `"1.50 s"`, `"12.3 ms"`, `"45.6 µs"`, `"7.00 ns"`. Rounding happens before the unit is chosen, so `0.99996` gives `"1.00 s"`; zero gives `"0 s"` |
+
+`elapsed` and `bench` call `f` from the interpreter itself, so the timings include no loop overhead from Axon code. `f` may be any function value, including a built-in or a lambda: `time.bench(function() return A * A end)`. Report `best` when comparing implementations; it is the measurement least disturbed by other activity on the machine.
+
 ### The graphics module
 
 `graphics` is a core module that renders a scene to a file through the Skia library. It is the drawing layer under `plot`. Skia loads at the first call that needs it; when it cannot be loaded, that call raises `ForeignError` and the rest of the language is unaffected. On Windows Skia is the shipped `sk4d.dll`; on macOS it is linked into the interpreter.

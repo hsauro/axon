@@ -1,0 +1,3 @@
+UserError: bad
+  at err_time_callee.sci:4:3 in boom
+  at err_time_callee.sci:6:1

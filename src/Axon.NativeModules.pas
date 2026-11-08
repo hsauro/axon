@@ -22,6 +22,15 @@ procedure RegisterNativeModule(const Name: string; Definer: TModuleDefiner;
 function FindNativeModule(const Name: string; out Definer: TModuleDefiner;
   out Doc: TArray<string>): Boolean;
 
+{ Calls an Axon function value (a function, built-in or extern) with
+  positional arguments, for native modules that take functions, such as
+  time.bench. Set by the interpreter. }
+type
+  TCallAxon = reference to function(const Fn: TAxValue; const Args: TAxValues): TAxValue;
+
+var
+  CallAxon: TCallAxon;
+
 { A built-in function value. MaxArgs = -1 means no limit. }
 function BuiltinValue(const Name: string; Fn: TBuiltinFn; MinArgs, MaxArgs: Integer): TAxValue;
 
@@ -81,6 +90,7 @@ end;
 initialization
 
 finalization
+  CallAxon := nil;
   Registry.Free;
 
 end.

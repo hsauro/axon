@@ -28,6 +28,7 @@ uses
   Axon.Help in 'src\Axon.Help.pas',
   Axon.NativeModules in 'src\Axon.NativeModules.pas',
   Axon.IoModule in 'src\Axon.IoModule.pas',
+  Axon.TimeModule in 'src\Axon.TimeModule.pas',
   Axon.Graphics in 'src\Axon.Graphics.pas',
   Axon.Packages in 'src\Axon.Packages.pas',
   Axon.Ffi in 'src\Axon.Ffi.pas',
