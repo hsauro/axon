@@ -89,6 +89,9 @@
         <RcCompile Include="AxonIDEStyles.rc">
             <Form>AxonIDEStyles.res</Form>
         </RcCompile>
+        <RcCompile Include="AxonIDEStylesMac.rc">
+            <Form>AxonIDEStylesMac.res</Form>
+        </RcCompile>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -121,5 +124,6 @@
     </ProjectExtensions>
     <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATADIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATADIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
+    <Import Project="AxonIDE.styles.targets"/>
     <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
 </Project>

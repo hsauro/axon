@@ -23,9 +23,14 @@ uses
   uRefSections in 'uRefSections.pas';
 
 // The build's resources (AxonIDE.res: icon, version information and the
-// Windows manifest that makes the IDE DPI-aware), then the dark style.
+// Windows manifest that makes the IDE DPI-aware), then the dark style
+// (MineShaft) for this platform.
 {$R *.res}
+{$IFDEF MSWINDOWS}
 {$R 'AxonIDEStyles.res' 'AxonIDEStyles.rc'}
+{$ELSE}
+{$R 'AxonIDEStylesMac.res' 'AxonIDEStylesMac.rc'}
+{$ENDIF}
 
 
 begin

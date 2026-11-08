@@ -1,0 +1,3 @@
+/* The dark FMX style for macOS: MineShaft_Mac.style, copied by the build from
+   $(BDSCOMMONDIR)\Styles\MacOS (see AxonIDEStyles.rc). */
+DARKSTYLE RCDATA "styles\\MineShaft_Mac.style"

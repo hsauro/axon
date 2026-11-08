@@ -37,7 +37,7 @@ unit uMainForm;
    - Edit > Preferences sets the font size of the editors and of the output
      panes (Output, REPL, Help); saved in settings.ini.
    - View > Dark Theme switches the whole window live: the embedded FMX
-     Dark.style, the editors' colours and syntax palette, the help viewer
+     MineShaft style (RCDATA DARKSTYLE), the editors' colours and syntax palette, the help viewer
      and the output panes. The choice is kept in settings.ini.
    - Help (F1) shows the documentation of the name under the caret in the
      Help tab: from the editor text for a function or record defined in the

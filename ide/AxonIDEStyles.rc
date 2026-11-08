@@ -1,9 +1,5 @@
-/* FMX styles embedded in the IDE, loaded with TStyleManager.TrySetStyleFromResource.
-   Dark.style comes from RAD Studio's Redist\styles\Fmx (redistributable) and has
-   no platform restriction, so it serves Windows and macOS alike. Changed in
-   our copy: every orange or gold accent is blue (focus outlines, selections,
-   check marks, sliders, the menu highlight), the scrollbar thumbs are neutral
-   grey, and menu shortcut text (menuitemstyle's 'shortcut') is light grey;
-   the original set no colour there, so shortcuts were nearly black on the
-   dark menu. */
-DARKSTYLE RCDATA "styles\\Dark.style"
+/* The dark FMX style for Windows, loaded with TStyleManager.TrySetStyleFromResource
+   ('DARKSTYLE'): RAD Studio's premium MineShaft style. The build copies it from
+   $(BDSCOMMONDIR)\Styles\Win into styles\ (gitignored, so Embarcadero's style
+   files are not in the repository). AxonIDEStylesMac.rc holds the macOS one. */
+DARKSTYLE RCDATA "styles\\MineShaft_Win.style"

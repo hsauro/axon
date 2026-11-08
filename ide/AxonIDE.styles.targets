@@ -1,0 +1,12 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- The dark style (MineShaft, a RAD Studio premium style) is copied from the
+       installation before the resources are compiled, rather than kept in the
+       repository; AxonIDEStyles.rc (Windows) and AxonIDEStylesMac.rc (macOS)
+       embed it. -->
+  <Target Name="CopyDarkStyles" BeforeTargets="BrccCompile">
+    <MakeDir Directories="$(MSBuildProjectDirectory)\styles" />
+    <Copy SourceFiles="$(BDSCOMMONDIR)\Styles\Win\MineShaft_Win.style;$(BDSCOMMONDIR)\Styles\MacOS\MineShaft_Mac.style"
+          DestinationFolder="$(MSBuildProjectDirectory)\styles"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>
