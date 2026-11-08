@@ -29,6 +29,8 @@ unit uMainForm;
      (browser) and examples (a copy opens in the editor), with Back.
    - On Windows the menu is an FMX TMenuBar, so it is styled with the rest;
      on macOS it is the native menu bar.
+   - Edit > Preferences sets the font size of the editors and of the output
+     panes (Output, REPL, Help); saved in settings.ini.
    - View > Dark Theme switches the whole window live: the embedded FMX
      Dark.style, the editors' colours and syntax palette, the help viewer
      and the output panes. The choice is kept in settings.ini.
@@ -47,7 +49,7 @@ uses
   FMX.Types, FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs, FMX.StdCtrls,
   FMX.Layouts, FMX.ListBox, FMX.TabControl, FMX.Menus, FMX.Objects,
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
-  uSkiaCodeEditor, uProcessRunner, uRunReport, uRhoMarkdownViewer;
+  uSkiaCodeEditor, uProcessRunner, uRunReport, uRhoMarkdownViewer, uPreferences;
 
 type
   { Text colours of the output panes, per theme. }
@@ -139,6 +141,8 @@ type
     FDark: Boolean;
     FPal: TPanePalette;
     FDarkItem: TMenuItem;
+    // Preferences
+    FPrefs: TIdePreferences;
     FFigureShown: Boolean;     // since the current run or REPL command started
     FFigureCount: Integer;
     procedure BuildUI;
@@ -188,6 +192,9 @@ type
     procedure ApplyEditorTheme(Editor: TSkiaCodeEditor);
     procedure RecolorList(List: TListBox; const Old: TPanePalette);
     procedure CmdDarkTheme(Sender: TObject);
+    procedure CmdPreferences(Sender: TObject);
+    procedure ApplyPreferences;
+    procedure SizePaneItem(Item: TListBoxItem);
     procedure LoadLayout(Ini: TCustomIniFile);
     procedure SaveLayout(Ini: TCustomIniFile);
     function TryShowFigure(const Line: string): Boolean;
@@ -272,7 +279,7 @@ uses
   Posix.Stdlib,
 {$ENDIF}
   System.IOUtils, System.DateUtils, System.Math,
-  FMX.ActnList, FMX.DialogService.Sync,
+  FMX.ActnList, FMX.DialogService.Sync, FMX.Platform,
   uAxonHighlighter;
 
 const
@@ -281,6 +288,100 @@ const
   // Error squiggles, readable on both themes.
   ColorError = $FFE53935;
   FileFilter = 'Axon files (*.sci)|*.sci|All files (*.*)|*.*';
+
+{ ---------------- menu shortcut labels ---------------- }
+
+{$IFDEF MSWINDOWS}
+type
+  { The Windows menu service labels Ctrl+, and Ctrl+/ as Ctrl+',' and
+    Ctrl+'/'. This wrapper labels those two plainly and passes everything
+    else to the platform's service. }
+  TShortCutLabels = class(TInterfacedObject, IFMXMenuService)
+  private
+    FInner: IFMXMenuService;
+  public
+    constructor Create(const Inner: IFMXMenuService);
+    procedure StartMenuLoop(const AView: IMenuView);
+    function ShortCutToText(ShortCut: TShortCut): string;
+    procedure ShortCutToKey(ShortCut: TShortCut; var Key: Word; var Shift: TShiftState);
+    function TextToShortCut(Text: string): Integer;
+    procedure CreateOSMenu(AForm: TCommonCustomForm; const AMenu: IItemsContainer);
+    procedure UpdateMenuItem(const AItem: IItemsContainer; AChange: TMenuItemChanges);
+    procedure DestroyMenuItem(const AItem: IItemsContainer);
+    function IsMenuBarOnWindowBorder: Boolean;
+    procedure UpdateMenuBar;
+  end;
+
+constructor TShortCutLabels.Create(const Inner: IFMXMenuService);
+begin
+  inherited Create;
+  FInner := Inner;
+end;
+
+procedure TShortCutLabels.StartMenuLoop(const AView: IMenuView);
+begin
+  FInner.StartMenuLoop(AView);
+end;
+
+function TShortCutLabels.ShortCutToText(ShortCut: TShortCut): string;
+begin
+  if ShortCut = scCtrl or vkComma then
+    Result := 'Ctrl+,'
+  else if ShortCut = scCtrl or vkSlash then
+    Result := 'Ctrl+/'
+  else
+    Result := FInner.ShortCutToText(ShortCut);
+end;
+
+procedure TShortCutLabels.ShortCutToKey(ShortCut: TShortCut; var Key: Word; var Shift: TShiftState);
+begin
+  FInner.ShortCutToKey(ShortCut, Key, Shift);
+end;
+
+function TShortCutLabels.TextToShortCut(Text: string): Integer;
+begin
+  Result := FInner.TextToShortCut(Text);
+end;
+
+procedure TShortCutLabels.CreateOSMenu(AForm: TCommonCustomForm; const AMenu: IItemsContainer);
+begin
+  FInner.CreateOSMenu(AForm, AMenu);
+end;
+
+procedure TShortCutLabels.UpdateMenuItem(const AItem: IItemsContainer; AChange: TMenuItemChanges);
+begin
+  FInner.UpdateMenuItem(AItem, AChange);
+end;
+
+procedure TShortCutLabels.DestroyMenuItem(const AItem: IItemsContainer);
+begin
+  FInner.DestroyMenuItem(AItem);
+end;
+
+function TShortCutLabels.IsMenuBarOnWindowBorder: Boolean;
+begin
+  Result := FInner.IsMenuBarOnWindowBorder;
+end;
+
+procedure TShortCutLabels.UpdateMenuBar;
+begin
+  FInner.UpdateMenuBar;
+end;
+
+{ Installed once, before any menu item is created (items look the service up
+  when they are made). }
+procedure InstallShortCutLabels;
+var
+  Inner: IFMXMenuService;
+begin
+  if TPlatformServices.Current.SupportsPlatformService(IFMXMenuService, Inner) and
+    not ((Inner as TObject) is TShortCutLabels) then
+  begin
+    TPlatformServices.Current.RemovePlatformService(IFMXMenuService);
+    TPlatformServices.Current.AddPlatformService(IFMXMenuService, TShortCutLabels.Create(Inner));
+  end;
+end;
+{$ENDIF}
 
 { ---------------- TDocument ---------------- }
 
@@ -321,6 +422,7 @@ begin
   FCheckTimer.OnTimer := CheckTimerFired;
   FDocsHistory := TStringList.Create;
   FPal := PanePalette(False);
+  FPrefs := TIdePreferences.Defaults;
   SetupShowDir;
   BuildUI;
   BuildMenu;
@@ -505,7 +607,13 @@ begin
   Result := TMenuItem.Create(Self);
   Result.Parent := Parent;
   Result.Text := Text;
-  if ShortCut <> '' then
+  // TextToShortCut cannot read "," or "/" (it returns 0), so those two are
+  // built from key codes.
+  if ShortCut = 'Ctrl+,' then
+    Result.ShortCut := scCtrl or vkComma
+  else if ShortCut = 'Ctrl+/' then
+    Result.ShortCut := scCtrl or vkSlash
+  else if ShortCut <> '' then
     Result.ShortCut := TextToShortCut(ShortCut);
   Result.OnClick := Handler;
 end;
@@ -519,6 +627,7 @@ var
 {$ENDIF}
 begin
 {$IFDEF MSWINDOWS}
+  InstallShortCutLabels;
   // A menu bar FMX draws itself, so it follows the style (dark with the dark
   // theme); a native Windows menu cannot be restyled. Shortcuts still work:
   // the form passes keys the focused control does not use to the items.
@@ -558,6 +667,8 @@ begin
   AddMenuItem(M, '-', '', nil);
   AddMenuItem(M, '&Find...', 'Ctrl+F', CmdFind);
   AddMenuItem(M, 'Toggle &Comment', 'Ctrl+/', CmdToggleComment);
+  AddMenuItem(M, '-', '', nil);
+  AddMenuItem(M, 'Pr&eferences...', 'Ctrl+,', CmdPreferences);
 
   M := AddMenuItem(Menu, '&View', '', nil);
   FDarkItem := AddMenuItem(M, '&Dark Theme', '', CmdDarkTheme);
@@ -609,6 +720,7 @@ begin
   Doc.Editor.Parent := Doc.Tab;
   Doc.Editor.Align := TAlignLayout.Client;
   ApplyEditorTheme(Doc.Editor);
+  Doc.Editor.FontSize := FPrefs.EditorFontSize;
   Doc.Editor.LineCommentPrefix := '#';
   Doc.Editor.HighlightCurrentLine := True;
   Doc.Editor.SetText(Text);
@@ -873,7 +985,14 @@ var
   Area: TRectF;
 begin
   if not Ini.SectionExists('Window') then
+  begin
+    FPrefs.EditorFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'EditorFontSize',
+      Round(FPrefs.EditorFontSize)), MinFontSize, MaxFontSize);
+    FPrefs.OutputFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'OutputFontSize',
+      Round(FPrefs.OutputFontSize)), MinFontSize, MaxFontSize);
+    ApplyPreferences;
     Exit;
+  end;
   W := Ini.ReadInteger('Window', 'Width', Width);
   H := Ini.ReadInteger('Window', 'Height', Height);
   R := TRect.Create(Ini.ReadInteger('Window', 'Left', Left), Ini.ReadInteger('Window', 'Top', Top),
@@ -907,6 +1026,11 @@ begin
   FBottomTabs.Height := EnsureRange(Ini.ReadInteger('Window', 'BottomHeight',
     Round(FBottomTabs.Height)), 80, Max(80, Height - 220));
   ApplyTheme(Ini.ReadString('Window', 'Theme', 'light') = 'dark');
+  FPrefs.EditorFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'EditorFontSize',
+    Round(FPrefs.EditorFontSize)), MinFontSize, MaxFontSize);
+  FPrefs.OutputFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'OutputFontSize',
+    Round(FPrefs.OutputFontSize)), MinFontSize, MaxFontSize);
+  ApplyPreferences;
   K := Ini.ReadInteger('Window', 'BottomTab', 0);
   if (K >= 0) and (K < FBottomTabs.TabCount) then
     FBottomTabs.TabIndex := K;
@@ -926,6 +1050,8 @@ begin
     Ini.WriteString('Window', 'Theme', 'dark')
   else
     Ini.WriteString('Window', 'Theme', 'light');
+  Ini.WriteInteger('Preferences', 'EditorFontSize', Round(FPrefs.EditorFontSize));
+  Ini.WriteInteger('Preferences', 'OutputFontSize', Round(FPrefs.OutputFontSize));
 end;
 
 procedure TfrmMain.AddRecent(const Path: string);
@@ -1129,6 +1255,7 @@ begin
   Item.Text := Line;
   Item.StyledSettings := Item.StyledSettings - [TStyledSetting.FontColor, TStyledSetting.Family];
   Item.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
+  SizePaneItem(Item);
   Item.TextSettings.FontColor := FPal.Text;
   if Kind = okStdErr then
   begin
@@ -1159,6 +1286,7 @@ begin
   Item.Parent := FOutput;
   Item.Text := Text;
   Item.StyledSettings := Item.StyledSettings - [TStyledSetting.FontColor, TStyledSetting.Style];
+  SizePaneItem(Item);
   Item.TextSettings.FontColor := Color;
   Item.TextSettings.Font.Style := [TFontStyle.fsItalic];
 end;
@@ -1367,6 +1495,7 @@ begin
   Item.StyledSettings := Item.StyledSettings -
     [TStyledSetting.FontColor, TStyledSetting.Family, TStyledSetting.Style];
   Item.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
+  SizePaneItem(Item);
   Item.TextSettings.FontColor := Color;
   if Italic then
     Item.TextSettings.Font.Style := [TFontStyle.fsItalic];
@@ -2412,6 +2541,48 @@ begin
   if TDialogServiceSync.InputQuery('Go to line', ['Line number'], Values) and
     TryStrToInt(Values[0].Trim, N) then
     CurrentDoc.Editor.GoToLine(N);
+end;
+
+{ ---------------- preferences ---------------- }
+
+{ A line in the Output or REPL pane at the output font size. }
+procedure TfrmMain.SizePaneItem(Item: TListBoxItem);
+begin
+  Item.StyledSettings := Item.StyledSettings - [TStyledSetting.Size];
+  Item.TextSettings.Font.Size := FPrefs.OutputFontSize;
+end;
+
+procedure TfrmMain.ApplyPreferences;
+var
+  Doc: TDocument;
+  K: Integer;
+  RowHeight: Single;
+begin
+  for Doc in FDocs do
+    Doc.Editor.FontSize := FPrefs.EditorFontSize;
+  // Rows tall enough for the font, with a little space.
+  RowHeight := Round(FPrefs.OutputFontSize * 1.5) + 2;
+  FOutput.ItemHeight := RowHeight;
+  for K := 0 to FOutput.Count - 1 do
+    SizePaneItem(FOutput.ListItems[K]);
+  FReplList.ItemHeight := RowHeight;
+  for K := 0 to FReplList.Count - 1 do
+    SizePaneItem(FReplList.ListItems[K]);
+  FReplEdit.StyledSettings := FReplEdit.StyledSettings - [TStyledSetting.Size];
+  FReplEdit.TextSettings.Font.Size := FPrefs.OutputFontSize;
+  FReplPrompt.StyledSettings := FReplPrompt.StyledSettings - [TStyledSetting.Size];
+  FReplPrompt.TextSettings.Font.Size := FPrefs.OutputFontSize;
+  FHelpMemo.StyledSettings := FHelpMemo.StyledSettings - [TStyledSetting.Size];
+  FHelpMemo.TextSettings.Font.Size := FPrefs.OutputFontSize;
+end;
+
+procedure TfrmMain.CmdPreferences(Sender: TObject);
+begin
+  if EditPreferences(FPrefs, {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF}) then
+  begin
+    ApplyPreferences;
+    SaveSettings;
+  end;
 end;
 
 { ---------------- theme ---------------- }

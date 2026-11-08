@@ -79,6 +79,7 @@
         <DCCReference Include="uAxonHighlighter.pas"/>
         <DCCReference Include="uRunReport.pas"/>
         <DCCReference Include="uAxonMarkdown.pas"/>
+        <DCCReference Include="uPreferences.pas"/>
         <RcCompile Include="AxonIDEStyles.rc">
             <Form>AxonIDEStyles.res</Form>
         </RcCompile>

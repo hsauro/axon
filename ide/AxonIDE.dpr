@@ -18,7 +18,8 @@ uses
   uProcessRunner in 'uProcessRunner.pas',
   uAxonHighlighter in 'uAxonHighlighter.pas',
   uRunReport in 'uRunReport.pas',
-  uAxonMarkdown in 'uAxonMarkdown.pas';
+  uAxonMarkdown in 'uAxonMarkdown.pas',
+  uPreferences in 'uPreferences.pas';
 
 {$R 'AxonIDEStyles.res' 'AxonIDEStyles.rc'}
 
