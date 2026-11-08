@@ -56,7 +56,7 @@ function new_figure(width, height, title)
   return {width: width + 0.0, height: height + 0.0, title: title, xlabel: nothing,
           ylabel: nothing, zlabel: nothing, xlim: nothing, ylim: nothing, grid: true,
           legend: true, series: {}, three_d: false, elev: 30.0, azim: -60.0,
-          xcategories: nothing, xticks: nothing}
+          xcategories: nothing, xticks: nothing, legend_position: "best"}
 end
 
 function figure_now()
@@ -380,6 +380,27 @@ export function grid(on)
   current.grid = on
 end
 
+## Where the legend goes: "best" (the default: the corner of the plot area
+## that covers the least data), "top right", "top left", "bottom right",
+## "bottom left", or "outside" (to the right of the plot area, which is
+## narrowed to make room).
+export function legend_position(where)
+  global current
+  if typeof(where) != "string"
+    fail("TypeError", "plot.legend_position needs a string, got " + typeof(where))
+  end
+  ok = false
+  for w in {"best", "top right", "top left", "bottom right", "bottom left", "outside"}
+    if where == w ok = true end
+  end
+  if not ok
+    fail("ArgumentError", "plot.legend_position: unknown position \"" + where +
+      "\" (best, top right, top left, bottom right, bottom left, outside)")
+  end
+  figure_now()
+  current.legend_position = where
+end
+
 ## Turns the legend (of labelled series) on or off.
 export function legend(on)
   global current
@@ -572,6 +593,11 @@ function render_2d(fig)
   bottom = 12.0 + TICK_SIZE * 1.6
   if typeof(fig.xlabel) != "nothing" bottom = bottom + LABEL_SIZE * 1.8 end
   right = 20.0
+  [labelled, lw, lh] = legend_size(fig.series)
+  show_legend = fig.legend and length(labelled) > 0
+  if show_legend and fig.legend_position == "outside"
+    right = right + lw + 12.0
+  end
   px0 = left
   px1 = W - right
   py0 = top
@@ -652,30 +678,116 @@ function render_2d(fig)
                            size: TITLE_SIZE, anchor: "middle", baseline: "middle",
                            bold: true, color: "black"})
   end
-  if fig.legend
-    items = append(items, legend_items(fig.series, px1, py0))
+  if show_legend
+    view = {px0: px0, px1: px1, py0: py0, py1: py1, x0: x0, y0: y0, sx: sx, sy: sy}
+    [bx, by] = legend_place(fig.legend_position, fig.series, lw, lh, view)
+    items = append(items, legend_items(labelled, bx, by, lw, lh))
   end
   return {width: W, height: H, background: "white", items: items}
 end
 
-# A legend box in the top-right corner of the plot area, or an empty group.
-function legend_items(series, xr, yt)
+# The labelled series and the size of their legend box.
+function legend_size(series)
   labelled = {}
   for s in series
     if typeof(s.label) != "nothing" labelled = append(labelled, s) end
-  end
-  if length(labelled) == 0
-    return {kind: "group", items: {}}
   end
   wmax = 0.0
   for s in labelled
     wmax = max(wmax, graphics.text_width(s.label, TICK_SIZE))
   end
+  return labelled, wmax + 40.0, TICK_SIZE * 1.6 * length(labelled) + 8.0
+end
+
+# The top-left corner of the legend box for a position; "best" tries the
+# corners in turn and keeps the first that covers the least data.
+function legend_place(where, series, bw, bh, v)
+  if where == "outside"
+    return v.px1 + 12.0, v.py0
+  end
+  corners = {"top right", "top left", "bottom left", "bottom right"}
+  if where != "best"
+    corners = {where}
+  end
+  best = 1.0 / 0.0
+  rx = v.px1 - bw - 8.0
+  ry = v.py0 + 8.0
+  for c in corners
+    bx = v.px1 - bw - 8.0
+    if c == "top left" or c == "bottom left" bx = v.px0 + 8.0 end
+    by = v.py0 + 8.0
+    if c == "bottom left" or c == "bottom right" by = v.py1 - bh - 8.0 end
+    if length(corners) == 1
+      return bx, by
+    end
+    cost = legend_cost(series, bx, by, bx + bw, by + bh, v)
+    if cost < best
+      best = cost
+      rx = bx
+      ry = by
+    end
+  end
+  return rx, ry
+end
+
+# How much data the box [x0, x1] x [y0, y1] (in points) would hide: points
+# inside it, line segments crossing it, and the fraction of it under bars
+# (a box covered by bars counts as 100 points).
+function legend_cost(series, x0, y0, x1, y1, v)
+  cost = 0.0
+  for s in series
+    if s.type == "bars"
+      for k in 1:length(s.heights)
+        bl = v.px0 + (s.left[k] - v.x0) * v.sx
+        br = v.px0 + (s.right[k] - v.x0) * v.sx
+        bt = v.py1 - (max(s.heights[k], 0.0) - v.y0) * v.sy
+        bb = v.py1 - (min(s.heights[k], 0.0) - v.y0) * v.sy
+        w = min(br, x1) - max(bl, x0)
+        h = min(bb, y1) - max(bt, y0)
+        if w > 0 and h > 0
+          cost = cost + 100.0 * w * h / ((x1 - x0) * (y1 - y0))
+        end
+      end
+    else
+      px = v.px0 + (s.x - v.x0) * v.sx
+      py = v.py1 - (s.y - v.y0) * v.sy
+      cost = cost + sum((px >= x0) and (px <= x1) and (py >= y0) and (py <= y1))
+      if s.type == "line"
+        cost = cost + segments_crossing(px, py, x0, y0, x1, y1)
+      end
+    end
+  end
+  return cost
+end
+
+# The number of segments of the polyline (px, py) that cross the box.
+function segments_crossing(px, py, x0, y0, x1, y1)
+  n = 0
+  for k in 1:length(px) - 1
+    ax = px[k]
+    ay = py[k]
+    bx = px[k + 1]
+    by = py[k + 1]
+    # Both ends on one side of the box: no crossing.
+    if not ((ax < x0 and bx < x0) or (ax > x1 and bx > x1) or
+            (ay < y0 and by < y0) or (ay > y1 and by > y1))
+      # Otherwise it crosses unless all four corners are on one side of it.
+      c1 = (bx - ax) * (y0 - ay) - (by - ay) * (x0 - ax)
+      c2 = (bx - ax) * (y0 - ay) - (by - ay) * (x1 - ax)
+      c3 = (bx - ax) * (y1 - ay) - (by - ay) * (x0 - ax)
+      c4 = (bx - ax) * (y1 - ay) - (by - ay) * (x1 - ax)
+      if not ((c1 > 0 and c2 > 0 and c3 > 0 and c4 > 0) or
+              (c1 < 0 and c2 < 0 and c3 < 0 and c4 < 0))
+        n = n + 1
+      end
+    end
+  end
+  return n
+end
+
+# The legend box at (bx, by), bw by bh points, for the labelled series.
+function legend_items(labelled, bx, by, bw, bh)
   rowh = TICK_SIZE * 1.6
-  bw = wmax + 40.0
-  bh = rowh * length(labelled) + 8.0
-  bx = xr - bw - 8.0
-  by = yt + 8.0
   items = {{kind: "rect", x: bx, y: by, w: bw, h: bh, fill: "#ffffffe6", color: "#c0c0c0",
             width: 0.8}}
   for k in 1:length(labelled)

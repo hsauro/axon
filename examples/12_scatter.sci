@@ -53,5 +53,4 @@ plot.line(xa, ca[1] + ca[2] * xa, label = "fit A", color = "#1f77b4", style = "-
 plot.line(xb, cb[1] + cb[2] * xb, label = "fit B", color = "#ff7f0e", style = "--")
 plot.xlabel("length (cm)")
 plot.ylabel("width (cm)")
-plot.ylim(1.5, 7.0)                    # room for the legend above the points
 plot.show()

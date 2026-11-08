@@ -36,7 +36,6 @@ plot.figure(title = "South: rainfall above and below the monthly average")
 plot.bar(months, wet, label = "wetter", color = "#1f77b4")
 plot.bar(months, dry, label = "drier", color = "#d62728")
 plot.ylabel("mm from average")
-plot.ylim(-45, 60)                           # headroom for the legend
 plot.save("rainfall_difference.png")
 
 # ---------------------------------------------------------------- figure 2
@@ -48,7 +47,6 @@ plot.bar(x - 0.2, north, width = 0.4, label = "north")
 plot.bar(x + 0.2, south, width = 0.4, label = "south")
 plot.xticks(x, months)
 plot.ylabel("mm")
-plot.ylim(0, 190)
 plot.save("rainfall.png")
 println("saved rainfall_difference.png and rainfall.png")
 plot.show()
