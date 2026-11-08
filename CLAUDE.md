@@ -7,7 +7,7 @@ Axon is a scientific programming language; this repository is its interpreter, w
 The design lives in `doc/`. The Language Reference is the authority on behaviour; where the milestone plan and the reference disagree, the reference wins.
 
 - `doc/Axon-White-Paper.md`: rationale and examples
-- `doc/Axon-Language-Reference.md`: exact syntax and semantics
+- `doc/Axon-Language-Reference.md`: exact syntax and semantics. Its Contents section is generated: after adding or renaming a `##`/`###` heading, run `python tools/gen_contents.py doc/Axon-Language-Reference.md` (anchors match the IDE viewer's `RhoHeadingSlug` and GitHub)
 - `doc/Axon-Milestones.md`: build order (M0–M13) and what each milestone's tests must cover
 - `doc/Axon-JIT-Plan.md`: the L2 MIR JIT plan (decisions D1–D7, milestones J0–J8)
 

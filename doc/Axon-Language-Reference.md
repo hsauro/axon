@@ -2,6 +2,65 @@
 
 Nov 7, 2026 · Herbert Sauro
 
+## Contents
+
+- [Scope and notation](#scope-and-notation)
+- [Lexical structure](#lexical-structure)
+  - [Identifiers and keywords](#identifiers-and-keywords)
+  - [Numeric literals](#numeric-literals)
+  - [Strings](#strings)
+  - [Comments](#comments)
+  - [Characters outside tokens](#characters-outside-tokens)
+  - [Newlines and continuation](#newlines-and-continuation)
+- [Grammar](#grammar)
+  - [Programs and statements](#programs-and-statements)
+  - [Control flow](#control-flow)
+  - [Functions, records and modules](#functions-records-and-modules)
+  - [Expressions](#expressions)
+  - [Parsing notes](#parsing-notes)
+- [Operator precedence](#operator-precedence)
+- [Values, types and conversions](#values-types-and-conversions)
+  - [Numeric promotion](#numeric-promotion)
+  - [Vectors and matrices](#vectors-and-matrices)
+  - [Strings](#strings-1)
+  - [Truth values](#truth-values)
+  - [Display](#display)
+- [Arithmetic, broadcasting and comparison](#arithmetic-broadcasting-and-comparison)
+  - [Linear-algebra operators](#linear-algebra-operators)
+  - [Broadcasting](#broadcasting)
+  - [Sparse operands](#sparse-operands)
+  - [Comparison](#comparison)
+  - [Logical operators](#logical-operators)
+- [Indexing and ranges](#indexing-and-ranges)
+  - [Ranges](#ranges)
+  - [Index forms](#index-forms)
+  - [Indexed assignment](#indexed-assignment)
+  - [Lists, records and dictionaries](#lists-records-and-dictionaries)
+- [Assignment, copy semantics and scoping](#assignment-copy-semantics-and-scoping)
+  - [Value semantics](#value-semantics)
+  - [Typed variables](#typed-variables)
+  - [Scopes](#scopes)
+  - [Closures](#closures)
+- [Functions and calls](#functions-and-calls)
+  - [Argument binding](#argument-binding)
+  - [Argument passing and returns](#argument-passing-and-returns)
+  - [Overloading](#overloading)
+  - [Recursion and evaluation order](#recursion-and-evaluation-order)
+- [Errors](#errors)
+- [Standard modules](#standard-modules)
+  - [The linalg module](#the-linalg-module)
+  - [The io module](#the-io-module)
+  - [The time module](#the-time-module)
+  - [The graphics module](#the-graphics-module)
+  - [The ode module](#the-ode-module)
+  - [The plot module](#the-plot-module)
+- [Modules and foreign functions](#modules-and-foreign-functions)
+  - [Modules](#modules)
+  - [Foreign functions](#foreign-functions)
+- [Compilation](#compilation)
+- [The REPL](#the-repl)
+- [Decisions made in this draft](#decisions-made-in-this-draft)
+
 ## Scope and notation
 
 This reference defines the syntax and semantics of Axon precisely enough to implement the interpreter and to write conformance tests against. The [Axon White Paper](Axon-White-Paper.md) gives the rationale; this document gives the rules, and [Axon Milestones](Axon-Milestones.md) sets the order in which they are implemented.
@@ -489,6 +548,10 @@ IndexError: index 5 is out of bounds for a list of length 3
 ```
 
 The first line is `Kind: message`. Each further line is one trace frame, innermost first, giving the file, line and column, followed by `in name` for a frame inside a function. `error(err)` keeps the original trace. At the REPL it prints the same report and returns to the prompt with the session's variables intact.
+
+## Standard modules
+
+These modules come with Axon and are imported by name (`import linalg`, `from ode import solve`). `io`, `time` and `graphics` are core modules written in the interpreter; `linalg`, `ode` and `plot` are standard-library modules written in Axon.
 
 ### The linalg module
 
