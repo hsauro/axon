@@ -308,7 +308,7 @@ implementation
 {$R *.fmx}
 
 uses
-  FMX.Styles,
+  FMX.Styles, System.Hash,
 {$IFDEF MSWINDOWS}
   Winapi.Windows, Winapi.ShellAPI,
 {$ELSE}
@@ -2705,16 +2705,65 @@ begin
     OpenExampleCopy(Item.TagString);
 end;
 
+{ The copy of an example the user opens lives in Documents/Axon Examples, so
+  the original next to the IDE stays unchanged. A record there (examples.ini)
+  keeps a hash of each example as it was copied. When the shipped example has
+  changed since: a copy still as copied is replaced with the new version; a
+  copy the user has edited (or one copied before the record existed) is
+  replaced only if the user agrees. }
 procedure TfrmMain.OpenExampleCopy(const Source: string);
 var
-  Dir, Copy_: string;
+  Dir, Copy_, Name, SourceHash, CopyHash, Recorded: string;
+  Record_: TMemIniFile;
+  Replace: Boolean;
+
+  function HashOf(const Path: string): string;
+  begin
+    Result := THashMD5.GetHashString(TEncoding.UTF8.GetString(TFile.ReadAllBytes(Path)));
+  end;
+
 begin
   Dir := TPath.Combine(TPath.GetDocumentsPath, 'Axon Examples');
-  Copy_ := TPath.Combine(Dir, ExtractFileName(Source));
+  Name := ExtractFileName(Source);
+  Copy_ := TPath.Combine(Dir, Name);
   try
     ForceDirectories(Dir);
-    if not TFile.Exists(Copy_) then
-      TFile.Copy(Source, Copy_);
+    Record_ := TMemIniFile.Create(TPath.Combine(Dir, 'examples.ini'), TEncoding.UTF8);
+    try
+      SourceHash := HashOf(Source);
+      if not TFile.Exists(Copy_) then
+        TFile.Copy(Source, Copy_)
+      else
+      begin
+        CopyHash := HashOf(Copy_);
+        Recorded := Record_.ReadString('Copied', Name, '');
+        if CopyHash <> SourceHash then
+        begin
+          // The shipped example has changed since the copy was made.
+          Replace := CopyHash = Recorded;   // untouched since it was copied
+          // Asked once per new version: a "no" is remembered until the
+          // shipped example changes again.
+          if not Replace and (Record_.ReadString('Declined', Name, '') <> SourceHash) then
+            Replace := TDialogServiceSync.MessageDialog(Format(
+              'The example %s has been updated since your copy was made.'#10 +
+              'Replace your copy with the new version? Any changes you made ' +
+              'to it will be lost.', [Name]),
+              TMsgDlgType.mtConfirmation, [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo],
+              TMsgDlgBtn.mbYes, 0) = mrYes;
+          if Replace then
+            TFile.Copy(Source, Copy_, True)
+          else
+          begin
+            Record_.WriteString('Declined', Name, SourceHash);
+            SourceHash := Recorded;          // keep the user's copy as it is
+          end;
+        end;
+      end;
+      Record_.WriteString('Copied', Name, SourceHash);
+      Record_.UpdateFile;
+    finally
+      Record_.Free;
+    end;
   except
     on E: Exception do
     begin
