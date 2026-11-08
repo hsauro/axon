@@ -22,6 +22,8 @@ type
   end;
 
 function DefaultAxonColors: TAxonColors;
+{ The same roles for a dark background. }
+function DarkAxonColors: TAxonColors;
 
 { The tokenizer for TSkiaCodeEditor.SetTokenizer. }
 function AxonTokenizer(const Colors: TAxonColors): TTokenizeLineProc;
@@ -62,6 +64,16 @@ begin
   Result.Number := $FF098658;     // green
   Result.Comment := $FF6A737D;    // grey
   Result.DocString := $FF8A5A00;  // brown, so docstrings stand out from comments
+end;
+
+function DarkAxonColors: TAxonColors;
+begin
+  Result.Keyword := $FF569CD6;    // blue
+  Result.Builtin := $FF4EC9B0;    // teal
+  Result.Str := $FFCE9178;        // orange
+  Result.Number := $FFB5CEA8;     // pale green
+  Result.Comment := $FF6A9955;    // green
+  Result.DocString := $FFD7BA7D;  // gold
 end;
 
 function IsIdentStart(C: Char): Boolean; inline;

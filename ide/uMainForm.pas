@@ -27,6 +27,9 @@ unit uMainForm;
    - The Documentation tab shows the markdown help pages (help folder next to
      the IDE) in a TRhoMarkdownViewer: links to pages, #anchors, web links
      (browser) and examples (a copy opens in the editor), with Back.
+   - View > Dark Theme switches the whole window live: the embedded FMX
+     Dark.style, the editors' colours and syntax palette, the help viewer
+     and the output panes. The choice is kept in settings.ini.
    - Help (F1) shows the documentation of the name under the caret in the
      Help tab: from the editor text for a function or record defined in the
      file, otherwise from "help name" in a short-lived axon session that
@@ -45,6 +48,11 @@ uses
   uSkiaCodeEditor, uProcessRunner, uRunReport, uRhoMarkdownViewer;
 
 type
+  { Text colours of the output panes, per theme. }
+  TPanePalette = record
+    Text, Error, Note, Link: TAlphaColor;
+  end;
+
   TDocument = class
   public
     Tab: TTabItem;
@@ -125,6 +133,10 @@ type
     FDocsBack: TButton;
     FDocsPage: string;           // full path of the page shown
     FDocsHistory: TStringList;   // earlier pages as "path|scroll", for Back
+    // Theme
+    FDark: Boolean;
+    FPal: TPanePalette;
+    FDarkItem: TMenuItem;
     FFigureShown: Boolean;     // since the current run or REPL command started
     FFigureCount: Integer;
     procedure BuildUI;
@@ -170,6 +182,10 @@ type
     procedure CmdDocsBack(Sender: TObject);
     procedure CmdDocsHome(Sender: TObject);
     procedure EditorGotoLine(Sender: TObject);
+    procedure ApplyTheme(Dark: Boolean);
+    procedure ApplyEditorTheme(Editor: TSkiaCodeEditor);
+    procedure RecolorList(List: TListBox; const Old: TPanePalette);
+    procedure CmdDarkTheme(Sender: TObject);
     procedure LoadLayout(Ini: TCustomIniFile);
     procedure SaveLayout(Ini: TCustomIniFile);
     function TryShowFigure(const Line: string): Boolean;
@@ -247,6 +263,7 @@ implementation
 {$R *.fmx}
 
 uses
+  FMX.Styles,
 {$IFDEF MSWINDOWS}
   Winapi.Windows, Winapi.ShellAPI,
 {$ELSE}
@@ -259,9 +276,8 @@ uses
 const
   MaxOutputLines = 10000;
   MaxRecent = 8;
-  ColorError = $FFC62828;
-  ColorNote = $FF606060;
-  ColorLink = $FF1565C0;
+  // Error squiggles, readable on both themes.
+  ColorError = $FFE53935;
   FileFilter = 'Axon files (*.sci)|*.sci|All files (*.*)|*.*';
 
 { ---------------- TDocument ---------------- }
@@ -275,6 +291,8 @@ begin
 end;
 
 { ---------------- set-up ---------------- }
+
+function PanePalette(Dark: Boolean): TPanePalette; forward;
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
@@ -300,6 +318,7 @@ begin
   FCheckTimer.Interval := 600;
   FCheckTimer.OnTimer := CheckTimerFired;
   FDocsHistory := TStringList.Create;
+  FPal := PanePalette(False);
   SetupShowDir;
   BuildUI;
   BuildMenu;
@@ -522,6 +541,9 @@ begin
   AddMenuItem(M, '&Find...', 'Ctrl+F', CmdFind);
   AddMenuItem(M, 'Toggle &Comment', 'Ctrl+/', CmdToggleComment);
 
+  M := AddMenuItem(Menu, '&View', '', nil);
+  FDarkItem := AddMenuItem(M, '&Dark Theme', '', CmdDarkTheme);
+
   M := AddMenuItem(Menu, '&Run', '', nil);
   FRunItem := AddMenuItem(M, '&Run', 'F9', CmdRun);
   FStopItem := AddMenuItem(M, '&Stop', 'Ctrl+F2', CmdStop);
@@ -568,7 +590,7 @@ begin
   Doc.Editor := TSkiaCodeEditor.Create(Self);
   Doc.Editor.Parent := Doc.Tab;
   Doc.Editor.Align := TAlignLayout.Client;
-  Doc.Editor.SetTokenizer(AxonTokenizer(DefaultAxonColors));
+  ApplyEditorTheme(Doc.Editor);
   Doc.Editor.LineCommentPrefix := '#';
   Doc.Editor.HighlightCurrentLine := True;
   Doc.Editor.SetText(Text);
@@ -866,6 +888,7 @@ begin
     150, Max(150, Width - 300));
   FBottomTabs.Height := EnsureRange(Ini.ReadInteger('Window', 'BottomHeight',
     Round(FBottomTabs.Height)), 80, Max(80, Height - 220));
+  ApplyTheme(Ini.ReadString('Window', 'Theme', 'light') = 'dark');
   K := Ini.ReadInteger('Window', 'BottomTab', 0);
   if (K >= 0) and (K < FBottomTabs.TabCount) then
     FBottomTabs.TabIndex := K;
@@ -881,6 +904,10 @@ begin
   Ini.WriteInteger('Window', 'PlotWidth', Round(FPlotPane.Width));
   Ini.WriteInteger('Window', 'BottomHeight', Round(FBottomTabs.Height));
   Ini.WriteInteger('Window', 'BottomTab', FBottomTabs.TabIndex);
+  if FDark then
+    Ini.WriteString('Window', 'Theme', 'dark')
+  else
+    Ini.WriteString('Window', 'Theme', 'light');
 end;
 
 procedure TfrmMain.AddRecent(const Path: string);
@@ -972,7 +999,7 @@ begin
   if Exe = '' then
   begin
     AddNote('Cannot find the axon interpreter next to the IDE (' +
-      ExtractFilePath(ParamStr(0)) + ').', ColorError);
+      ExtractFilePath(ParamStr(0)) + ').', FPal.Error);
     Exit;
   end;
   for D in FDocs do
@@ -989,13 +1016,13 @@ begin
   FFirstStdErr := True;
   FFigureShown := False;
   FBottomTabs.ActiveTab := FOutputTab;
-  AddNote(Format('Running %s', [Doc.FilePath]), ColorNote);
+  AddNote(Format('Running %s', [Doc.FilePath]), FPal.Note);
   try
     FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir);
   except
     on E: Exception do
     begin
-      AddNote('Cannot start axon: ' + E.Message, ColorError);
+      AddNote('Cannot start axon: ' + E.Message, FPal.Error);
       Exit;
     end;
   end;
@@ -1046,17 +1073,17 @@ begin
   SetRunning(False);
   if FRunner.Killed then
   begin
-    AddNote(Format('Stopped after %.2f s', [Secs]), ColorError);
+    AddNote(Format('Stopped after %.2f s', [Secs]), FPal.Error);
     FStatus.Text := 'Stopped';
   end
   else if ExitCode = 0 then
   begin
-    AddNote(Format('Finished in %.2f s', [Secs]), ColorNote);
+    AddNote(Format('Finished in %.2f s', [Secs]), FPal.Note);
     FStatus.Text := 'Finished';
   end
   else
   begin
-    AddNote(Format('Exited with code %d after %.2f s', [ExitCode, Secs]), ColorError);
+    AddNote(Format('Exited with code %d after %.2f s', [ExitCode, Secs]), FPal.Error);
     if FErrorKind <> '' then
       FStatus.Text := FErrorKind + ': ' + FErrorMessage
     else
@@ -1084,10 +1111,10 @@ begin
   Item.Text := Line;
   Item.StyledSettings := Item.StyledSettings - [TStyledSetting.FontColor, TStyledSetting.Family];
   Item.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
-  Item.TextSettings.FontColor := TAlphaColors.Black;
+  Item.TextSettings.FontColor := FPal.Text;
   if Kind = okStdErr then
   begin
-    Item.TextSettings.FontColor := ColorError;
+    Item.TextSettings.FontColor := FPal.Error;
     if FFirstStdErr and ParseErrorHead(Line, Head, Msg) then
     begin
       FErrorKind := Head;
@@ -1099,7 +1126,7 @@ begin
       FFrames.Add(Frame);
       // A link: the frame's index into FFrames.
       Item.Tag := FFrames.Count;
-      Item.TextSettings.FontColor := ColorLink;
+      Item.TextSettings.FontColor := FPal.Link;
       Item.Hint := 'Click to go to ' + Frame.FileName + ' line ' + IntToStr(Frame.Line);
       Item.ShowHint := True;
     end;
@@ -1290,7 +1317,7 @@ begin
   Exe := AxonExecutable;
   if Exe = '' then
   begin
-    ReplAddLine('Cannot find the axon interpreter next to the IDE.', ColorError, True);
+    ReplAddLine('Cannot find the axon interpreter next to the IDE.', FPal.Error, True);
     Exit;
   end;
   FReplDir := ReplWorkDir;
@@ -1300,12 +1327,12 @@ begin
   except
     on E: Exception do
     begin
-      ReplAddLine('Cannot start the REPL: ' + E.Message, ColorError, True);
+      ReplAddLine('Cannot start the REPL: ' + E.Message, FPal.Error, True);
       Exit;
     end;
   end;
   FReplDirLabel.Text := 'Session in ' + FReplDir;
-  ReplAddLine('New session in ' + FReplDir, ColorNote, True);
+  ReplAddLine('New session in ' + FReplDir, FPal.Note, True);
   FReplPrompt.Text := '>';
   Result := True;
 end;
@@ -1356,13 +1383,13 @@ begin
         end;
       end
       else if L.StartsWith(#2) then
-        ReplAddLine(L.Substring(1), ColorError)
+        ReplAddLine(L.Substring(1), FPal.Error)
       else if TryShowFigure(L) then
         // shown in the plot pane
       else if Kind = okStdErr then
-        ReplAddLine(L, ColorError)
+        ReplAddLine(L, FPal.Error)
       else
-        ReplAddLine(L, TAlphaColors.Black);
+        ReplAddLine(L, FPal.Text);
     end;
   finally
     FReplList.EndUpdate;
@@ -1376,15 +1403,15 @@ begin
   if FReplRestart then
   begin
     FReplRestart := False;
-    ReplAddLine('Session ended.', ColorNote, True);
+    ReplAddLine('Session ended.', FPal.Note, True);
     EnsureRepl;
     Exit;
   end;
   if FRepl.Killed then
-    ReplAddLine('Session stopped.', ColorNote, True)
+    ReplAddLine('Session stopped.', FPal.Note, True)
   else
     ReplAddLine(Format('Session ended (exit code %d). Enter a line to start a new one.',
-      [ExitCode]), ColorNote, True);
+      [ExitCode]), FPal.Note, True);
   FReplDirLabel.Text := 'No session';
   FReplPrompt.Text := '>';
 end;
@@ -1402,12 +1429,12 @@ begin
   for L in Lines do
   begin
     // The echo uses the prompt the REPL last showed; later lines continue it.
-    ReplAddLine(Shown + ' ' + L, ColorLink);
+    ReplAddLine(Shown + ' ' + L, FPal.Link);
     if Shown = '>' then
       Shown := '...';
     if not FRepl.WriteInput(L + #10) then
     begin
-      ReplAddLine('The REPL is not accepting input.', ColorError, True);
+      ReplAddLine('The REPL is not accepting input.', FPal.Error, True);
       Exit;
     end;
   end;
@@ -2207,6 +2234,8 @@ begin
     FDocsViewer.Parent := FDocsTab;
     FDocsViewer.Align := TAlignLayout.Client;
     FDocsViewer.OnLinkClick := DocsLinkClick;
+    if FDark then
+      FDocsViewer.ApplyTheme(rtDark);
   end;
   FTabs.ActiveTab := FDocsTab;
   P := Target.IndexOf('#');
@@ -2365,6 +2394,107 @@ begin
   if TDialogServiceSync.InputQuery('Go to line', ['Line number'], Values) and
     TryStrToInt(Values[0].Trim, N) then
     CurrentDoc.Editor.GoToLine(N);
+end;
+
+{ ---------------- theme ---------------- }
+
+function PanePalette(Dark: Boolean): TPanePalette;
+begin
+  if Dark then
+  begin
+    Result.Text := $FFD4D4D4;
+    Result.Error := $FFF48771;
+    Result.Note := $FF9D9D9D;
+    Result.Link := $FF4FC1FF;
+  end
+  else
+  begin
+    Result.Text := TAlphaColors.Black;
+    Result.Error := $FFC62828;
+    Result.Note := $FF606060;
+    Result.Link := $FF1565C0;
+  end;
+end;
+
+procedure TfrmMain.ApplyEditorTheme(Editor: TSkiaCodeEditor);
+begin
+  if FDark then
+  begin
+    Editor.BackgroundColor := $FF1E1E1E;
+    Editor.TextColor := $FFD4D4D4;
+    Editor.GutterColor := $FF252526;
+    Editor.GutterTextColor := $FF858585;
+    Editor.CaretColor := $FFAEAFAD;
+    Editor.SelectionColor := $80264F78;
+    Editor.CurrentLineColor := $14FFFFFF;
+    Editor.FindMatchColor := $A0B16A00;
+    Editor.FindHighlightColor := $40B16A00;
+    Editor.BracketMatchColor := $A0808080;
+    Editor.SetTokenizer(AxonTokenizer(DarkAxonColors));
+  end
+  else
+  begin
+    Editor.BackgroundColor := TAlphaColors.White;
+    Editor.TextColor := TAlphaColors.Black;
+    Editor.GutterColor := $FFF0F0F0;
+    Editor.GutterTextColor := $FF808080;
+    Editor.CaretColor := TAlphaColors.Black;
+    Editor.SelectionColor := $400078D7;
+    Editor.CurrentLineColor := $18808080;
+    Editor.FindMatchColor := $A0FF9800;
+    Editor.FindHighlightColor := $40FFC107;
+    Editor.BracketMatchColor := $A0A0A0A0;
+    Editor.SetTokenizer(AxonTokenizer(DefaultAxonColors));
+  end;
+end;
+
+{ Lines already in a pane take the new theme's colours, by role. }
+procedure TfrmMain.RecolorList(List: TListBox; const Old: TPanePalette);
+var
+  K: Integer;
+  Item: TListBoxItem;
+  C: TAlphaColor;
+begin
+  for K := 0 to List.Count - 1 do
+  begin
+    Item := List.ListItems[K];
+    if TStyledSetting.FontColor in Item.StyledSettings then
+      Continue;
+    C := Item.TextSettings.FontColor;
+    if C = Old.Text then Item.TextSettings.FontColor := FPal.Text
+    else if C = Old.Error then Item.TextSettings.FontColor := FPal.Error
+    else if C = Old.Note then Item.TextSettings.FontColor := FPal.Note
+    else if C = Old.Link then Item.TextSettings.FontColor := FPal.Link;
+  end;
+end;
+
+procedure TfrmMain.ApplyTheme(Dark: Boolean);
+var
+  Old: TPanePalette;
+  Doc: TDocument;
+begin
+  if Dark then
+  begin
+    if not TStyleManager.TrySetStyleFromResource('DARKSTYLE') then
+      Dark := False;            // no style: stay light rather than half-dark
+  end
+  else
+    TStyleManager.SetStyle(nil);  // the platform's own style
+  Old := FPal;
+  FDark := Dark;
+  FPal := PanePalette(Dark);
+  for Doc in FDocs do
+    ApplyEditorTheme(Doc.Editor);
+  if FDocsViewer <> nil then
+    if Dark then FDocsViewer.ApplyTheme(rtDark) else FDocsViewer.ApplyTheme(rtLight);
+  RecolorList(FOutput, Old);
+  RecolorList(FReplList, Old);
+  FDarkItem.IsChecked := Dark;
+end;
+
+procedure TfrmMain.CmdDarkTheme(Sender: TObject);
+begin
+  ApplyTheme(not FDark);
 end;
 
 { ---------------- commands ---------------- }

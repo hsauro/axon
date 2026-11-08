@@ -1,0 +1,6 @@
+/* FMX styles embedded in the IDE, loaded with TStyleManager.TrySetStyleFromResource.
+   Dark.style comes from RAD Studio's Redist\styles\Fmx (redistributable) and has
+   no platform restriction, so it serves Windows and macOS alike. Changed here:
+   the scrollbar thumbs (hthumbstyle, vthumbstyle) are neutral grey instead of
+   the original gold. */
+DARKSTYLE RCDATA "styles\\Dark.style"

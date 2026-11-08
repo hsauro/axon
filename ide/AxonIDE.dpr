@@ -20,6 +20,8 @@ uses
   uRunReport in 'uRunReport.pas',
   uAxonMarkdown in 'uAxonMarkdown.pas';
 
+{$R 'AxonIDEStyles.res' 'AxonIDEStyles.rc'}
+
 
 begin
   GlobalUseSkia := True;
