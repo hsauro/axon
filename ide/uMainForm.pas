@@ -4,7 +4,9 @@ unit uMainForm;
 
    - Tabs of TSkiaCodeEditor documents with Axon highlighting, and a
      Welcome tab (at start-up, from Help > Welcome, and when the last file
-     closes) with New, Open, the main shortcuts and the recent files.
+     closes) with New, Open, the main shortcuts, the recent files and the
+     examples. An example opens as a copy in Documents/Axon Examples, so it
+     can be edited and run without touching the installed originals.
    - Run (F9) saves the current file and runs axon on it as a separate
      process, in the file's directory, so imports and package.toml resolve
      exactly as on the command line. Stop (Ctrl+F2) kills it.
@@ -22,6 +24,9 @@ unit uMainForm;
      editor's selection, or the current line.
    - Syntax is checked as you type: 0.6 s after the last edit, the text is
      piped to "axon --check -", and a syntax error gets a wavy underline.
+   - The Documentation tab shows the markdown help pages (help folder next to
+     the IDE) in a TRhoMarkdownViewer: links to pages, #anchors, web links
+     (browser) and examples (a copy opens in the editor), with Back.
    - Help (F1) shows the documentation of the name under the caret in the
      Help tab: from the editor text for a function or record defined in the
      file, otherwise from "help name" in a short-lived axon session that
@@ -37,7 +42,7 @@ uses
   FMX.Types, FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs, FMX.StdCtrls,
   FMX.Layouts, FMX.ListBox, FMX.TabControl, FMX.Menus, FMX.Objects,
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
-  uSkiaCodeEditor, uProcessRunner, uRunReport;
+  uSkiaCodeEditor, uProcessRunner, uRunReport, uRhoMarkdownViewer;
 
 type
   TDocument = class
@@ -112,6 +117,14 @@ type
     // Welcome tab (nil when closed)
     FWelcomeTab: TTabItem;
     FWelcomeList: TListBox;
+    FExamplesList: TListBox;
+    // Documentation tab (nil when closed)
+    FDocsTab: TTabItem;
+    FDocsViewer: TRhoMarkdownViewer;
+    FDocsTitle: TLabel;
+    FDocsBack: TButton;
+    FDocsPage: string;           // full path of the page shown
+    FDocsHistory: TStringList;   // earlier pages as "path|scroll", for Back
     FFigureShown: Boolean;     // since the current run or REPL command started
     FFigureCount: Integer;
     procedure BuildUI;
@@ -141,7 +154,22 @@ type
     procedure CloseWelcome;
     procedure RefreshWelcome;
     procedure WelcomeItemClick(const Sender: TCustomListBox; const Item: TListBoxItem);
+    procedure ExampleItemClick(const Sender: TCustomListBox; const Item: TListBoxItem);
+    procedure RefreshExamples;
+    function ExamplesDir: string;
     procedure CmdWelcome(Sender: TObject);
+    procedure OpenExampleCopy(const Source: string);
+    function HelpDir: string;
+    procedure ShowDocs(const Target: string);
+    procedure NavigateDocs(const Path, Anchor: string; AddToHistory: Boolean;
+      ScrollTo: Single = -1);
+    procedure DocsLinkClick(Sender: TObject; const AUrl: string);
+    procedure OpenExternal(const Target: string);
+    procedure CmdDocs(Sender: TObject);
+    procedure CmdReference(Sender: TObject);
+    procedure CmdDocsBack(Sender: TObject);
+    procedure CmdDocsHome(Sender: TObject);
+    procedure EditorGotoLine(Sender: TObject);
     procedure LoadLayout(Ini: TCustomIniFile);
     procedure SaveLayout(Ini: TCustomIniFile);
     function TryShowFigure(const Line: string): Boolean;
@@ -220,7 +248,7 @@ implementation
 
 uses
 {$IFDEF MSWINDOWS}
-  Winapi.Windows,
+  Winapi.Windows, Winapi.ShellAPI,
 {$ELSE}
   Posix.Stdlib,
 {$ENDIF}
@@ -271,6 +299,7 @@ begin
   FCheckTimer.Enabled := False;
   FCheckTimer.Interval := 600;
   FCheckTimer.OnTimer := CheckTimerFired;
+  FDocsHistory := TStringList.Create;
   SetupShowDir;
   BuildUI;
   BuildMenu;
@@ -299,6 +328,7 @@ begin
   FHelpLines.Free;
   FCheckTimer.Enabled := False;
   FCheckRunner.Free;
+  FDocsHistory.Free;
   // The figures of this session are temporary.
   if (FShowDir <> '') and TDirectory.Exists(FShowDir) then
     try
@@ -502,6 +532,8 @@ begin
   AddMenuItem(M, 'C&lear Output', '', CmdClearOutput);
 
   M := AddMenuItem(Menu, '&Help', '', nil);
+  AddMenuItem(M, '&Documentation', 'Ctrl+F1', CmdDocs);
+  AddMenuItem(M, '&Language Reference', '', CmdReference);
   AddMenuItem(M, '&Welcome', '', CmdWelcome);
   AddMenuItem(M, '&Help on Word', 'F1', CmdHelpWord);
   AddMenuItem(M, '-', '', nil);
@@ -542,6 +574,7 @@ begin
   Doc.Editor.SetText(Text);
   Doc.Editor.OnChange := EditorChange;
   Doc.Editor.OnCaretChange := EditorCaretChange;
+  Doc.Editor.OnRequestGotoLine := EditorGotoLine;
   UpdateTabCaption(Doc);
   FTabs.ActiveTab := Doc.Tab;
   Doc.Editor.SetFocus;
@@ -683,6 +716,8 @@ begin
   Doc := CurrentDoc;
   if (Doc = nil) and (FWelcomeTab <> nil) and (FTabs.ActiveTab = FWelcomeTab) then
     Caption := 'Welcome - Axon'
+  else if (Doc = nil) and (FDocsTab <> nil) and (FTabs.ActiveTab = FDocsTab) then
+    Caption := 'Documentation - Axon'
   else if Doc = nil then
     Caption := 'Axon'
   else if Doc.FilePath <> '' then
@@ -953,6 +988,7 @@ begin
   FFrames.Clear;
   FFirstStdErr := True;
   FFigureShown := False;
+  FBottomTabs.ActiveTab := FOutputTab;
   AddNote(Format('Running %s', [Doc.FilePath]), ColorNote);
   try
     FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir);
@@ -1827,6 +1863,8 @@ var
   Page, Head, Buttons: TLayout;
   Title, Sub, Keys, RecentHead: TLabel;
   B: TButton;
+  Columns: TGridPanelLayout;
+  Column: TLayout;
 begin
   if FWelcomeTab <> nil then
   begin
@@ -1885,6 +1923,14 @@ begin
   B.Margins.Left := 10;
   B.Text := 'Open file...';
   B.OnClick := CmdOpen;
+  B := TButton.Create(Self);
+  B.Parent := Buttons;
+  B.Position.X := 2000;
+  B.Align := TAlignLayout.Left;
+  B.Width := 120;
+  B.Margins.Left := 10;
+  B.Text := 'Documentation';
+  B.OnClick := CmdDocs;
 
   Keys := TLabel.Create(Self);
   Keys.Parent := Head;
@@ -1896,22 +1942,55 @@ begin
   Keys.Text := 'F9 runs the current file. F1 shows help on the word under the caret. ' +
     'Ctrl+Enter sends the current line or selection to the REPL.';
 
+  Columns := TGridPanelLayout.Create(Self);
+  Columns.Parent := Page;
+  Columns.Align := TAlignLayout.Client;
+  Columns.RowCollection.BeginUpdate;
+  Columns.ColumnCollection.BeginUpdate;
+  Columns.RowCollection.Clear;
+  Columns.ColumnCollection.Clear;
+  Columns.RowCollection.Add.Value := 100;
+  Columns.ColumnCollection.Add.Value := 50;
+  Columns.ColumnCollection.Add.Value := 50;
+  Columns.RowCollection.EndUpdate;
+  Columns.ColumnCollection.EndUpdate;
+
+  Column := TLayout.Create(Self);
+  Column.Parent := Columns;
+  Column.Align := TAlignLayout.Client;
+  Column.Margins.Right := 8;
   RecentHead := TLabel.Create(Self);
-  RecentHead.Parent := Page;
+  RecentHead.Parent := Column;
   RecentHead.Align := TAlignLayout.Top;
-  RecentHead.Position.Y := 400;
   RecentHead.Height := 26;
   RecentHead.StyledSettings := RecentHead.StyledSettings - [TStyledSetting.Style];
   RecentHead.TextSettings.Font.Style := [TFontStyle.fsBold];
   RecentHead.Text := 'Recent files';
-
   FWelcomeList := TListBox.Create(Self);
-  FWelcomeList.Parent := Page;
+  FWelcomeList.Parent := Column;
   FWelcomeList.Align := TAlignLayout.Client;
   FWelcomeList.ItemHeight := 40;
   FWelcomeList.OnItemClick := WelcomeItemClick;
 
+  Column := TLayout.Create(Self);
+  Column.Parent := Columns;
+  Column.Align := TAlignLayout.Client;
+  Column.Margins.Left := 8;
+  RecentHead := TLabel.Create(Self);
+  RecentHead.Parent := Column;
+  RecentHead.Align := TAlignLayout.Top;
+  RecentHead.Height := 26;
+  RecentHead.StyledSettings := RecentHead.StyledSettings - [TStyledSetting.Style];
+  RecentHead.TextSettings.Font.Style := [TFontStyle.fsBold];
+  RecentHead.Text := 'Examples';
+  FExamplesList := TListBox.Create(Self);
+  FExamplesList.Parent := Column;
+  FExamplesList.Align := TAlignLayout.Client;
+  FExamplesList.ItemHeight := 40;
+  FExamplesList.OnItemClick := ExampleItemClick;
+
   RefreshWelcome;
+  RefreshExamples;
   FTabs.ActiveTab := FWelcomeTab;
   UpdateTitle;
 end;
@@ -1921,6 +2000,7 @@ begin
   if FWelcomeTab = nil then
     Exit;
   FWelcomeList := nil;
+  FExamplesList := nil;
   FWelcomeTab.Free;
   FWelcomeTab := nil;
   UpdateTitle;
@@ -1985,9 +2065,306 @@ begin
   end;
 end;
 
+{ The installed examples: an examples folder next to the IDE. }
+function TfrmMain.ExamplesDir: string;
+begin
+  Result := TPath.Combine(ExtractFilePath(ParamStr(0)), 'examples');
+end;
+
+{ One item per example, titled by the first line of its ## docstring. }
+procedure TfrmMain.RefreshExamples;
+var
+  Files: TArray<string>;
+  F, Title, L: string;
+  Lines: TArray<string>;
+  Item: TListBoxItem;
+begin
+  if FExamplesList = nil then
+    Exit;
+  FExamplesList.BeginUpdate;
+  try
+    FExamplesList.Clear;
+    if TDirectory.Exists(ExamplesDir) then
+      Files := TDirectory.GetFiles(ExamplesDir, '*.sci')
+    else
+      Files := nil;
+    TArray.Sort<string>(Files);
+    for F in Files do
+    begin
+      Title := ChangeFileExt(ExtractFileName(F), '');
+      try
+        Lines := TFile.ReadAllLines(F, TEncoding.UTF8);
+        for L in Lines do
+          if L.TrimLeft.StartsWith('##') then
+          begin
+            Title := L.TrimLeft.Substring(2).Trim;
+            Break;
+          end;
+      except
+      end;
+      Item := TListBoxItem.Create(FExamplesList);
+      Item.Parent := FExamplesList;
+      Item.StyleLookup := 'listboxitembottomdetail';
+      Item.TagString := F;
+      Item.Text := Title;
+      Item.ItemData.Detail := ExtractFileName(F);
+    end;
+    if Length(Files) = 0 then
+    begin
+      Item := TListBoxItem.Create(FExamplesList);
+      Item.Parent := FExamplesList;
+      Item.Text := 'No examples installed.';
+      Item.Enabled := False;
+    end;
+  finally
+    FExamplesList.EndUpdate;
+  end;
+end;
+
+{ Opens a copy of the example in Documents/Axon Examples (made once, so
+  later edits are kept), leaving the installed file untouched. }
+procedure TfrmMain.ExampleItemClick(const Sender: TCustomListBox; const Item: TListBoxItem);
+begin
+  if (Item <> nil) and (Item.TagString <> '') then
+    OpenExampleCopy(Item.TagString);
+end;
+
+procedure TfrmMain.OpenExampleCopy(const Source: string);
+var
+  Dir, Copy_: string;
+begin
+  Dir := TPath.Combine(TPath.GetDocumentsPath, 'Axon Examples');
+  Copy_ := TPath.Combine(Dir, ExtractFileName(Source));
+  try
+    ForceDirectories(Dir);
+    if not TFile.Exists(Copy_) then
+      TFile.Copy(Source, Copy_);
+  except
+    on E: Exception do
+    begin
+      TDialogServiceSync.MessageDialog(Format('Cannot copy the example to %s:'#10'%s',
+        [Dir, E.Message]), TMsgDlgType.mtError, [TMsgDlgBtn.mbOK], TMsgDlgBtn.mbOK, 0);
+      Exit;
+    end;
+  end;
+  TThread.ForceQueue(nil,
+    procedure
+    begin
+      OpenFile(Copy_);
+    end);
+end;
+
 procedure TfrmMain.CmdWelcome(Sender: TObject);
 begin
   ShowWelcome;
+end;
+
+{ ---------------- documentation ---------------- }
+
+{ The help pages: a help folder next to the IDE. }
+function TfrmMain.HelpDir: string;
+begin
+  Result := TPath.Combine(ExtractFilePath(ParamStr(0)), 'help');
+end;
+
+{ Shows a help page, given as "page.md" or "page.md#anchor" in the help
+  folder, in the Documentation tab (made on first use). }
+procedure TfrmMain.ShowDocs(const Target: string);
+var
+  Bar: TLayout;
+  B: TButton;
+  P: Integer;
+  Page, Anchor: string;
+begin
+  if FDocsTab = nil then
+  begin
+    FDocsTab := FTabs.Add;
+    FDocsTab.Text := 'Documentation';
+    Bar := TLayout.Create(Self);
+    Bar.Parent := FDocsTab;
+    Bar.Align := TAlignLayout.Top;
+    Bar.Height := 34;
+    Bar.Padding.Rect := TRectF.Create(4, 4, 4, 4);
+    FDocsBack := TButton.Create(Self);
+    FDocsBack.Parent := Bar;
+    FDocsBack.Align := TAlignLayout.Left;
+    FDocsBack.Width := 70;
+    FDocsBack.Text := #$2190' Back';
+    FDocsBack.OnClick := CmdDocsBack;
+    B := TButton.Create(Self);
+    B.Parent := Bar;
+    B.Position.X := 1000;
+    B.Align := TAlignLayout.Left;
+    B.Width := 80;
+    B.Margins.Left := 6;
+    B.Text := 'Contents';
+    B.OnClick := CmdDocsHome;
+    FDocsTitle := TLabel.Create(Self);
+    FDocsTitle.Parent := Bar;
+    FDocsTitle.Align := TAlignLayout.Client;
+    FDocsTitle.Margins.Left := 12;
+    FDocsViewer := TRhoMarkdownViewer.Create(Self);
+    FDocsViewer.Parent := FDocsTab;
+    FDocsViewer.Align := TAlignLayout.Client;
+    FDocsViewer.OnLinkClick := DocsLinkClick;
+  end;
+  FTabs.ActiveTab := FDocsTab;
+  P := Target.IndexOf('#');
+  if P >= 0 then
+  begin
+    Page := Target.Substring(0, P);
+    Anchor := Target.Substring(P + 1);
+  end
+  else
+  begin
+    Page := Target;
+    Anchor := '';
+  end;
+  NavigateDocs(TPath.Combine(HelpDir, Page), Anchor, FDocsPage <> '');
+  UpdateTitle;
+end;
+
+{ Shows a page, at an anchor or at a scroll position (a negative ScrollTo
+  means the top for a new page). The page left behind goes on the Back list
+  with its scroll position. }
+procedure TfrmMain.NavigateDocs(const Path, Anchor: string; AddToHistory: Boolean;
+  ScrollTo: Single);
+var
+  Full: string;
+  NewPage: Boolean;
+begin
+  Full := TPath.GetFullPath(Path);
+  if not TFile.Exists(Full) then
+  begin
+    FStatus.Text := 'No help page ' + ExtractFileName(Full);
+    Exit;
+  end;
+  NewPage := not SameFileName(FDocsPage, Full);
+  if AddToHistory and (FDocsPage <> '') and NewPage then
+    FDocsHistory.Add(FDocsPage + '|' + FloatToStr(FDocsViewer.ScrollY));
+  if NewPage then
+  begin
+    FDocsViewer.BasePath := ExtractFileDir(Full);
+    FDocsViewer.LoadFromFile(Full);
+    FDocsPage := Full;
+  end;
+  FDocsTitle.Text := ChangeFileExt(ExtractFileName(Full), '');
+  FDocsBack.Enabled := FDocsHistory.Count > 0;
+  // After the page is laid out: an anchor, a remembered position, or the top.
+  TThread.ForceQueue(nil,
+    procedure
+    begin
+      if FDocsViewer = nil then
+        Exit;
+      if Anchor <> '' then
+        FDocsViewer.ScrollToAnchor('#' + Anchor)
+      else if ScrollTo >= 0 then
+        FDocsViewer.SetScrollPos(ScrollTo)
+      else if NewPage then
+        FDocsViewer.SetScrollPos(0);
+    end);
+end;
+
+{ Links in a help page: #anchors scroll, web links open in the browser, other
+  pages open here, and examples open as a copy in the editor. }
+procedure TfrmMain.DocsLinkClick(Sender: TObject; const AUrl: string);
+var
+  Url, Page, Anchor, Path: string;
+  P: Integer;
+begin
+  Url := AUrl.Trim;
+  if Url.StartsWith('#') then
+  begin
+    FDocsViewer.ScrollToAnchor(Url);
+    Exit;
+  end;
+  if Url.Contains('://') or Url.StartsWith('mailto:') or Url.StartsWith('www.') then
+  begin
+    OpenExternal(Url);
+    Exit;
+  end;
+  P := Url.IndexOf('#');
+  if P >= 0 then
+  begin
+    Page := Url.Substring(0, P);
+    Anchor := Url.Substring(P + 1);
+  end
+  else
+  begin
+    Page := Url;
+    Anchor := '';
+  end;
+  Path := TPath.GetFullPath(TPath.Combine(ExtractFileDir(FDocsPage),
+    Page.Replace('/', PathDelim)));
+  if SameText(ExtractFileExt(Path), '.md') then
+    NavigateDocs(Path, Anchor, True)
+  else if SameText(ExtractFileExt(Path), '.sci') and TFile.Exists(Path) then
+  begin
+    if SameFileName(ExtractFileDir(Path), TPath.GetFullPath(ExamplesDir)) then
+      OpenExampleCopy(Path)
+    else
+      OpenFile(Path);
+  end
+  else if TFile.Exists(Path) then
+    OpenExternal(Path)
+  else
+    FStatus.Text := 'Not found: ' + Page;
+end;
+
+procedure TfrmMain.OpenExternal(const Target: string);
+begin
+{$IFDEF MSWINDOWS}
+  ShellExecute(0, 'open', PChar(Target), nil, nil, SW_SHOWNORMAL);
+{$ELSE}
+  _system(PAnsiChar(UTF8String('open ''' + Target.Replace('''', '''\''''') + ''' &')));
+{$ENDIF}
+end;
+
+procedure TfrmMain.CmdDocs(Sender: TObject);
+begin
+  if (FDocsTab <> nil) and (FDocsPage <> '') then
+    FTabs.ActiveTab := FDocsTab
+  else
+    ShowDocs('index.md');
+  UpdateTitle;
+end;
+
+procedure TfrmMain.CmdReference(Sender: TObject);
+begin
+  ShowDocs('Axon-Language-Reference.md');
+end;
+
+procedure TfrmMain.CmdDocsBack(Sender: TObject);
+var
+  Entry: string;
+  P: Integer;
+  Y: Single;
+begin
+  if FDocsHistory.Count = 0 then
+    Exit;
+  Entry := FDocsHistory[FDocsHistory.Count - 1];
+  FDocsHistory.Delete(FDocsHistory.Count - 1);
+  P := Entry.LastIndexOf('|');
+  Y := StrToFloatDef(Entry.Substring(P + 1), 0);
+  NavigateDocs(Entry.Substring(0, P), '', False, Y);
+end;
+
+procedure TfrmMain.CmdDocsHome(Sender: TObject);
+begin
+  NavigateDocs(TPath.Combine(HelpDir, 'index.md'), '', True);
+end;
+
+procedure TfrmMain.EditorGotoLine(Sender: TObject);
+var
+  Values: TArray<string>;
+  N: Integer;
+begin
+  if CurrentDoc = nil then
+    Exit;
+  Values := [IntToStr(CurrentDoc.Editor.CaretLine)];
+  if TDialogServiceSync.InputQuery('Go to line', ['Line number'], Values) and
+    TryStrToInt(Values[0].Trim, N) then
+    CurrentDoc.Editor.GoToLine(N);
 end;
 
 { ---------------- commands ---------------- }
@@ -2032,7 +2409,16 @@ end;
 
 procedure TfrmMain.CmdClose(Sender: TObject);
 begin
-  if (FWelcomeTab <> nil) and (FTabs.ActiveTab = FWelcomeTab) then
+  if (FDocsTab <> nil) and (FTabs.ActiveTab = FDocsTab) then
+  begin
+    FDocsViewer := nil;
+    FDocsTab.Free;
+    FDocsTab := nil;
+    if FDocs.Count = 0 then
+      ShowWelcome;
+    UpdateTitle;
+  end
+  else if (FWelcomeTab <> nil) and (FTabs.ActiveTab = FWelcomeTab) then
   begin
     CloseWelcome;
     if FDocs.Count = 0 then

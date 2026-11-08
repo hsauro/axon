@@ -2,8 +2,9 @@ program AxonIDE;
 
 (* The Axon IDE: an editor and runner for Axon programs (FMX, Windows and
    macOS). Programs run in a separate axon process; see uMainForm. The editor
-   is TSkiaCodeEditor from RhodyComponents\RhoEditor, found on the unit
-   search path. *)
+   is TSkiaCodeEditor from RhodyComponents\RhoEditor, and the help viewer
+   TRhoMarkdownViewer from RhodyComponents\RhoMarkDownViewer, both found on
+   the unit search path. *)
 
 uses
   System.StartUpCopy,
@@ -16,7 +17,8 @@ uses
   uMainForm in 'uMainForm.pas' {frmMain},
   uProcessRunner in 'uProcessRunner.pas',
   uAxonHighlighter in 'uAxonHighlighter.pas',
-  uRunReport in 'uRunReport.pas';
+  uRunReport in 'uRunReport.pas',
+  uAxonMarkdown in 'uAxonMarkdown.pas';
 
 
 begin

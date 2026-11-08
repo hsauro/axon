@@ -46,7 +46,11 @@
     <PropertyGroup Condition="'$(Base_Win64)'!=''">
         <PostBuildEvent><![CDATA[xcopy /y /d /q "$(MSBuildProjectDirectory)\lib\win64\*.dll" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\"
 xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.sci" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\"
-xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.toml" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\"]]></PostBuildEvent>
+xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.toml" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\"
+xcopy /y /d /q /i "$(MSBuildProjectDirectory)\examples\*.sci" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\examples\"
+xcopy /y /d /q /i "$(MSBuildProjectDirectory)\help\*.md" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\"
+xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-Language-Reference.md" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\"
+xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\"]]></PostBuildEvent>
         <Manifest_File>(None)</Manifest_File>
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>

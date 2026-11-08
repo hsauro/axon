@@ -38,7 +38,7 @@
         <!-- The IDE builds next to axon, so it finds the interpreter, stdlib and sk4d.dll. -->
         <DCC_ExeOutput>..\$(Platform)\$(Config)</DCC_ExeOutput>
         <DCC_DcuOutput>.\$(Platform)\$(Config)\dcu</DCC_DcuOutput>
-        <DCC_UnitSearchPath>..\..\RhodyComponents\RhoEditor\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\RhodyComponents\RhoEditor\Source;..\..\RhodyComponents\RhoMarkDownViewer\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
         <DCC_Define>SKIA;$(DCC_Define)</DCC_Define>
         <SanitizedProjectName>AxonIDE</SanitizedProjectName>
@@ -78,6 +78,7 @@
         <DCCReference Include="uProcessRunner.pas"/>
         <DCCReference Include="uAxonHighlighter.pas"/>
         <DCCReference Include="uRunReport.pas"/>
+        <DCCReference Include="uAxonMarkdown.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
