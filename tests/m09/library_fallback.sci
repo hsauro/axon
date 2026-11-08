@@ -4,4 +4,4 @@ end
 extern "no_such_library"
   function never_called()
 end
-print(add_i32(20, 22))
+println(add_i32(20, 22))

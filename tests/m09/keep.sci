@@ -4,6 +4,6 @@ extern "axontest"
 end
 f = keep(function(x) return x + 1 end)
 register_cb(f)
-print(fire(1), fire(41))
+println(fire(1), fire(41))
 register_cb(f)
-print(fire(0))
+println(fire(0))

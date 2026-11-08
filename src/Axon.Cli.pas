@@ -356,6 +356,7 @@ begin
   except
     on E: EAxonError do
     begin
+      EndOpenLine;     // a print may have left the output line open
       Writeln(ErrOutput, E.Report);
       Result := ExitUncaughtError;
     end;

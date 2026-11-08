@@ -7,7 +7,7 @@ function both1(f, x)
   __jit_mode("off")
   b = f(x)
   __jit_mode("on")
-  print(string(a), string(a) == string(b), __jit_compiled(f))
+  println(string(a), string(a) == string(b), __jit_compiled(f))
 end
 
 function both2(f, x, y)
@@ -16,7 +16,7 @@ function both2(f, x, y)
   __jit_mode("off")
   b = f(x, y)
   __jit_mode("on")
-  print(string(a), string(a) == string(b), __jit_compiled(f))
+  println(string(a), string(a) == string(b), __jit_compiled(f))
 end
 
 function iadd(a: int, b: int): int

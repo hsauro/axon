@@ -27,19 +27,19 @@ end
 ## One timed call, with a clock.
 t0 = time.clock()
 f = fib(22)
-print("fib(22) =", f, "took", time.format(time.clock() - t0))
+println("fib(22) =", f, "took", time.format(time.clock() - t0))
 
 ## Or let elapsed do it; extra arguments go to the function.
-print("again:", time.format(time.elapsed(fib, 22)))
+println("again:", time.format(time.elapsed(fib, 22)))
 
 ## bench repeats the call until a run lasts long enough, five times over.
 for n in [10, 20]
   r = time.bench(fib, n)
   q = time.bench(fib_loop, n)
-  print("n =", n, "  recursive", time.format(r.best), "  loop", time.format(q.best))
+  println("n =", n, "  recursive", time.format(r.best), "  loop", time.format(q.best))
 end
 
 ## A lambda times any expression.
 A = rand(200, 200)
 r = time.bench(function() return A * A end)
-print("200x200 matrix product:", time.format(r.best), "(best of", r.runs, "runs of", r.loops, "loops)")
+println("200x200 matrix product:", time.format(r.best), "(best of", r.runs, "runs of", r.loops, "loops)")

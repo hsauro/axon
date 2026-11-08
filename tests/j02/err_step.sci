@@ -7,5 +7,5 @@ function count(h: int): int
   end
   return n
 end
-print(count(2))
-print(count(0))
+println(count(2))
+println(count(0))

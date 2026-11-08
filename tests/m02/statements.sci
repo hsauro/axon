@@ -35,7 +35,7 @@ end
 try
   risky()
 catch err
-  print(err.message)
+  println(err.message)
 end
 try
 catch

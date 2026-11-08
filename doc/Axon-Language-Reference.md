@@ -310,7 +310,7 @@ Output tests compare text exactly, so every value has one display form.
 | `complex` | Each part as a `real`, joined by `+` or `-` | `3.0 + 4.0i`, `0.0 - 2.0i` |
 | `bool` | Words | `true`, `false` |
 | `nothing` | Word | `nothing` |
-| `string` | Without quotes from `print`; with quotes at the REPL | `S1` / `"S1"` |
+| `string` | Without quotes from `print` and `println`; with quotes at the REPL | `S1` / `"S1"` |
 | `list` | Elements in braces, separated by ", " | `{1, "S1", 2.5}`, `{}` |
 | `record` | Fields in braces as `name: value`, in definition order | `{name: "S1", init: 10.0}` |
 | `range` | As written, with the step only when it is not 1 | `1:5`, `1:2:9`, `0.0:0.5:1.0` |
@@ -318,7 +318,7 @@ Output tests compare text exactly, so every value has one display form.
 | record type | `record type` and its name | `record type LVParams` |
 | `module` | `module` and its name | `module linalg` |
 
-Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print(a, b, …)` writes its arguments separated by one space and ends with a newline. Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. A dictionary displays as the call that builds it, `dict("Km" => 0.5, "Vm" => 10.0)`, with entries in insertion order; an empty one is `dict()`.
+Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `println(a, b, …)` writes its arguments separated by one space and ends the line. `print(a, b, …)` writes them the same way but leaves the line open, so the next output continues it; `println()` ends a line without writing anything. Neither takes keyword arguments. At the REPL, and before an error report, a line that `print` left open is ended first. Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. A dictionary displays as the call that builds it, `dict("Km" => 0.5, "Vm" => 10.0)`, with entries in insertion order; an empty one is `dict()`.
 
 Arrays display as a header line, then one line per row with each entry right-aligned in its column and preceded by two spaces. The header is `R×C matrix{T}` or `N-vector{T}`. Elements show up to 6 significant digits, following the same rules as scalars, and complex elements show both parts that way. Above 10 rows, only the first and last 5 are shown, with a `  ⋮` line between; above 8 columns, only the first and last 4, with a `…` column between. An empty array shows only its header. At the REPL an assignment shows `A = ` before the header:
 
@@ -712,11 +712,11 @@ The interpreter compiles functions to native code at their first call (a just-in
   - **Variables.** Local and typed variables.
   - **Arrays.** Element reads and writes with int indices and `end`, operators on real arrays, and vector and matrix literals of numbers.
   - **Values from outside.** Reads of module variables and captured variables, and of their record fields (`p.a`), when the values are numbers or arrays that compile. They are read when the function is entered, and a function that reads them does not call anything that runs interpreted, so it sees exactly the values the interpreter would.
-  - **Calls.** Calls to other functions, recursion included, and the scalar built-ins: the elementary functions, `abs`, `floor`, `ceil`, `round`, `int`, `real`, `min`, `max`, `div`, `mod`, `length`, `size`, `zeros`, `ones`, `sum`, `print` and `error`.
+  - **Calls.** Calls to other functions, recursion included, and the scalar built-ins: the elementary functions, `abs`, `floor`, `ceil`, `round`, `int`, `real`, `min`, `max`, `div`, `mod`, `length`, `size`, `zeros`, `ones`, `sum`, `print`, `println` and `error`.
 - **What stays interpreted.**
   - **Types.** A function whose variable changes type, or whose result type depends on a value: `n ^ k` with `int` operands and a variable exponent is an `int` for `k >= 0` and a `real` otherwise. A call whose arguments include a string, list, record, dictionary, complex number, range, or an array other than a real vector, int vector or real matrix.
   - **Names.** A function that reads a variable that may be unassigned on some path, that both reads a variable from outside and assigns it, or (a closure) that assigns a variable of an enclosing scope.
-  - **Constructs.** `try`, `global`, strings beyond `print` and `error` arguments, complex numbers, lists, record and dictionary literals, and indexing with ranges, colons or masks.
+  - **Constructs.** `try`, `global`, strings beyond `print`, `println` and `error` arguments, complex numbers, lists, record and dictionary literals, and indexing with ranges, colons or masks.
 
   A compiled function may still call one that runs interpreted, as long as the callee's result type is declared or its result is unused.
 - **Control.** `axon --jit=off file.sci`, or the environment variable `AXON_JIT=off`, turns compilation off; `on` is the default. `axon --jir file.sci` prints the compiled form of each function, or the reason it is not compiled.
@@ -726,7 +726,7 @@ The interpreter compiles functions to native code at their first call (a just-in
 
 `axon` with no arguments starts an interactive session. The prompt is `> `. Input that ends inside an open block or bracket continues on further lines, each with the prompt `... `, until the construct closes. Statements run in the session's top-level scope, as in a script, and imports resolve from the working directory.
 
-- **Display.** After an expression statement the REPL displays its value as described under Display, with strings quoted; a value of `nothing` is not displayed, so `print(x)` shows only its own output. An assignment to a plain name shows `name = ` followed by the value, and a destructuring assignment shows one such line per name. Other statements show nothing. A trailing `;` suppresses the display.
+- **Display.** After an expression statement the REPL displays its value as described under Display, with strings quoted; a value of `nothing` is not displayed, so `println(x)` shows only its own output. An assignment to a plain name shows `name = ` followed by the value, and a destructuring assignment shows one such line per name. Other statements show nothing. A trailing `;` suppresses the display.
 - **Errors.** An uncaught error prints the report described under Errors and returns to the prompt. Statements that completed before the error keep their effects, so the session's variables stay intact; the rest of that input is skipped.
 - **`help`.** A line of the form `help name` (where `name` may be dotted, as in `help linalg.solve`) is a REPL command, not a statement. For a function it shows the function's header as written in the source, without `export` and `function`, followed by its docstring indented by two spaces. A record type shows as `record T(field: type, …)` and a module as `module m`, each followed by its docstring; a module then lists its exported names on a line `  exports: a, b, …`. A built-in function shows its parameters and a one-line description. A name without a docstring shows `  (no documentation)`, and any other value shows `name is a T`, with `T` its `typeof` and `an` before a vowel, as in `x is an int`. A name that is not defined raises `NameError` as an expression would. `help` alone lists the REPL commands.
 - **Front ends.** `axon --repl-protocol` runs the REPL for programs that drive it through pipes, such as the IDE. It writes no banner, prompts or echo. Before each line it reads, it writes a marker line holding the character U+0001 followed by `>` when it is ready for a statement or `.` when it is waiting for the rest of a construct, and flushes its output. Error reports go to standard output, in order with the rest, with each line prefixed by U+0002.

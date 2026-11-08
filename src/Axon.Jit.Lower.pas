@@ -842,7 +842,8 @@ begin
   SetLength(Args, E.Args.Count);
   for K := 0 to E.Args.Count - 1 do
   begin
-    Literal := (R.Kind = rkBuiltin) and ((R.Name = 'print') or (R.Name = 'error')) and
+    Literal := (R.Kind = rkBuiltin) and ((R.Name = 'print') or (R.Name = 'println') or
+      (R.Name = 'error')) and
       (E.Args[K].Value is TStringLit);
     if Literal then
       Args[K] := MakeValue(jtString, StringOperand(TStringLit(E.Args[K].Value).Value))
@@ -928,7 +929,7 @@ var
 begin
   T.Kind := ckBuiltin;
   N := Length(Args);
-  if Name = 'print' then
+  if (Name = 'print') or (Name = 'println') then
   begin
     for A in Args do
       if not (Storable(A.Typ) or (A.Typ = jtString)) then

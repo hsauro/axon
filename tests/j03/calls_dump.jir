@@ -10,8 +10,8 @@ function norm(x: real, y: real): real
   ret %3
 
 function report(n: int): nothing
-  %0 = call.builtin floor(2.5)  @10:19
-  call.builtin print("n =", n, %0)  @10:3
+  %0 = call.builtin floor(2.5)  @10:21
+  call.builtin println("n =", n, %0)  @10:3
   %1 = lt.int n, 0
   bf %1, L1
   call.builtin error("negative")  @12:5

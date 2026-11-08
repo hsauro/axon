@@ -8,7 +8,7 @@ function both1(f, x)
   __jit_mode("off")
   b = f(x)
   __jit_mode("on")
-  print(string(a), string(a) == string(b), __jit_compiled(f))
+  println(string(a), string(a) == string(b), __jit_compiled(f))
 end
 
 function both2(f, x, y)
@@ -17,7 +17,7 @@ function both2(f, x, y)
   __jit_mode("off")
   b = f(x, y)
   __jit_mode("on")
-  print(string(a), string(a) == string(b), __jit_compiled(f))
+  println(string(a), string(a) == string(b), __jit_compiled(f))
 end
 
 function fib(n)
@@ -68,6 +68,6 @@ both1(changes, 1.0)
 
 # At most 8 sets of argument types per function; the ninth runs interpreted.
 __jit_mode("on")
-print(add(1, 2), add(1, 2.0), add(1.0, 2), add(1.0, 2.0), add(true, 1), add(1, true),
+println(add(1, 2), add(1, 2.0), add(1.0, 2), add(1.0, 2.0), add(true, 1), add(1, true),
   add(true, true), add(true, 1.0), add(1.0, true))
-print(__jit_reason(add))
+println(__jit_reason(add))

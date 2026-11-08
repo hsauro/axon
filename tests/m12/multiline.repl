@@ -6,9 +6,9 @@ x = 0
 > x
 6
 > if x > 5
-...   print("big")
+...   println("big")
 ... else
-...   print("small")
+...   println("small")
 ... end
 big
 > v = [1, 2,
@@ -33,7 +33,7 @@ r = {a: 1, b: [1; 2]}
 > while x > 4
 ...   x = x - 1
 ...   if x == 5
-...     print("five")
+...     println("five")
 ...   end
 ... end
 five
@@ -42,7 +42,7 @@ five
 > try
 ...   error("boom")
 ... catch e
-...   print(e.message)
+...   println(e.message)
 ... end
 boom
 > function bad(

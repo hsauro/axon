@@ -6,32 +6,32 @@ function risky(x)
   return sqrt(x)
 end
 try
-  print(risky(4.0))
-  print(risky(-1.0))
-  print("not reached")
+  println(risky(4.0))
+  println(risky(-1.0))
+  println("not reached")
 catch err
-  print("caught:", err.message)
+  println("caught:", err.message)
 end
-print("after")
+println("after")
 
 # No error: the catch block is skipped
 try
   y = 1
 catch
-  print("not printed")
+  println("not printed")
 end
-print(y)
+println(y)
 
 # Nested try: the inner one handles its own error
 try
   try
     error("inner")
   catch e
-    print("inner caught", e.message)
+    println("inner caught", e.message)
   end
   error("outer")
 catch e
-  print("outer caught", e.message)
+  println("outer caught", e.message)
 end
 
 # An error raised in a catch block goes to the enclosing try
@@ -42,7 +42,7 @@ try
     error("second, from the handler")
   end
 catch e
-  print(e.message)
+  println(e.message)
 end
 
 # return, break and continue pass through try
@@ -57,12 +57,12 @@ function first_negative(a, b, c)
   end
   return "none"
 end
-print(first_negative(1, -1, -1), first_negative(1, 1, 1))
+println(first_negative(1, -1, -1), first_negative(1, 1, 1))
 for i in 1:5
   try
     if i == 2 continue end
     if i == 4 break end
-    print("loop", i)
+    println("loop", i)
   catch
   end
 end
@@ -75,7 +75,7 @@ function safe_div(a, b)
     return err.kind
   end
 end
-print(safe_div(7, 2), safe_div(7, 0))
+println(safe_div(7, 2), safe_div(7, 0))
 
 # Variables assigned in the try block before the error keep their values
 try
@@ -84,4 +84,4 @@ try
   progress = 2
 catch
 end
-print(progress)
+println(progress)

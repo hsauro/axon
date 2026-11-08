@@ -6,4 +6,4 @@ function bad(x)
   error("bad callback")
 end
 y = apply_cb(bad, 1)
-print("not reached")
+println("not reached")

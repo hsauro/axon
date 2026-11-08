@@ -12,7 +12,7 @@ function both1(f, x)
   b = f(x)
   cb = __copies() - c
   __jit_mode("on")
-  print(string(a), string(a) == string(b), ca, ca == cb, __jit_compiled(f))
+  println(string(a), string(a) == string(b), ca, ca == cb, __jit_compiled(f))
 end
 
 function sieve(n: int): int
@@ -115,4 +115,4 @@ both1(self_write, [1.0; 2.0; 3.0])
 both1(isum, [1; 2; 3])
 both1(shape, zeros(2, 3))
 both1(ops, [1.0; 2.0])
-print(__jit_compiled(matmul), __jit_compiled(trace))
+println(__jit_compiled(matmul), __jit_compiled(trace))

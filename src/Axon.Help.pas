@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..80] of TBuiltinDoc = (
+  BuiltinDocs: array[0..81] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -66,7 +66,8 @@ const
     (Name: 'keys';     Params: '(d)';     Text: 'The keys of a dictionary, as a list in insertion order'),
     (Name: 'haskey';   Params: '(d, key)'; Text: 'True when the dictionary has the key'),
     (Name: 'dict';     Params: '(key => value, ...)'; Text: 'A dictionary with the given entries'),
-    (Name: 'print';    Params: '(a, b, ...)'; Text: 'Writes the values separated by spaces, then a newline'),
+    (Name: 'print';    Params: '(a, b, ...)'; Text: 'Writes the values separated by spaces, without a newline'),
+    (Name: 'println';  Params: '(a, b, ...)'; Text: 'Writes the values separated by spaces, then a newline'),
     (Name: 'error';    Params: '(kind, message)'; Text: 'Raises an error; error("text") raises a UserError'),
     (Name: 'string';   Params: '(x)';     Text: 'The display form of a value, as a string'),
     (Name: 'length';   Params: '(x)';     Text: 'The number of elements of an array, list, string or dictionary'),

@@ -3,4 +3,4 @@ function f()
   inside = 1
 end
 f()
-print(inside)
+println(inside)

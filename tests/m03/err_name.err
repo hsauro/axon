@@ -1,2 +1,2 @@
 NameError: "y" is not defined
-  at err_name.sci:3:7
+  at err_name.sci:3:9

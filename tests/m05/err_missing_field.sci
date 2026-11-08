@@ -2,5 +2,5 @@
 try
   error("x")
 catch e
-  print(e.nonexistent)
+  println(e.nonexistent)
 end

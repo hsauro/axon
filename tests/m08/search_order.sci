@@ -1,4 +1,4 @@
 import dup
-print(dup.which())
+println(dup.which())
 import stdmod
-print(stdmod.hello())
+println(stdmod.hello())

@@ -12,10 +12,10 @@ extern "axontest"
   function char_code(c: char): int32
   function plus(a: int32, b: int32): int32 name "add_i32"
 end
-print(add_i32(2, 3), add_i32(-7, true), add_i64(9000000000, 1))
-print(add_u8(200, 100), neg_i8(-128), max_u32())
-print(mul_f64(1.5, 4), mul_f32(1.5, 2), typeof(mul_f32(1.0, 1.0)))
-print(mixed(1, 0.5, 10, 0.25, 100, 0.125))
-print(many(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
-print(char_code("A"), char_code(66), plus(40, 2))
-print(typeof(add_i32), add_i32)
+println(add_i32(2, 3), add_i32(-7, true), add_i64(9000000000, 1))
+println(add_u8(200, 100), neg_i8(-128), max_u32())
+println(mul_f64(1.5, 4), mul_f32(1.5, 2), typeof(mul_f32(1.0, 1.0)))
+println(mixed(1, 0.5, 10, 0.25, 100, 0.125))
+println(many(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+println(char_code("A"), char_code(66), plus(40, 2))
+println(typeof(add_i32), add_i32)

@@ -1,4 +1,4 @@
 #! error: UserError
-print("start")
+println("start")
 error("boom")
-print("never")
+println("never")

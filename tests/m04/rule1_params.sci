@@ -4,6 +4,6 @@ function f(x)
   x = "changed"
   return x
 end
-print(f("arg"), x)
+println(f("arg"), x)
 g = function(x) x = 0; return x end
-print(g(5), x)
+println(g(5), x)

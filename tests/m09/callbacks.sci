@@ -13,25 +13,25 @@ extern "axontest"
   function handle_value(h: ptr void): int32
   function add_i32(a: int32, b: int32): int32
 end
-print(apply_cb(function(k) return k * k end, 7), apply_twice(function(k) return k + 10 end, 1))
-print(sum_cb(function(t, y) return t * y end, 4))
-print(call_mixed(function(a, b, c, d, e) return a + b + d + e end))
+println(apply_cb(function(k) return k * k end, 7), apply_twice(function(k) return k + 10 end, 1))
+println(sum_cb(function(t, y) return t * y end, 4))
+println(call_mixed(function(a, b, c, d, e) return a + b + d + e end))
 seen = nothing
 call_mixed(function(a, b, c, d, e)
   seen = {a, b, c, d, e}
   return 0.0
 end)
-print(seen)
-print(call_many(function(a1, a2, a3, a4, a5, a6, d)
+println(seen)
+println(call_many(function(a1, a2, a3, a4, a5, a6, d)
   return a1 + 10*a2 + 100*a3 + 1000*a4 + 10000*a5 + 100000*a6 + int(d * 2)
 end))
-print(apply_f32(function(x) return x * 4 end, 0.75))
+println(apply_f32(function(x) return x * 4 end, 0.75))
 h = make_handle(9)
-print(handle_value(apply_ptr(function(p) return p end, h)))
+println(handle_value(apply_ptr(function(p) return p end, h)))
 total = 0
 call_void(function(x) total = total + x end, 5)
 call_void(function(x) total = total + x end, 6)
-print(total)
-print(apply_cb(function(k) return add_i32(k, 100) end, 1))
+println(total)
+println(apply_cb(function(k) return add_i32(k, 100) end, 1))
 function square(k) return k * k end
-print(apply_cb(square, 12), apply_cb(abs, -5))
+println(apply_cb(square, 12), apply_cb(abs, -5))

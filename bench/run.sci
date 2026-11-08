@@ -171,13 +171,13 @@ function row(name, g)
   b = g()
   tc = time.bench(g).best
   same = isequal(a, b)
-  print(pad(name, 30), lpad(time.format(ti), 10), lpad(time.format(tc), 10),
+  println(pad(name, 30), lpad(time.format(ti), 10), lpad(time.format(tc), 10),
     lpad(string(round(ti / tc)) + "x", 8), "  ", same)
 end
 
 A = rand(60, 60)
 B = rand(60, 60)
-print(pad("kernel", 30), lpad("interp.", 10), lpad("compiled", 10), lpad("speed-up", 8), "  same")
+println(pad("kernel", 30), lpad("interp.", 10), lpad("compiled", 10), lpad("speed-up", 8), "  same")
 row("fib(22)", function() return fib(22) end)
 row("harmonic(100000)", function() return harmonic(100000) end)
 row("sieve(100000)", function() return sieve(100000) end)
@@ -186,4 +186,4 @@ row("matmul 60x60 (loops)", function() return matmul(A, B) end)
 row("nbody(1000)", function() return nbody(1000) end)
 row("ode rk45 Lotka-Volterra", lv_rk45)
 row("ode bdf Robertson", rob_bdf)
-print(pad("matmul 60x60 (BLAS *)", 30), lpad(time.format(time.bench(function() return A * B end).best), 10))
+println(pad("matmul 60x60 (BLAS *)", 30), lpad(time.format(time.bench(function() return A * B end).best), 10))

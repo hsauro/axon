@@ -5,7 +5,7 @@ xs = [p.d/p.c; p.a/p.b]
 J  = [p.a - p.b*xs[2],  -p.b*xs[1];
       p.c*xs[2],         p.c*xs[1] - p.d]
 lambda = eig(J)          # purely imaginary pair: a centre
-print(eltype(lambda), all(abs(real(lambda)) < 1e-12))
-print(approx_set(lambda, [sqrt(1.5) * 1i; -sqrt(1.5) * 1i]))
+println(eltype(lambda), all(abs(real(lambda)) < 1e-12))
+println(approx_set(lambda, [sqrt(1.5) * 1i; -sqrt(1.5) * 1i]))
 import linalg
-print(linalg.eig([1, 2; 3, 4]))
+println(linalg.eig([1, 2; 3, 4]))

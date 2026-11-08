@@ -3,6 +3,6 @@ err = "outer value"
 try
   error("boom")
 catch err
-  print(err.message)
+  println(err.message)
 end
-print(err)
+println(err)

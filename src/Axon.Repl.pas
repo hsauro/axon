@@ -34,7 +34,7 @@ implementation
 uses
   System.SysUtils, System.Generics.Collections,
   Axon.Version, Axon.Errors, Axon.Values, Axon.Ast, Axon.Parser, Axon.Source,
-  Axon.Interp, Axon.Help;
+  Axon.Interp, Axon.Help, Axon.Builtins;
 
 const
   ReplName = '<repl>';
@@ -89,6 +89,8 @@ end;
 
 function TRepl.ReadInput(const APrompt: string; out Line: string): Boolean;
 begin
+  // A print without a newline leaves the line open; the prompt starts its own.
+  EndOpenLine;
   if FTranscript then
   begin
     if FNext >= Length(FInput) then
@@ -119,6 +121,7 @@ procedure TRepl.Show(const S: string);
 var
   L: string;
 begin
+  EndOpenLine;
   // (Split gives no elements for an empty string, so that case is direct.)
   if not FTranscript or (S = '') then
   begin
@@ -133,6 +136,7 @@ procedure TRepl.ShowError(const S: string);
 var
   L: string;
 begin
+  EndOpenLine;
   if FTranscript then
     Show(S)
   else if FProtocol then

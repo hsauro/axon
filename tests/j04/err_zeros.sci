@@ -4,5 +4,5 @@ function make(n: int): real
   v = zeros(n)
   return sum(v)
 end
-print(make(2))
+println(make(2))
 make(-1)

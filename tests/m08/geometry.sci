@@ -6,4 +6,4 @@ function square(x) return x * x end
 export record Point
   x: real; y: real
 end
-print("geometry loaded")
+println("geometry loaded")

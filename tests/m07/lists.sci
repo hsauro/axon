@@ -1,23 +1,23 @@
 l = {1, "two", 3.0, [1, 2]}
-print(l)
-print(l[1], l[2], l[end - 1], length(l))
-print(l[2:3])
-print(l[[4, 1]])
-print(l[[true, false, true, false]])
+println(l)
+println(l[1], l[2], l[end - 1], length(l))
+println(l[2:3])
+println(l[[4, 1]])
+println(l[[true, false, true, false]])
 e = {}
-print(e, length(e), typeof(e))
+println(e, length(e), typeof(e))
 l2 = append(l, {5})
-print(length(l), length(l2), l2[end])
+println(length(l), length(l2), l2[end])
 for x in {10, "a", true}
-  print(x)
+  println(x)
 end
 m = {1, 2, 3}
 m[2] = "changed"
-print(m)
+println(m)
 m[1:2] = {"x", "y"}
-print(m)
+println(m)
 nested = {{1, 2}, {3, {4, 5}}}
-print(nested[2][2][1])
+println(nested[2][2][1])
 nested[2][2][1] = 40
-print(nested)
-print({1, 2} == {1, 2}, {1, 2} == {2, 1}, isequal({1, {2}}, {1, {2}}), {1} != {1.0})
+println(nested)
+println({1, 2} == {1, 2}, {1, 2} == {2, 1}, isequal({1, {2}}, {1, {2}}), {1} != {1.0})

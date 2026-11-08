@@ -1,2 +1,2 @@
 #! error: TypeError
-if [true] print(1) end
+if [true] println(1) end

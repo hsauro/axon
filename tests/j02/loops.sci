@@ -4,7 +4,7 @@ function both1(f, x)
   __jit_mode("off")
   b = f(x)
   __jit_mode("on")
-  print(string(a), string(a) == string(b), __jit_compiled(f))
+  println(string(a), string(a) == string(b), __jit_compiled(f))
 end
 
 function both3(f, x, y, z)
@@ -13,7 +13,7 @@ function both3(f, x, y, z)
   __jit_mode("off")
   b = f(x, y, z)
   __jit_mode("on")
-  print(string(a), string(a) == string(b), __jit_compiled(f))
+  println(string(a), string(a) == string(b), __jit_compiled(f))
 end
 
 # The digits of the elements, in order.

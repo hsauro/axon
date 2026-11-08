@@ -10,21 +10,21 @@ end
 v = [1.0; 2.0; 3.0]
 c0 = __copies()
 scale_f64(v, 3, 10.0)
-print(v', __copies() - c0)
+println(v', __copies() - c0)
 A = [1.0, 2.0; 3.0, 4.0]
 B = A
 c0 = __copies()
 scale_f64(A, 4, 2.0)
-print(A[1, 2], A[2, 1], B[1, 2], __copies() - c0)
+println(A[1, 2], A[2, 1], B[1, 2], __copies() - c0)
 w = [1; 2; 3]
-print(sum_i32(w, 3))
+println(sum_i32(w, 3))
 double_i32(w, 3)
 negate_i64(w, 3)
-print(w')
+println(w')
 z = [1 + 2i; 3 - 4i]
 conj_c(z, 2)
-print(z')
+println(z')
 h = [1.0, 3.0]
 halve_f32(h, 2)
-print(h)
-print(is_null(nothing), is_null([1, 2]), is_null(w))
+println(h)
+println(is_null(nothing), is_null([1, 2]), is_null(w))

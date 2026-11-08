@@ -4,7 +4,7 @@ export function next()
   count = count + 1
   return count
 end
-print("counter loaded")
+println("counter loaded")
 early = later()
 function later() return "later ok" end
-print(early)
+println(early)

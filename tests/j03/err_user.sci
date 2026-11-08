@@ -6,5 +6,5 @@ function check(n: int): int
   end
   return n
 end
-print(check(3))
+println(check(3))
 check(-1)

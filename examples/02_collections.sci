@@ -6,23 +6,23 @@ total = 0.0
 for s in samples
   total = total + s
 end
-print("samples:", samples, " mean:", total / length(samples))
+println("samples:", samples, " mean:", total / length(samples))
 
 # A record groups named values; fields are read with a dot.
 params = {rate: 0.3, capacity: 100.0, label: "logistic"}
-print("model", params.label, "with rate", params.rate)
+println("model", params.label, "with rate", params.rate)
 
 # A dictionary maps keys to values.
 counts = dict("A" => 3, "C" => 1)
 counts["G"] = 5
 for k in keys(counts)
-  print(k, "->", counts[k])
+  println(k, "->", counts[k])
 end
-print("T present?", haskey(counts, "T"), " default:", get(counts, "T", 0))
+println("T present?", haskey(counts, "T"), " default:", get(counts, "T", 0))
 
 # Errors are values you can catch and inspect.
 try
   counts["T"]
 catch err
-  print("caught", err.kind, "-", err.message)
+  println("caught", err.kind, "-", err.message)
 end

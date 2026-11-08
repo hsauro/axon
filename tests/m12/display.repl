@@ -25,7 +25,7 @@ true
 "S1"
 > "a\tb"
 "a\tb"
-> print("S1")
+> println("S1")
 S1
 > {1, "S1", 2.5}
 {1, "S1", 2.5}

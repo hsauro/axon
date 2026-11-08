@@ -3,15 +3,15 @@ x = 1
 if true
   local x = 2
   x = x + 10
-  print(x)
+  println(x)
 end
-print(x)
+println(x)
 function f()
   y = "outer"
   if true
     local y = "inner"
-    print(y)
+    println(y)
   end
   return y
 end
-print(f())
+println(f())

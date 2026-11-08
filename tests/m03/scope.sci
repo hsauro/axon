@@ -1,20 +1,20 @@
 if true
   a = 1
 end
-print(a)
+println(a)
 for i in 1:2
   local b = i
   c = i
 end
-print(c)
+println(c)
 d = 1
 if true
   local d = 2
-  print(d)
+  println(d)
 end
-print(d)
+println(d)
 e = 1
 for i in 1:3
   e = e + i
 end
-print(e)
+println(e)

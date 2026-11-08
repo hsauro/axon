@@ -1,2 +1,2 @@
 #! error: TypeError
-print("a" => 1)
+println("a" => 1)

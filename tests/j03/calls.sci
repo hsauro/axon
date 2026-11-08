@@ -7,7 +7,7 @@ function both1(f, x)
   __jit_mode("off")
   b = f(x)
   __jit_mode("on")
-  print(string(a), string(a) == string(b), __jit_compiled(f))
+  println(string(a), string(a) == string(b), __jit_compiled(f))
 end
 
 function both2(f, x, y)
@@ -16,7 +16,7 @@ function both2(f, x, y)
   __jit_mode("off")
   b = f(x, y)
   __jit_mode("on")
-  print(string(a), string(a) == string(b), __jit_compiled(f))
+  println(string(a), string(a) == string(b), __jit_compiled(f))
 end
 
 function fib(n: int): int
@@ -66,7 +66,7 @@ function via_interp(a: real): real
 end
 
 function talk(n: int)
-  print("talk:", n, n / 2, n > 2)
+  println("talk:", n, n / 2, n > 2)
 end
 
 # Mutual recursion: one direction goes through the interpreter.
@@ -95,10 +95,10 @@ both2(realdivmod, 7.5, 2.0)
 both1(via_interp, 1.5)
 both1(is_even, 10)
 both1(is_odd, 7)
-print(__jit_compiled(dm), __jit_compiled(legacy), __jit_reason(legacy))
+println(__jit_compiled(dm), __jit_compiled(legacy), __jit_reason(legacy))
 __jit_mode("on")
 talk(3)
-print(__jit_compiled(talk))
+println(__jit_compiled(talk))
 
 # The guard: a compiled call follows a variable that is rebound.
 function double(x: int): int
@@ -110,6 +110,6 @@ end
 function apply(x: int): int
   return double(x)
 end
-print(apply(5), __jit_compiled(apply))
+println(apply(5), __jit_compiled(apply))
 double = triple
-print(apply(5))
+println(apply(5))

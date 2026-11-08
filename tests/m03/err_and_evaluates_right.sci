@@ -1,4 +1,4 @@
 #! error: TypeError
-print("before")
-x = true and print("evaluated")
-print("not reached")
+println("before")
+x = true and println("evaluated")
+println("not reached")

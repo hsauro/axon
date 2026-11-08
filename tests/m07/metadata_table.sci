@@ -5,6 +5,6 @@ species = {
 
 species[2].name           # "S2"
 for s in species
-  print(s.name, s.init)
+  println(s.name, s.init)
 end
-print(species[2].name)
+println(species[2].name)

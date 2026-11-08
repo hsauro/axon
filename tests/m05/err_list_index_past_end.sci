@@ -2,5 +2,5 @@
 try
   error("x")
 catch e
-  print(e.trace[2])
+  println(e.trace[2])
 end

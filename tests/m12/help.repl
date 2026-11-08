@@ -45,6 +45,9 @@ sqrt(x)
   The square root (NaN for a negative real; use a complex argument)
 > help print
 print(a, b, ...)
+  Writes the values separated by spaces, without a newline
+> help println
+println(a, b, ...)
   Writes the values separated by spaces, then a newline
 > function sq(x: real): real
 ...   return x * x

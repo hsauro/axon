@@ -7,7 +7,7 @@ function norm(x: real, y: real): real
 end
 
 function report(n: int)
-  print("n =", n, floor(2.5))
+  println("n =", n, floor(2.5))
   if n < 0
     error("negative")
   end

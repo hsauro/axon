@@ -5,6 +5,6 @@ end
 try
   origin()
 catch e
-  print("re-raising")
+  println("re-raising")
   error(e)
 end

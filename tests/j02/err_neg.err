@@ -1,3 +1,3 @@
 OverflowError: integer overflow in unary -
   at err_neg.sci:4:3 in neg
-  at err_neg.sci:7:7
+  at err_neg.sci:7:9

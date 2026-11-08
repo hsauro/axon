@@ -9,9 +9,9 @@ In the IDE, choose **File > New** (<kbd>Ctrl+N</kbd>), type a program and press
 in `.sci`.
 
 ```axon
-print("Hello, world")
+println("Hello, world")
 A = [1, 2; 3, 4]
-print(A * A)
+println(A * A)
 ```
 
 The output appears in the **Output** pane. If the program stops with an error,
@@ -54,7 +54,7 @@ Documentation comments start with `##` and sit directly above a function:
 function area(r)
   return 3.141592653589793 * r^2
 end
-print(area(2.0))
+println(area(2.0))
 ```
 
 ## Plots

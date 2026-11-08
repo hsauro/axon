@@ -4,23 +4,23 @@ record Point
   x: real
   y: real
 end
-print(p0, typeof(p0))
+println(p0, typeof(p0))
 p = Point(x = 3, y = 4)
-print(p.x + p.y)
+println(p.x + p.y)
 p.x = 10
-print(p, typeof(p.x))
+println(p, typeof(p.x))
 q: Point = {y: 1, x: 2}
-print(q)
+println(q)
 record Segment
   a: Point; b: Point
   label: string
 end
 s = Segment(p, q, "s1")
-print(s.b.x, typeof(s.b))
+println(s.b.x, typeof(s.b))
 s.b.y = 7
-print(s.b)
+println(s.b)
 function len2(seg: Segment): real
   return (seg.b.x - seg.a.x)^2 + (seg.b.y - seg.a.y)^2
 end
-print(len2(s))
-print(Point, typeof(Point))
+println(len2(s))
+println(Point, typeof(Point))

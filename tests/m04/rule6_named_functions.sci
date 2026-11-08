@@ -6,22 +6,22 @@ function writer()
   setting = "local"
   return setting
 end
-print(reader(), writer(), setting)
+println(reader(), writer(), setting)
 function global_writer()
   global setting
   setting = "changed by global"
 end
 global_writer()
-print(setting)
+println(setting)
 function creator()
   global created = 42
 end
 creator()
-print(created)
+println(created)
 # A top-level lambda is a closure, so it does assign the module variable
 lam = function() setting = "changed by lambda" end
 lam()
-print(setting)
+println(setting)
 # A named function nested in a function is a closure of that function
 function host()
   v = 1
@@ -29,4 +29,4 @@ function host()
   nested()
   return v
 end
-print(host())
+println(host())

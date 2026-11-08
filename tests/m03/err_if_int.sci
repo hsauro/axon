@@ -1,2 +1,2 @@
 #! error: TypeError
-if 1 print("x") end
+if 1 println("x") end

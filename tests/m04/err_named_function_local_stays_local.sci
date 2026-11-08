@@ -3,4 +3,4 @@ function f()
   made = 1
 end
 f()
-print(made)
+println(made)

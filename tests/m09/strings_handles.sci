@@ -7,8 +7,8 @@ extern "axontest"
   function free_handle(h: ptr void)
   function null_ptr(): ptr void
 end
-print(str_len("héllo"), str_len(""), str_len(nothing))
-print(greeting(), null_string())
+println(str_len("héllo"), str_len(""), str_len(nothing))
+println(greeting(), null_string())
 h = make_handle(5)
-print(typeof(h), handle_value(h), h == h, null_ptr())
+println(typeof(h), handle_value(h), h == h, null_ptr())
 free_handle(h)

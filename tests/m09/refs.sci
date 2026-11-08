@@ -10,13 +10,13 @@ incr_f64(y)
 a = 1
 b = 2
 swap_i64(a, b)
-print(x, y, a, b)
+println(x, y, a, b)
 function inside()
   local z = 7
   set_i32(z, -3)
   return z
 end
-print(inside())
+println(inside())
 n = 2
 incr_f64(n)
-print(n, typeof(n))
+println(n, typeof(n))

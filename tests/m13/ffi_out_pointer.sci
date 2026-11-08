@@ -5,6 +5,6 @@ extern "libc"
 end
 p = nothing
 x = strtod("2.5abc", p)
-print(x, typeof(p))
+println(x, typeof(p))
 q = nothing
-print(strtod("", q), typeof(q))
+println(strtod("", q), typeof(q))

@@ -3,14 +3,14 @@
 if true
   made_in_if = "visible"
 end
-print(made_in_if)
+println(made_in_if)
 function f()
   for i in 1:3
     total = i
   end
   return total
 end
-print(f())
+println(f())
 # A closure assigns the enclosing function's variable
 function counter()
   n = 0
@@ -18,11 +18,11 @@ function counter()
   bump(); bump(); bump()
   return n
 end
-print(counter())
+println(counter())
 # A variable created inside a closure stays local to the closure
 function outer()
   inner = function() fresh = 1; return fresh end
   inner()
   return 0
 end
-print(outer())
+println(outer())

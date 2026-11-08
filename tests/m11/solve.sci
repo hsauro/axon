@@ -9,31 +9,31 @@ exact = zeros(n)
 for i in 1:n
   exact[i] = i * (n + 1 - i) / 2
 end
-print(typeof(x), approx(x, exact, tol = 1e-9))
+println(typeof(x), approx(x, exact, tol = 1e-9))
 # The minimum-degree order eliminates a path without fill-in: L and U each
 # hold the n diagonal entries and n - 1 others.
 [L, U] = splu(S)
-print(nnz(L), nnz(U))
+println(nnz(L), nnz(U))
 
 # A zero on the diagonal forces a row interchange: P = [0 2 0; 3 0 1; 0 1 4].
 P = sparse([2, 1, 3, 2, 3], [1, 2, 2, 3, 3], [3.0, 2.0, 1.0, 1.0, 4.0])
 b = P * [1.0; 2.0; 3.0]
-print(approx(P \ b, [1.0; 2.0; 3.0]))
+println(approx(P \ b, [1.0; 2.0; 3.0]))
 [L, U] = linalg.lu(P)
-print(typeof(L), typeof(U), approx(full(L * U), full(P)))
+println(typeof(L), typeof(U), approx(full(L * U), full(P)))
 
 # Several right-hand sides, a sparse right-hand side, and division on the right.
 B = [1.0, 0.0; 0.0, 1.0; 1.0, 1.0]
 X = P \ B
-print(typeof(X), approx(full(P) * X, B))
-print(typeof(P \ speye(3)), approx(full(P) * (P \ speye(3)), eye(3)))
+println(typeof(X), approx(full(P) * X, B))
+println(typeof(P \ speye(3)), approx(full(P) * (P \ speye(3)), eye(3)))
 Y = [1.0, 2.0, 3.0] / P
-print(approx(Y * full(P), [1.0, 2.0, 3.0]))
+println(approx(Y * full(P), [1.0, 2.0, 3.0]))
 
 # Complex systems: [2i 1; 0 4] x = [1; 4] has x = [0; 1].
 C = sparse([1, 2, 1], [1, 2, 2], [2i, 4.0, 1.0])
 z = C \ [1.0; 4.0]
-print(eltype(z), approx(z, [0.0 + 0i; 1.0 + 0i]))
+println(eltype(z), approx(z, [0.0 + 0i; 1.0 + 0i]))
 
 # A 2-D grid (unsymmetric, 400 unknowns) against the dense solver.
 k = 20
@@ -53,8 +53,8 @@ for c in 1:k
 end
 G = sparse(int(I[1:e]), int(J[1:e]), V[1:e], k * k, k * k)
 rhs = linspace(1.0, 2.0, k * k)
-print(nnz(G), approx(G \ rhs, full(G) \ rhs))
+println(nnz(G), approx(G \ rhs, full(G) \ rhs))
 
 # Functions in linalg work on full(A).
 D = sparse([1, 3, 2, 1], [1, 1, 2, 3], [4.0, -1.0, 2.5, 7.0], 3, 3)
-print(approx(linalg.det(D), 17.5), approx(linalg.inv(D) * full(D), eye(3)))
+println(approx(linalg.det(D), 17.5), approx(linalg.inv(D) * full(D), eye(3)))

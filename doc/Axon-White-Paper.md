@@ -114,7 +114,7 @@ species = {
 
 species[2].name           # "S2"
 for s in species
-  print(s.name, s.init)
+  println(s.name, s.init)
 end
 ```
 
@@ -245,7 +245,7 @@ Errors are raised with `error("message")` and handled with `try … catch … en
 try
   x = A \ b
 catch err
-  print("solve failed: ", err.message)
+  println("solve failed: ", err.message)
   x = linalg.lstsq(A, b)
 end
 ```
@@ -404,7 +404,7 @@ The core ships linear algebra, the elementary functions and complex arithmetic. 
 
 | Component | Where | Contents |
 | --- | --- | --- |
-| Prelude | Core, no import | Arithmetic, `exp`, `log`, `sin` … `atanh`, `sqrt`, `abs`, `floor`, `round`, `div`, `mod`, `factorial`, `sum`, `prod`, `mean`, `min`, `max`, `all`, `any`, `zeros`, `ones`, `eye`, `linspace`, `rand`, `size`, `length`, `adjoint`, `dot`, `isequal`, `int`, `real`, `complex`, `string`, `typeof`, `isa`, `append`, `dict`, `get`, `keys`, `haskey`, `keep`, `reshape`, `eltype`, `print`, `error` |
+| Prelude | Core, no import | Arithmetic, `exp`, `log`, `sin` … `atanh`, `sqrt`, `abs`, `floor`, `round`, `div`, `mod`, `factorial`, `sum`, `prod`, `mean`, `min`, `max`, `all`, `any`, `zeros`, `ones`, `eye`, `linspace`, `rand`, `size`, `length`, `adjoint`, `dot`, `isequal`, `int`, `real`, `complex`, `string`, `typeof`, `isa`, `append`, `dict`, `get`, `keys`, `haskey`, `keep`, `reshape`, `eltype`, `print`, `println`, `error` |
 | Complex basics | Core, prelude | `complex` type, `real`, `imag`, `conj`, `arg`, `abs` |
 | Sparse basics | Core, prelude | Sparse matrix type, `sparse`, `speye`, `nnz`, `full` |
 | `complex` | Core module | `polar`, `cis`, principal-branch and branch-specified `log` and `sqrt`, `isreal` |

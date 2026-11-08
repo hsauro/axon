@@ -6,7 +6,7 @@ function both2(f, x, y)
   __jit_mode("off")
   b = f(x, y)
   __jit_mode("on")
-  print(a, a == b, __jit_compiled(f))
+  println(a, a == b, __jit_compiled(f))
 end
 
 function code_real(x: real, y: real): int
@@ -104,5 +104,5 @@ both2(code_mixed, 2, nan)
 both2(code_bool, true, false)
 both2(code_bool, false, false)
 __jit_mode("on")
-print(either(4611686018427387904), both_signs(4611686018427387904), negate(false))
-print(__jit_compiled(either), __jit_compiled(both_signs), __jit_compiled(negate))
+println(either(4611686018427387904), both_signs(4611686018427387904), negate(false))
+println(__jit_compiled(either), __jit_compiled(both_signs), __jit_compiled(negate))

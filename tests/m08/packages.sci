@@ -1,4 +1,4 @@
 import mathpkg
-print(mathpkg.twice(21))
+println(mathpkg.twice(21))
 import mathpkg.extra
-print(mathpkg.extra.name())
+println(mathpkg.extra.name())

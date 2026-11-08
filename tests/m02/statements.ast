@@ -29,7 +29,7 @@
 (try
   (call risky)
   (catch err
-    (call print (. err message))))
+    (call println (. err message))))
 (try
   (catch))
 (function f (x y:real ; k=1 m:int=(+ k 1)) :real

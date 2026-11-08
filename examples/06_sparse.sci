@@ -5,11 +5,11 @@ h = 1.0 / (n + 1)
 # -u'' = 1 on (0, 1), u(0) = u(1) = 0, by finite differences.
 S = sparse([1:n; 2:n; 1:n-1], [1:n; 1:n-1; 2:n],
            [ones(n) * 2.0; -ones(n - 1); -ones(n - 1)], n, n) / h^2
-print(S[1:3, 1:3])
-print("stored entries:", nnz(S), " of", n * n)
+println(S[1:3, 1:3])
+println("stored entries:", nnz(S), " of", n * n)
 
 u = S \ ones(n)
 # The exact solution is x (1 - x) / 2; compare at the middle.
 mid = div(n, 2)
 x = mid * h
-print("u at x =", x, ":", u[mid], " exact:", x * (1 - x) / 2)
+println("u at x =", x, ":", u[mid], " exact:", x * (1 - x) / 2)

@@ -15,6 +15,14 @@ uses
 { Calls Define once for every prelude function. }
 procedure DefineBuiltins(const Define: TProc<string, TAxValue>);
 
+{ print leaves its line open; println, and anything that writes a whole line
+  of its own (the REPL's prompts and results, an error report), ends an open
+  line first with EndOpenLine. }
+var
+  OutputLineOpen: Boolean;
+
+procedure EndOpenLine;
+
 { The real routine behind an elementary function ("sqrt" … "atanh"): a
   function(X: Double): Double in the platform's calling convention, which
   the JIT calls directly, so compiled and interpreted results are the same
@@ -138,21 +146,52 @@ end;
 
 { ---- the builtins ---- }
 
-function BPrint(const Args: TAxValues): TAxValue;
+procedure EndOpenLine;
+begin
+  if OutputLineOpen then
+  begin
+    Writeln;
+    Flush(Output);
+    OutputLineOpen := False;
+  end;
+end;
+
+{ The values as print and println write them: separated by one space. }
+function PrintText(const Args: TAxValues): string;
 var
   I: Integer;
-  S: string;
 begin
-  S := '';
+  Result := '';
   for I := 0 to High(Args) do
   begin
     if I > 0 then
-      S := S + ' ';
-    S := S + Display(Args[I]);
+      Result := Result + ' ';
+    Result := Result + Display(Args[I]);
   end;
-  Writeln(S);
+end;
+
+{ print(a, b, ...): the values, and no newline. }
+function BPrint(const Args: TAxValues): TAxValue;
+var
+  S: string;
+begin
+  S := PrintText(Args);
+  if S <> '' then
+  begin
+    Write(S);
+    OutputLineOpen := True;
+  end;
   // Flushed at once, so a program's output appears as it runs when stdout
   // is a pipe (the IDE), not only when the program ends.
+  Flush(Output);
+  Result := NothingValue;
+end;
+
+{ println(a, b, ...): the values, then a newline. }
+function BPrintln(const Args: TAxValues): TAxValue;
+begin
+  Writeln(PrintText(Args));
+  OutputLineOpen := False;
   Flush(Output);
   Result := NothingValue;
 end;
@@ -1075,6 +1114,7 @@ begin
   Add('haskey', BHaskey, 2, 2);
   Add('dict', BDictEmpty, 0, 0);
   Add('print', BPrint, 0, -1);
+  Add('println', BPrintln, 0, -1);
   Add('error', BError, 1, 2);
   Add('string', BString, 1, 1);
   Add('length', BLength, 1, 1);

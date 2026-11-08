@@ -9,4 +9,4 @@ for i in 1:3
     second = function() return i end
   end
 end
-print(first(), second())
+println(first(), second())

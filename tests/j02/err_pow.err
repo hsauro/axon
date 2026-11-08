@@ -1,3 +1,3 @@
 OverflowError: integer overflow in ^
   at err_pow.sci:4:3 in big
-  at err_pow.sci:6:7
+  at err_pow.sci:6:9
