@@ -263,6 +263,14 @@ begin
     Candidates := [F.LibName, 'lib' + F.LibName + '.so'];
 {$ENDIF}
   end;
+{$IFDEF POSIX}
+  // dlopen does not search the executable's folder, which Windows' LoadLibrary
+  // does first; libraries shipped next to axon (libopenblas.dylib in the IDE's
+  // app bundle) are found there before the system search path.
+  for C in Copy(Candidates) do
+    if (ExtractFilePath(C) = '') and FileExists(ExtractFilePath(ParamStr(0)) + C) then
+      Candidates := [ExtractFilePath(ParamStr(0)) + C] + Candidates;
+{$ENDIF}
   H := 0;
   Tried := '';
   for C in Candidates do

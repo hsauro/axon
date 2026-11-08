@@ -22,6 +22,14 @@ Prebuilt native libraries shipped with Axon. A Win64 build (from the IDE or `bui
 
 Delphi bindings for these libraries already exist in `CommonCode/LAPACKE` and `CommonCode/SunDials Suite`, and serve as references. Axon calls CVODE from Axon code through `extern` (M13), so only the interpreter's own native calls (such as `dgemm` for `*`) need Delphi declarations, in `src/native`.
 
-## macOS
+## macOS (arm64)
 
-No dylibs are shipped yet. A CVODE arm64 set already exists in `RoadRunner_Delphi_JIT/OSXARM64/Debug`. On macOS, Apple's Accelerate framework can provide BLAS and LAPACK.
+Dylibs in `lib/macos/` are deployed next to `axon` in the IDE's app bundle (`tools/gen_mac_deploy.py` lists them in `ide/AxonIDE.dproj`; rerun it after adding one). `axon` loads them from its own folder first, for its own calls and for `extern` alike.
+
+| File | Library | Needed by | Source |
+| --- | --- | --- | --- |
+| `libopenblas.dylib` | OpenBLAS 0.3.28 (BLAS, LAPACK, LAPACKE), `TARGET=VORTEX`, built without Fortran (`NOFORTRAN=1 C_LAPACK=1`) | `*` and `linalg` | Built on the Mac by `tools/build_openblas_mac.sh` |
+
+- **No Fortran runtime.** OpenBLAS's C translation of LAPACK means the dylib depends only on system libraries (`otool -L` shows `libSystem`), unlike Homebrew's build, which needs gfortran's runtime dylibs.
+- **Why not Accelerate.** Apple's framework has BLAS and Fortran-style LAPACK but no LAPACKE, which both `Axon.Native.Lapack` and `stdlib/linalg.sci` call.
+- **Still to come.** CVODE (an arm64 set exists in `RoadRunner_Delphi_JIT/OSXARM64/Debug`) and MIR (`tools/mir/CMakeLists.txt`, built on the Mac).
