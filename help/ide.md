@@ -90,7 +90,7 @@ At the prompt, `run "file.sci"` does the same for any file.
 the program is still running. Figures saved with `plot.save("name.png")` are
 shown too, when the program ends.
 
-Line and scatter plots are shown in an interactive chart:
+Line, scatter, bar and histogram plots are shown in an interactive chart:
 
 | Action | Effect |
 | --- | --- |
@@ -102,8 +102,7 @@ Line and scatter plots are shown in an interactive chart:
 | Click a legend entry | Hide or show that series |
 | Right-click | Copy the image, or export it as PNG or PDF |
 
-Bar charts, histograms, surfaces and plots with named ticks (`plot.xticks`) are
-shown as an image.
+Surface plots are shown as an image.
 
 ## Help
 

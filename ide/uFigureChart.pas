@@ -1,18 +1,20 @@
 unit uFigureChart;
 
-{ Loads a figure from plot.show into the interactive chart (TSkPlotPaintBox,
+(* Loads a figure from plot.show into the interactive chart (TSkPlotPaintBox,
   from ..\RhodyComponents\PlottingComponent).
 
   graphics.show writes the figure record of the plot module as JSON next to
-  the PNG it shows (same name, .json) when the figure has only line and
-  scatter series in 2-D (plot's interactive); the IDE draws such a figure in
-  the chart, where it can be zoomed, panned and edited, and shows the PNG
-  for anything else. The record's fields: title, xlabel, ylabel, xlim and
-  ylim ([lo, hi] or null), grid, legend, legend_position, and series, each
-  with type ("line" or "scatter"), x, y (null for NaN, a gap in the line),
-  label, color and, for a line, width, style, marker and marker_size, or for
-  a scatter, size and marker. Colours are "#rrggbb", "#rrggbbaa", a CSS-like
-  name, or [r, g, b] / [r, g, b, a] with components from 0 to 1. }
+  the PNG it shows (same name, .json) for any 2-D figure (plot's
+  interactive); the IDE draws such a figure in the chart, where it can be
+  zoomed, panned and edited, and shows the PNG for anything else (surfaces).
+  The record's fields: title, xlabel, ylabel, xlim and ylim ([lo, hi] or
+  null), grid, legend, legend_position, xcategories (names at 1, 2, ...) or
+  xticks ({positions, labels}), and series, each with type ("line",
+  "scatter" or "bars"), label, color and: for a line, x, y (null for NaN, a
+  gap in the line), width, style, marker and marker_size; for a scatter, x,
+  y, size and marker; for bars, left, right and heights (a bar per element,
+  from 0 up to its height). Colours are "#rrggbb", "#rrggbbaa", a CSS-like
+  name, or [r, g, b] / [r, g, b, a] with components from 0 to 1. *)
 
 interface
 
@@ -136,8 +138,9 @@ var
   Color: TAlphaColor;
   Kind, Lbl: string;
   Shape: TMarkerShape;
-  XA, YA: TJSONArray;
+  XA, YA, LA, RA, HA: TJSONArray;
   K: Integer;
+  L, R: Double;
 begin
   Kind := Str(S.GetValue('type'));
   Color := ParseColor(S.GetValue('color'), TAlphaColors.Steelblue);
@@ -146,6 +149,34 @@ begin
   Result.ShowInLegend := Lbl <> '';
   Result.MarkerFillColor := Color;
   Result.MarkerStrokeColor := Color;
+  if Kind = 'bars' then
+  begin
+    // A bar per element from left[k] to right[k]: drawn at the centre with
+    // its own width (histograms may have unequal bins).
+    Result.LineVisible := False;
+    Result.MarkerVisible := False;
+    Result.BarsVisible := True;
+    Result.BarFillColor := Color;
+    Result.BarBorderColor := TAlphaColors.White;
+    Result.BarBorderWidth := 0.6;
+    if (S.GetValue('left') is TJSONArray) and (S.GetValue('right') is TJSONArray) and
+       (S.GetValue('heights') is TJSONArray) then
+    begin
+      LA := TJSONArray(S.GetValue('left'));
+      RA := TJSONArray(S.GetValue('right'));
+      HA := TJSONArray(S.GetValue('heights'));
+      for K := 0 to Min(Min(LA.Count, RA.Count), HA.Count) - 1 do
+      begin
+        L := Num(LA.Items[K], NaN);
+        R := Num(RA.Items[K], NaN);
+        Result.AddXY((L + R) / 2, Num(HA.Items[K], NaN));
+        Result.SetBarWidth(Result.Data.Count - 1, Abs(R - L));
+      end;
+      if Result.Data.Count > 0 then
+        Result.BarWidth := Result.BarWidthAt(0);
+    end;
+    Exit;
+  end;
   if Kind = 'scatter' then
   begin
     Result.LineVisible := False;
@@ -187,8 +218,11 @@ var
   Root: TJSONValue;
   Fig: TJSONObject;
   Series: TJSONArray;
-  Lim: TJSONArray;
+  Lim, Names: TJSONArray;
   K: Integer;
+  HasBars: Boolean;
+  Positions: TArray<Double>;
+  Labels: TArray<string>;
 begin
   Result := False;
   try
@@ -208,9 +242,14 @@ begin
     Plot.ClearAnnotations;
     Plot.ResetZoom;
     Plot.ResetLegendPosition;
+    HasBars := False;
     for K := 0 to Series.Count - 1 do
       if Series.Items[K] is TJSONObject then
+      begin
         Plot.AddSeries(NewSeries(TJSONObject(Series.Items[K])));
+        if Str(TJSONObject(Series.Items[K]).GetValue('type')) = 'bars' then
+          HasBars := True;
+      end;
 
     SetTitle(Plot.ChartTitle, Fig.GetValue('title'));
     SetTitle(Plot.XAxisTitle, Fig.GetValue('xlabel'));
@@ -233,6 +272,40 @@ begin
       Plot.AxisLimits.MinY := Num(Lim.Items[0], 0);
       Plot.AxisLimits.MaxY := Num(Lim.Items[1], 1);
     end;
+
+    // Named ticks: bar categories at 1, 2, ..., or plot.xticks.
+    Plot.ClearXTickLabels;
+    if Fig.GetValue('xcategories') is TJSONArray then
+    begin
+      Lim := TJSONArray(Fig.GetValue('xcategories'));
+      SetLength(Positions, Lim.Count);
+      SetLength(Labels, Lim.Count);
+      for K := 0 to Lim.Count - 1 do
+      begin
+        Positions[K] := K + 1;
+        Labels[K] := Str(Lim.Items[K]);
+      end;
+      Plot.SetXTickLabels(Positions, Labels);
+    end;
+    if (Fig.GetValue('xticks') is TJSONObject) and
+       (TJSONObject(Fig.GetValue('xticks')).GetValue('positions') is TJSONArray) and
+       (TJSONObject(Fig.GetValue('xticks')).GetValue('labels') is TJSONArray) then
+    begin
+      Lim := TJSONArray(TJSONObject(Fig.GetValue('xticks')).GetValue('positions'));
+      Names := TJSONArray(TJSONObject(Fig.GetValue('xticks')).GetValue('labels'));
+      SetLength(Positions, Min(Lim.Count, Names.Count));
+      SetLength(Labels, Length(Positions));
+      for K := 0 to High(Positions) do
+      begin
+        Positions[K] := Num(Lim.Items[K], 0);
+        Labels[K] := Str(Names.Items[K]);
+      end;
+      Plot.SetXTickLabels(Positions, Labels);
+    end;
+
+    // Bars stand on the axis: no padding below a baseline at 0 (as the
+    // image does).
+    Plot.OriginOnAxis := HasBars;
 
     Plot.GridStyle.XMajorVisible := Bool(Fig.GetValue('grid'), True);
     Plot.GridStyle.YMajorVisible := Plot.GridStyle.XMajorVisible;

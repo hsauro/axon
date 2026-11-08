@@ -740,7 +740,7 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 | `grid(on)`, `legend(on)` | Show or hide the grid and the legend (both shown by default) |
 | `legend_position(where)` | Places the legend: `"best"` (the default), `"top right"`, `"top left"`, `"bottom right"`, `"bottom left"`, or `"outside"`, to the right of the plot area, which is narrowed to make room |
 | `save(path; scale = 2)` | Writes the current figure as PNG, SVG or PDF, chosen by the extension; `scale` sets PNG pixels per point |
-| `show(; scale = 2)` | Shows the current figure through `graphics.show`: in the IDE's plot pane, or in the system's image viewer. In the IDE, a figure with only line and scatter series (no surface, bars or named ticks) is drawn in an interactive chart that can be zoomed, panned and edited; other figures are shown as the image |
+| `show(; scale = 2)` | Shows the current figure through `graphics.show`: in the IDE's plot pane, or in the system's image viewer. In the IDE, a 2-D figure (lines, scatter, bars, histograms, named ticks) is drawn in an interactive chart that can be zoomed, panned and edited; a surface is shown as the image |
 | `gcf()` | The current figure as a record, or `nothing` before the first plotting call |
 
 - **Bar charts.** Bars of several series at the same positions overlap; to place them side by side, offset `x` and narrow `width`, as in `plot.bar(x - 0.2, a, width = 0.4)` and `plot.bar(x + 0.2, b, width = 0.4)`, and name the groups with `plot.xticks(x, names)`. Every series with categories in one figure must use the same list.

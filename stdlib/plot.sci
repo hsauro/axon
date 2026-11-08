@@ -425,17 +425,11 @@ export function show(; scale = 2.0)
   end
 end
 
-# Whether the IDE's interactive chart can draw the figure: line and scatter
-# series in 2-D, with round-number ticks (bars, histograms, surfaces and
-# named ticks are shown as the image).
+# Whether the IDE's interactive chart can draw the figure: any 2-D figure
+# (lines, scatter, bars, histograms, named ticks); surfaces are shown as the
+# image.
 function interactive(fig)
-  if fig.three_d or typeof(fig.xcategories) != "nothing" or typeof(fig.xticks) != "nothing"
-    return false
-  end
-  for s in fig.series
-    if s.type != "line" and s.type != "scatter" return false end
-  end
-  return length(fig.series) > 0
+  return not fig.three_d and length(fig.series) > 0
 end
 
 ## The current figure, as a record (nothing before the first plotting call).

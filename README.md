@@ -30,7 +30,7 @@ println("steps:", sol.nsteps, "prey at t = 50:", format(sol.y[1, end], 2))
 - **Standard library.** `linalg` (solve, eig, svd, qr, lu, chol, expm, ...), `ode` (RK45 and stiff BDF through SUNDIALS CVODE, with events and dense output), `plot` (line, scatter, bar, histogram and surface plots to PNG, SVG or PDF), `random`, `time` and `io`.
 - **Speed.** A JIT compiler built on [MIR](https://github.com/vnmakarov/mir) compiles numeric functions to native code at their first call, often hundreds of times faster than interpreting them, with identical results. ODE stepping loops run natively.
 - **Native code.** `extern` blocks call C libraries directly, including callbacks.
-- **IDE.** An editor with syntax colouring and as-you-type checks, a REPL that can run whole files and keep their variables, a plot pane with an interactive chart (zoom, pan, editing) for line and scatter plots, F1 help that shows the matching section of the Language Reference, a searchable documentation viewer, and light and dark themes.
+- **IDE.** An editor with syntax colouring and as-you-type checks, a REPL that can run whole files and keep their variables, a plot pane with an interactive chart (zoom, pan, editing) for line, scatter, bar and histogram plots, F1 help that shows the matching section of the Language Reference, a searchable documentation viewer, and light and dark themes.
 
 ## Platforms
 
