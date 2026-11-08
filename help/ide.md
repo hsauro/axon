@@ -100,7 +100,7 @@ function from an imported module (`ode.solve`, or `solve` after
 | <kbd>Ctrl+N</kbd>, <kbd>Ctrl+O</kbd>, <kbd>Ctrl+S</kbd> | New, open, save |
 | <kbd>Shift+Ctrl+S</kbd> | Save as |
 | <kbd>Ctrl+W</kbd> | Close the current tab |
-| <kbd>Ctrl+F</kbd> | Find and replace |
+| <kbd>Ctrl+F</kbd> | Find and replace; in the Documentation tab, find in the page (Enter / Shift+Enter for next / previous, Escape to close) |
 | <kbd>Ctrl+G</kbd> | Go to line |
 | <kbd>Ctrl+/</kbd> | Comment or uncomment the selected lines |
 | <kbd>Ctrl+Z</kbd>, <kbd>Ctrl+Y</kbd> | Undo, redo |

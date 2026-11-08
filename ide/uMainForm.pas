@@ -54,7 +54,8 @@ uses
   FMX.Types, FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs, FMX.StdCtrls,
   FMX.Layouts, FMX.ListBox, FMX.TabControl, FMX.Menus, FMX.Objects,
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
-  uSkiaCodeEditor, uProcessRunner, uRunReport, uRhoMarkdownViewer, uPreferences;
+  uSkiaCodeEditor, uCodeEditorTypes, uFindBar, uProcessRunner, uRunReport,
+  uRhoMarkdownViewer, uPreferences;
 
 type
   { Text colours of the output panes, per theme. }
@@ -140,6 +141,7 @@ type
     FDocsViewer: TRhoMarkdownViewer;
     FDocsTitle: TLabel;
     FDocsBack: TButton;
+    FDocsFindBar: TFindBar;      // RhoEditor's find bar, find-only (Ctrl+F)
     FDocsPage: string;           // full path of the page shown
     FDocsHistory: TStringList;   // earlier pages as "path|scroll", for Back
     // Theme
@@ -197,6 +199,9 @@ type
     procedure CmdReference(Sender: TObject);
     procedure CmdDocsBack(Sender: TObject);
     procedure CmdDocsHome(Sender: TObject);
+    procedure DocsSearch(const S: string; O: TFindOptions);
+    procedure DocsSearchChange(Sender: TObject);
+    procedure ThemeDocsFindBar;
     procedure EditorGotoLine(Sender: TObject);
     procedure ApplyTheme(Dark: Boolean);
     procedure ApplyEditorTheme(Editor: TSkiaCodeEditor);
@@ -2425,8 +2430,41 @@ begin
     FDocsViewer.Parent := FDocsTab;
     FDocsViewer.Align := TAlignLayout.Client;
     FDocsViewer.OnLinkClick := DocsLinkClick;
+    FDocsViewer.OnSearchChange := DocsSearchChange;
+    // Find (Ctrl+F): the editor's find bar without its replace row, below the
+    // toolbar. Typing highlights; Enter / Shift+Enter or Next / Prev move
+    // (F3 / Shift+F3 in the page too); Escape or Close clears.
+    FDocsFindBar := TFindBar.Create(Self);
+    FDocsFindBar.Parent := FDocsTab;
+    FDocsFindBar.ShowReplace := False;
+    FDocsFindBar.Position.Y := Bar.Height + 1;
+    FDocsFindBar.Align := TAlignLayout.Top;
+    FDocsFindBar.OnSearchChanged :=
+      procedure(const S: string; O: TFindOptions)
+      begin
+        DocsSearch(S, O);
+      end;
+    FDocsFindBar.OnFindNext :=
+      function(const S: string; O: TFindOptions): Boolean
+      begin
+        DocsSearch(S, O);
+        Result := FDocsViewer.FindNext;
+      end;
+    FDocsFindBar.OnFindPrev :=
+      function(const S: string; O: TFindOptions): Boolean
+      begin
+        DocsSearch(S, O);
+        Result := FDocsViewer.FindPrevious;
+      end;
+    FDocsFindBar.OnClosed :=
+      procedure
+      begin
+        FDocsViewer.ClearSearch;
+        FDocsViewer.SetFocus;
+      end;
     if FDark then
       FDocsViewer.ApplyTheme(rtDark);
+    ThemeDocsFindBar;
   end;
   FTabs.ActiveTab := FDocsTab;
   P := Target.IndexOf('#');
@@ -2482,6 +2520,7 @@ begin
         FDocsViewer.SetScrollPos(ScrollTo)
       else if NewPage then
         FDocsViewer.SetScrollPos(0);
+      DocsSearchChange(nil);   // the find term carries over to the new page
     end);
 end;
 
@@ -2805,7 +2844,10 @@ begin
   for Doc in FDocs do
     ApplyEditorTheme(Doc.Editor);
   if FDocsViewer <> nil then
+  begin
     if Dark then FDocsViewer.ApplyTheme(rtDark) else FDocsViewer.ApplyTheme(rtLight);
+    ThemeDocsFindBar;
+  end;
   RecolorList(FOutput, Old);
   RecolorList(FReplList, Old);
   FDarkItem.IsChecked := Dark;
@@ -2916,7 +2958,37 @@ end;
 
 procedure TfrmMain.CmdFind(Sender: TObject);
 begin
-  if CurrentDoc <> nil then CurrentDoc.Editor.ShowBuiltInFindBar;
+  if (FDocsTab <> nil) and (FTabs.ActiveTab = FDocsTab) then
+    FDocsFindBar.Activate('')
+  else if CurrentDoc <> nil then
+    CurrentDoc.Editor.ShowBuiltInFindBar;
+end;
+
+{ The Documentation tab's find bar drives the viewer's search. }
+procedure TfrmMain.DocsSearch(const S: string; O: TFindOptions);
+begin
+  FDocsViewer.SearchCaseSensitive := foMatchCase in O;
+  FDocsViewer.SearchWholeWords := foWholeWord in O;
+  FDocsViewer.SearchText := S;
+end;
+
+{ The viewer's search state changed (typing, Next/Prev, F3, a new page):
+  show "N of M" in the bar. }
+procedure TfrmMain.DocsSearchChange(Sender: TObject);
+begin
+  if (FDocsFindBar = nil) or not FDocsFindBar.Visible then
+    Exit;
+  if FDocsViewer.SearchText = '' then
+    FDocsFindBar.SetMatchInfo(0, -1)
+  else
+    FDocsFindBar.SetMatchInfo(FDocsViewer.SearchMatchIndex + 1,
+      FDocsViewer.SearchMatchCount);
+end;
+
+procedure TfrmMain.ThemeDocsFindBar;
+begin
+  if FDocsFindBar <> nil then
+    FDocsFindBar.ApplyTheme(FDocsViewer.CodeBackgroundColor, FDocsViewer.TextColor);
 end;
 
 procedure TfrmMain.CmdToggleComment(Sender: TObject);
