@@ -11,6 +11,10 @@ unit uMainForm;
      failed run, the error location gets a wavy underline whose tooltip is
      the error.
    - The plot pane shows the newest PNG the run wrote in its directory.
+   - The REPL tab drives "axon --repl-protocol" through pipes: a session
+     starts on first use in the current file's directory and keeps its
+     variables until it is restarted. Send to REPL (Ctrl+Enter) sends the
+     editor's selection, or the current line.
 
    The layout is built in code; the .fmx holds only the empty form. *)
 
@@ -21,7 +25,7 @@ uses
   System.Generics.Collections,
   FMX.Types, FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs, FMX.StdCtrls,
   FMX.Layouts, FMX.ListBox, FMX.TabControl, FMX.Menus, FMX.Objects,
-  FMX.Controls.Presentation,
+  FMX.Controls.Presentation, FMX.Edit,
   uSkiaCodeEditor, uProcessRunner, uRunReport;
 
 type
@@ -60,7 +64,32 @@ type
     FFrames: TList<TFrame>;
     FFirstStdErr: Boolean;
     FUntitledCount: Integer;
+    // REPL
+    FBottomTabs: TTabControl;
+    FOutputTab, FReplTab: TTabItem;
+    FReplList: TListBox;
+    FReplEdit: TEdit;
+    FReplPrompt: TLabel;
+    FReplDirLabel: TLabel;
+    FRepl: TProcessRunner;
+    FReplPartial: string;
+    FReplDir: string;
+    FReplRestart: Boolean;
+    FReplHistory: TStringList;
+    FReplHistoryPos: Integer;
+    FReplSince: TDateTime;
     procedure BuildUI;
+    procedure BuildReplPane(Parent: TFmxObject);
+    function ReplWorkDir: string;
+    function EnsureRepl: Boolean;
+    procedure ReplOutput(Kind: TOutputKind; const Text: string);
+    procedure ReplExit(ExitCode: Integer);
+    procedure ReplAddLine(const Text: string; Color: TAlphaColor; Italic: Boolean = False);
+    procedure ReplSend(const Lines: TArray<string>);
+    procedure ReplEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+      Shift: TShiftState);
+    procedure ShowNewestPlotIn(const Dir: string; Since: TDateTime);
+    procedure ScrollToEnd(List: TListBox);
     procedure BuildMenu;
     function AddMenuItem(Parent: TFmxObject; const Text, ShortCut: string;
       Handler: TNotifyEvent): TMenuItem;
@@ -96,7 +125,6 @@ type
     procedure GoToFrame(const Frame: TFrame);
     function ResolveRunPath(const FileName: string): string;
     procedure MarkError;
-    procedure ShowNewestPlot;
     // commands
     procedure CmdNew(Sender: TObject);
     procedure CmdOpen(Sender: TObject);
@@ -118,6 +146,9 @@ type
     procedure CmdStop(Sender: TObject);
     procedure CmdClearOutput(Sender: TObject);
     procedure CmdAbout(Sender: TObject);
+    procedure CmdSendToRepl(Sender: TObject);
+    procedure CmdReplRestart(Sender: TObject);
+    procedure CmdReplClear(Sender: TObject);
   end;
 
 var
@@ -160,6 +191,10 @@ begin
   FRunner := TProcessRunner.Create;
   FRunner.OnOutput := RunOutput;
   FRunner.OnExit := RunExit;
+  FRepl := TProcessRunner.Create;
+  FRepl.OnOutput := ReplOutput;
+  FRepl.OnExit := ReplExit;
+  FReplHistory := TStringList.Create;
   BuildUI;
   BuildMenu;
   LoadSettings;
@@ -180,6 +215,8 @@ end;
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
   FRunner.Free;          // kills a running program
+  FRepl.Free;            // and the REPL session
+  FReplHistory.Free;
   SaveSettings;
   FRecent.Free;
   FFrames.Free;
@@ -284,13 +321,22 @@ begin
   Split.Align := TAlignLayout.Right;
   Split.Width := 5;
 
-  // Output pane at the bottom.
+  // Output and REPL tabs at the bottom.
+  FBottomTabs := TTabControl.Create(Self);
+  FBottomTabs.Parent := Body;
+  FBottomTabs.Align := TAlignLayout.Bottom;
+  FBottomTabs.Height := 240;
+  FOutputTab := FBottomTabs.Add;
+  FOutputTab.Text := 'Output';
+  FReplTab := FBottomTabs.Add;
+  FReplTab.Text := 'REPL';
   FOutput := TListBox.Create(Self);
-  FOutput.Parent := Body;
-  FOutput.Align := TAlignLayout.Bottom;
-  FOutput.Height := 220;
+  FOutput.Parent := FOutputTab;
+  FOutput.Align := TAlignLayout.Client;
   FOutput.ItemHeight := 18;
   FOutput.OnItemClick := OutputClick;
+  BuildReplPane(FReplTab);
+  FBottomTabs.ActiveTab := FOutputTab;
   Split := TSplitter.Create(Self);
   Split.Parent := Body;
   Split.Align := TAlignLayout.Bottom;
@@ -350,6 +396,9 @@ begin
   M := AddMenuItem(Menu, '&Run', '', nil);
   FRunItem := AddMenuItem(M, '&Run', 'F9', CmdRun);
   FStopItem := AddMenuItem(M, '&Stop', 'Ctrl+F2', CmdStop);
+  AddMenuItem(M, '-', '', nil);
+  AddMenuItem(M, 'Send to RE&PL', 'Ctrl+Enter', CmdSendToRepl);
+  AddMenuItem(M, 'Restart R&EPL', '', CmdReplRestart);
   AddMenuItem(M, '-', '', nil);
   AddMenuItem(M, 'C&lear Output', '', CmdClearOutput);
 
@@ -750,8 +799,7 @@ begin
     FOutput.EndUpdate;
   end;
   FPartial[Kind] := S;
-  if FOutput.Count > 0 then
-    FOutput.ScrollToItem(FOutput.ListItems[FOutput.Count - 1]);
+  ScrollToEnd(FOutput);
 end;
 
 procedure TfrmMain.RunExit(ExitCode: Integer);
@@ -786,9 +834,8 @@ begin
       FStatus.Text := Format('Exited with code %d', [ExitCode]);
     MarkError;
   end;
-  if FOutput.Count > 0 then
-    FOutput.ScrollToItem(FOutput.ListItems[FOutput.Count - 1]);
-  ShowNewestPlot;
+  ScrollToEnd(FOutput);
+  ShowNewestPlotIn(FRunDir, FRunStart);
 end;
 
 procedure TfrmMain.AddOutputLine(Kind: TOutputKind; const Line: string);
@@ -898,22 +945,22 @@ begin
   end;
 end;
 
-procedure TfrmMain.ShowNewestPlot;
+procedure TfrmMain.ShowNewestPlotIn(const Dir: string; Since: TDateTime);
 var
   Files: TArray<string>;
   F, Newest: string;
   T, NewestTime: TDateTime;
 begin
-  if (FRunDir = '') or not TDirectory.Exists(FRunDir) then
+  if (Dir = '') or not TDirectory.Exists(Dir) then
     Exit;
-  Files := TDirectory.GetFiles(FRunDir, '*.png');
+  Files := TDirectory.GetFiles(Dir, '*.png');
   Newest := '';
   NewestTime := 0;
   for F in Files do
   begin
     T := TFile.GetLastWriteTime(F);
     // Written by this run (allowing for coarse file-time resolution).
-    if (T >= IncSecond(FRunStart, -2)) and (T > NewestTime) then
+    if (T >= IncSecond(Since, -2)) and (T > NewestTime) then
     begin
       Newest := F;
       NewestTime := T;
@@ -927,6 +974,282 @@ begin
   except
     FPlotCaption.Text := 'Cannot show ' + ExtractFileName(Newest);
   end;
+end;
+
+{ Scrolls a list to its last item once FMX has laid out new items (scrolling
+  straight away, or inside BeginUpdate, stops short). }
+procedure TfrmMain.ScrollToEnd(List: TListBox);
+begin
+  TThread.ForceQueue(nil,
+    procedure
+    begin
+      if List.Count > 0 then
+        List.ScrollToItem(List.ListItems[List.Count - 1]);
+    end);
+end;
+
+{ ---------------- REPL ---------------- }
+
+procedure TfrmMain.BuildReplPane(Parent: TFmxObject);
+var
+  Top, Bottom: TLayout;
+  B: TSpeedButton;
+begin
+  Top := TLayout.Create(Self);
+  Top.Parent := Parent;
+  Top.Align := TAlignLayout.Top;
+  Top.Height := 28;
+  Top.Padding.Rect := TRectF.Create(2, 2, 2, 2);
+  B := AddButton(Top, 'Restart', 'Start a fresh REPL session in the current file' + #39 + 's folder',
+    CmdReplRestart);
+  B.Width := 70;
+  B := AddButton(Top, 'Clear', 'Clear the REPL transcript', CmdReplClear);
+  B.Width := 60;
+  FReplDirLabel := TLabel.Create(Self);
+  FReplDirLabel.Parent := Top;
+  FReplDirLabel.Align := TAlignLayout.Client;
+  FReplDirLabel.Margins.Left := 10;
+  FReplDirLabel.Text := 'Type an expression below and press Enter.';
+
+  Bottom := TLayout.Create(Self);
+  Bottom.Parent := Parent;
+  Bottom.Align := TAlignLayout.Bottom;
+  Bottom.Height := 30;
+  Bottom.Padding.Rect := TRectF.Create(4, 3, 4, 3);
+  FReplPrompt := TLabel.Create(Self);
+  FReplPrompt.Parent := Bottom;
+  FReplPrompt.Align := TAlignLayout.Left;
+  FReplPrompt.Width := 28;
+  FReplPrompt.Text := '>';
+  FReplPrompt.StyledSettings := FReplPrompt.StyledSettings - [TStyledSetting.Family];
+  FReplPrompt.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
+  FReplEdit := TEdit.Create(Self);
+  FReplEdit.Parent := Bottom;
+  FReplEdit.Align := TAlignLayout.Client;
+  FReplEdit.StyledSettings := FReplEdit.StyledSettings - [TStyledSetting.Family];
+  FReplEdit.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
+  FReplEdit.OnKeyDown := ReplEditKeyDown;
+
+  FReplList := TListBox.Create(Self);
+  FReplList.Parent := Parent;
+  FReplList.Align := TAlignLayout.Client;
+  FReplList.ItemHeight := 18;
+end;
+
+function TfrmMain.ReplWorkDir: string;
+var
+  Doc: TDocument;
+begin
+  Doc := CurrentDoc;
+  if (Doc <> nil) and (Doc.FilePath <> '') then
+    Result := ExtractFileDir(Doc.FilePath)
+  else
+    Result := TPath.GetDocumentsPath;
+end;
+
+function TfrmMain.EnsureRepl: Boolean;
+var
+  Exe: string;
+begin
+  Result := FRepl.Running;
+  if Result then
+    Exit;
+  Exe := AxonExecutable;
+  if Exe = '' then
+  begin
+    ReplAddLine('Cannot find the axon interpreter next to the IDE.', ColorError, True);
+    Exit;
+  end;
+  FReplDir := ReplWorkDir;
+  FReplPartial := '';
+  try
+    FRepl.Start(Exe, ['--repl-protocol'], FReplDir, True);
+  except
+    on E: Exception do
+    begin
+      ReplAddLine('Cannot start the REPL: ' + E.Message, ColorError, True);
+      Exit;
+    end;
+  end;
+  FReplDirLabel.Text := 'Session in ' + FReplDir;
+  ReplAddLine('New session in ' + FReplDir, ColorNote, True);
+  FReplPrompt.Text := '>';
+  Result := True;
+end;
+
+procedure TfrmMain.ReplAddLine(const Text: string; Color: TAlphaColor; Italic: Boolean);
+var
+  Item: TListBoxItem;
+begin
+  while FReplList.Count >= MaxOutputLines do
+    FReplList.ListItems[0].Free;
+  Item := TListBoxItem.Create(FReplList);
+  Item.Parent := FReplList;
+  Item.Text := Text;
+  Item.StyledSettings := Item.StyledSettings -
+    [TStyledSetting.FontColor, TStyledSetting.Family, TStyledSetting.Style];
+  Item.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
+  Item.TextSettings.FontColor := Color;
+  if Italic then
+    Item.TextSettings.Font.Style := [TFontStyle.fsItalic];
+  ScrollToEnd(FReplList);
+end;
+
+{ Protocol lines: #1 then ">" or "." is the REPL asking for input; #2 starts
+  a line of an error report; anything else is output. }
+procedure TfrmMain.ReplOutput(Kind: TOutputKind; const Text: string);
+var
+  S, L: string;
+  P: Integer;
+begin
+  S := FReplPartial + Text.Replace(#13#10, #10).Replace(#13, #10);
+  P := S.IndexOf(#10);
+  FReplList.BeginUpdate;
+  try
+    while P >= 0 do
+    begin
+      L := S.Substring(0, P);
+      S := S.Substring(P + 1);
+      P := S.IndexOf(#10);
+      if L.StartsWith(#1) then
+      begin
+        if L = #1'.' then
+          FReplPrompt.Text := '...'
+        else
+        begin
+          FReplPrompt.Text := '>';
+          ShowNewestPlotIn(FReplDir, FReplSince);
+        end;
+      end
+      else if L.StartsWith(#2) then
+        ReplAddLine(L.Substring(1), ColorError)
+      else if Kind = okStdErr then
+        ReplAddLine(L, ColorError)
+      else
+        ReplAddLine(L, TAlphaColors.Black);
+    end;
+  finally
+    FReplList.EndUpdate;
+  end;
+  ScrollToEnd(FReplList);
+  FReplPartial := S;
+end;
+
+procedure TfrmMain.ReplExit(ExitCode: Integer);
+begin
+  if FReplRestart then
+  begin
+    FReplRestart := False;
+    ReplAddLine('Session ended.', ColorNote, True);
+    EnsureRepl;
+    Exit;
+  end;
+  if FRepl.Killed then
+    ReplAddLine('Session stopped.', ColorNote, True)
+  else
+    ReplAddLine(Format('Session ended (exit code %d). Enter a line to start a new one.',
+      [ExitCode]), ColorNote, True);
+  FReplDirLabel.Text := 'No session';
+  FReplPrompt.Text := '>';
+end;
+
+procedure TfrmMain.ReplSend(const Lines: TArray<string>);
+var
+  L, Shown: string;
+begin
+  if not EnsureRepl then
+    Exit;
+  FBottomTabs.ActiveTab := FReplTab;
+  FReplSince := Now;
+  Shown := FReplPrompt.Text;
+  for L in Lines do
+  begin
+    // The echo uses the prompt the REPL last showed; later lines continue it.
+    ReplAddLine(Shown + ' ' + L, ColorLink);
+    if Shown = '>' then
+      Shown := '...';
+    if not FRepl.WriteInput(L + #10) then
+    begin
+      ReplAddLine('The REPL is not accepting input.', ColorError, True);
+      Exit;
+    end;
+  end;
+end;
+
+procedure TfrmMain.ReplEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+  Shift: TShiftState);
+var
+  Line: string;
+begin
+  case Key of
+    vkReturn:
+      begin
+        Line := FReplEdit.Text;
+        FReplEdit.Text := '';
+        if (Line.Trim <> '') and ((FReplHistory.Count = 0) or
+          (FReplHistory[FReplHistory.Count - 1] <> Line)) then
+          FReplHistory.Add(Line);
+        FReplHistoryPos := FReplHistory.Count;
+        ReplSend([Line]);
+        Key := 0;
+      end;
+    vkUp:
+      begin
+        if FReplHistoryPos > 0 then
+        begin
+          Dec(FReplHistoryPos);
+          FReplEdit.Text := FReplHistory[FReplHistoryPos];
+          FReplEdit.GoToTextEnd;
+        end;
+        Key := 0;
+      end;
+    vkDown:
+      begin
+        if FReplHistoryPos < FReplHistory.Count - 1 then
+        begin
+          Inc(FReplHistoryPos);
+          FReplEdit.Text := FReplHistory[FReplHistoryPos];
+        end
+        else
+        begin
+          FReplHistoryPos := FReplHistory.Count;
+          FReplEdit.Text := '';
+        end;
+        FReplEdit.GoToTextEnd;
+        Key := 0;
+      end;
+  end;
+end;
+
+procedure TfrmMain.CmdSendToRepl(Sender: TObject);
+var
+  Doc: TDocument;
+  Text: string;
+begin
+  Doc := CurrentDoc;
+  if Doc = nil then
+    Exit;
+  Text := Doc.Editor.SelText;
+  if Text = '' then
+    Text := Doc.Editor.LineText(Doc.Editor.CaretLine);
+  ReplSend(Text.Replace(#13#10, #10).Split([#10]));
+end;
+
+procedure TfrmMain.CmdReplRestart(Sender: TObject);
+begin
+  FBottomTabs.ActiveTab := FReplTab;
+  if FRepl.Running then
+  begin
+    FReplRestart := True;
+    FRepl.Kill;
+  end
+  else
+    EnsureRepl;
+end;
+
+procedure TfrmMain.CmdReplClear(Sender: TObject);
+begin
+  FReplList.Clear;
 end;
 
 { ---------------- commands ---------------- }

@@ -9,6 +9,9 @@ unit uProcessRunner;
    code. Kill stops the process; Free kills it if it is still running and
    discards events not yet delivered.
 
+   With WithInput, the program's stdin is a pipe that WriteInput writes to
+   (the REPL); otherwise stdin is empty.
+
    Windows uses CreateProcess with pipes; macOS and Linux use fork/exec. *)
 
 interface
@@ -30,9 +33,12 @@ type
     FOnExit: TExitEvent;
 {$IFDEF MSWINDOWS}
     FProcess: THandle;
+    FInput: THandle;             // write end of stdin, or 0
 {$ELSE}
     FPid: Integer;
+    FInput: Integer;             // write end of stdin, or -1
 {$ENDIF}
+    procedure CloseInput;
     procedure Deliver(Kind: TOutputKind; const Text: string);
     procedure Finished(Code: Integer);
     procedure WaitForThreads;
@@ -40,7 +46,11 @@ type
     constructor Create;
     destructor Destroy; override;
     { Starts Exe with Args in WorkDir. Raises if the program cannot be started. }
-    procedure Start(const Exe: string; const Args: array of string; const WorkDir: string);
+    procedure Start(const Exe: string; const Args: array of string; const WorkDir: string;
+      WithInput: Boolean = False);
+    { Writes Text to the program's stdin as UTF-8. False if it is not running
+      or was started without input. }
+    function WriteInput(const Text: string): Boolean;
     procedure Kill;
     property Running: Boolean read FRunning;
     property Killed: Boolean read FKilled;
@@ -211,12 +221,67 @@ constructor TProcessRunner.Create;
 begin
   inherited;
   FThreads := TList.Create;
+{$IFDEF MSWINDOWS}
+  FInput := 0;
+{$ELSE}
+  FInput := -1;
+{$ENDIF}
+end;
+
+procedure TProcessRunner.CloseInput;
+begin
+{$IFDEF MSWINDOWS}
+  if FInput <> 0 then
+  begin
+    CloseHandle(FInput);
+    FInput := 0;
+  end;
+{$ELSE}
+  if FInput >= 0 then
+  begin
+    __close(FInput);
+    FInput := -1;
+  end;
+{$ENDIF}
+end;
+
+function TProcessRunner.WriteInput(const Text: string): Boolean;
+var
+  Bytes: TBytes;
+  Done: Integer;
+{$IFDEF MSWINDOWS}
+  Wrote: DWORD;
+{$ELSE}
+  Wrote: Integer;
+{$ENDIF}
+begin
+  Result := False;
+  if not FRunning then
+    Exit;
+  Bytes := TEncoding.UTF8.GetBytes(Text);
+  Done := 0;
+  while Done < Length(Bytes) do
+  begin
+{$IFDEF MSWINDOWS}
+    if (FInput = 0) or not WriteFile(FInput, Bytes[Done], Length(Bytes) - Done, Wrote, nil) then
+      Exit;
+{$ELSE}
+    if FInput < 0 then
+      Exit;
+    Wrote := __write(FInput, @Bytes[Done], Length(Bytes) - Done);
+    if Wrote <= 0 then
+      Exit;
+{$ENDIF}
+    Inc(Done, Wrote);
+  end;
+  Result := True;
 end;
 
 destructor TProcessRunner.Destroy;
 begin
   Kill;
   WaitForThreads;
+  CloseInput;
   FThreads.Free;
   inherited;
 end;
@@ -252,6 +317,7 @@ begin
     procedure
     begin
       FRunning := False;
+      CloseInput;
 {$IFDEF MSWINDOWS}
       CloseHandle(FProcess);
       FProcess := 0;
@@ -287,10 +353,11 @@ begin
   Result := Result + StringOfChar('\', Backslashes * 2) + '"';
 end;
 
-procedure TProcessRunner.Start(const Exe: string; const Args: array of string; const WorkDir: string);
+procedure TProcessRunner.Start(const Exe: string; const Args: array of string; const WorkDir: string;
+  WithInput: Boolean);
 var
   SA: TSecurityAttributes;
-  OutRead, OutWrite, ErrRead, ErrWrite, NulIn: THandle;
+  OutRead, OutWrite, ErrRead, ErrWrite, NulIn, InWrite: THandle;
   SI: TStartupInfo;
   PI: TProcessInformation;
   CmdLine, A: string;
@@ -307,8 +374,15 @@ begin
   if not CreatePipe(ErrRead, ErrWrite, @SA, 0) then RaiseLastOSError;
   SetHandleInformation(OutRead, HANDLE_FLAG_INHERIT, 0);
   SetHandleInformation(ErrRead, HANDLE_FLAG_INHERIT, 0);
-  NulIn := CreateFile('NUL', GENERIC_READ, FILE_SHARE_READ or FILE_SHARE_WRITE, @SA,
-    OPEN_EXISTING, 0, 0);
+  InWrite := 0;
+  if WithInput then
+  begin
+    if not CreatePipe(NulIn, InWrite, @SA, 0) then RaiseLastOSError;
+    SetHandleInformation(InWrite, HANDLE_FLAG_INHERIT, 0);
+  end
+  else
+    NulIn := CreateFile('NUL', GENERIC_READ, FILE_SHARE_READ or FILE_SHARE_WRITE, @SA,
+      OPEN_EXISTING, 0, 0);
 
   FillChar(SI, SizeOf(SI), 0);
   SI.cb := SizeOf(SI);
@@ -326,6 +400,7 @@ begin
     CloseHandle(OutRead); CloseHandle(OutWrite);
     CloseHandle(ErrRead); CloseHandle(ErrWrite);
     CloseHandle(NulIn);
+    if InWrite <> 0 then CloseHandle(InWrite);
     RaiseLastOSError;
   end;
   // The child owns the write ends now.
@@ -334,6 +409,7 @@ begin
   CloseHandle(NulIn);
   CloseHandle(PI.hThread);
   FProcess := PI.hProcess;
+  FInput := InWrite;
   FRunning := True;
   R1 := TReaderThread.Create(Self, okStdOut, NativeInt(OutRead));
   R2 := TReaderThread.Create(Self, okStdErr, NativeInt(ErrRead));
@@ -353,9 +429,10 @@ end;
 
 {$ELSE}
 
-procedure TProcessRunner.Start(const Exe: string; const Args: array of string; const WorkDir: string);
+procedure TProcessRunner.Start(const Exe: string; const Args: array of string; const WorkDir: string;
+  WithInput: Boolean);
 var
-  OutPipe, ErrPipe: array[0..1] of Integer;
+  OutPipe, ErrPipe, InPipe: array[0..1] of Integer;
   Strings: TArray<UTF8String>;
   Argv: TArray<PAnsiChar>;
   Dir, ExeU: UTF8String;
@@ -379,6 +456,10 @@ begin
   Argv[High(Argv)] := nil;
   if (pipe(@OutPipe[0]) <> 0) or (pipe(@ErrPipe[0]) <> 0) then
     RaiseLastOSError;
+  InPipe[0] := -1;
+  InPipe[1] := -1;
+  if WithInput and (pipe(@InPipe[0]) <> 0) then
+    RaiseLastOSError;
 
   FPid := fork;
   if FPid < 0 then
@@ -388,8 +469,17 @@ begin
     // The child: only async-signal-safe calls until exec.
     // POSIX calls only: Delphi names chdir __chdir, and a plain chdir or open
     // would find System.ChDir and friends, which are not safe after fork.
-    Null := Posix.Fcntl.open('/dev/null', O_RDONLY);
-    dup2(Null, 0);
+    if InPipe[0] >= 0 then
+    begin
+      dup2(InPipe[0], 0);
+      __close(InPipe[0]);
+      __close(InPipe[1]);
+    end
+    else
+    begin
+      Null := Posix.Fcntl.open('/dev/null', O_RDONLY);
+      dup2(Null, 0);
+    end;
     dup2(OutPipe[1], 1);
     dup2(ErrPipe[1], 2);
     __close(OutPipe[0]); __close(ErrPipe[0]);
@@ -400,6 +490,9 @@ begin
   end;
   __close(OutPipe[1]);
   __close(ErrPipe[1]);
+  if InPipe[0] >= 0 then
+    __close(InPipe[0]);
+  FInput := InPipe[1];
   FRunning := True;
   R1 := TReaderThread.Create(Self, okStdOut, OutPipe[0]);
   R2 := TReaderThread.Create(Self, okStdErr, ErrPipe[0]);
@@ -417,6 +510,12 @@ begin
   end;
 end;
 
+{$ENDIF}
+
+{$IFNDEF MSWINDOWS}
+initialization
+  // Writing to the stdin of a program that has exited must fail, not kill us.
+  signal(SIGPIPE, TSignalHandler(SIG_IGN));
 {$ENDIF}
 
 end.

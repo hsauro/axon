@@ -33,6 +33,7 @@ begin
   Writeln('  axon --tokens file.sci  print the token stream');
   Writeln('  axon --ast file.sci     print the syntax tree');
   Writeln('  axon --transcript file  replay the input lines of a REPL transcript');
+  Writeln('  axon --repl-protocol    the REPL for front ends such as the IDE');
   Writeln('  axon test [-v] [path]   run the conformance tests (default path: tests)');
   Writeln('  axon --version          print the version');
 end;
@@ -139,6 +140,8 @@ begin
     Result := RunTestCommand(Copy(Args, 1, MaxInt))
   else if (Cmd = '--tokens') or (Cmd = '--ast') then
     Result := FrontEndDump(Cmd, Arg1)
+  else if Cmd = '--repl-protocol' then
+    Result := RunReplProtocol
   else if Cmd = '--transcript' then
   begin
     if Arg1 = '' then

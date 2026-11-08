@@ -23,6 +23,12 @@ function RunRepl: Integer;
 { Replays the input lines of a transcript file. }
 function RunTranscript(const FileName: string): Integer;
 
+{ The REPL for front ends such as the IDE (reference, "The REPL"): no
+  banner, prompts or echo; before each read a marker line, #1 followed by
+  ">" (ready for a statement) or "." (waiting for the rest of a construct);
+  error reports on stdout with each line prefixed by #2. }
+function RunReplProtocol: Integer;
+
 implementation
 
 uses
@@ -41,6 +47,7 @@ type
     FInterp: TInterpreter;
     FPrograms: TObjectList<TProgram>;   // kept alive: functions refer to their nodes
     FTranscript: Boolean;
+    FProtocol: Boolean;
     FInput: TArray<string>;             // transcript input lines
     FNext: Integer;
     FFirstLine: Boolean;
@@ -91,7 +98,13 @@ begin
     Writeln((APrompt + Line).TrimRight);
     Exit(True);
   end;
-  Write(APrompt);
+  if FProtocol then
+  begin
+    if APrompt = Prompt then Writeln(#1'>') else Writeln(#1'.');
+    Flush(Output);
+  end
+  else
+    Write(APrompt);
   if Eof(Input) then
     Exit(False);
   Readln(Line);
@@ -117,9 +130,17 @@ begin
 end;
 
 procedure TRepl.ShowError(const S: string);
+var
+  L: string;
 begin
   if FTranscript then
     Show(S)
+  else if FProtocol then
+  begin
+    // On stdout, so a front end sees it in order with the other output.
+    for L in S.Replace(#13#10, #10).Split([#10]) do
+      Writeln(#2 + L);
+  end
   else
     Writeln(ErrOutput, S);
 end;
@@ -249,11 +270,11 @@ procedure TRepl.Run;
 var
   Line: string;
 begin
-  if not FTranscript then
+  if not FTranscript and not FProtocol then
     Writeln('Axon ', AxonVersion, '. Type "help" for help; end the session with Ctrl+D (Ctrl+Z, Enter on Windows).');
   while ReadInput(Prompt, Line) do
     RunEntry(Line);
-  if not FTranscript then
+  if not FTranscript and not FProtocol then
     Writeln;
 end;
 
@@ -287,6 +308,20 @@ begin
       Input := Input + [''];
   R := TRepl.Create(True, Input);
   try
+    R.Run;
+  finally
+    R.Free;
+  end;
+  Result := ExitOk;
+end;
+
+function RunReplProtocol: Integer;
+var
+  R: TRepl;
+begin
+  R := TRepl.Create(False, nil);
+  try
+    R.FProtocol := True;
     R.Run;
   finally
     R.Free;
