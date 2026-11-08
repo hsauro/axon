@@ -6,7 +6,7 @@
 
 | Area | What it shows |
 | --- | --- |
-| Editor tabs | Your files, with syntax colouring and line numbers. The **Welcome** tab lists recent files and the examples. |
+| Editor tabs | Your files, with syntax colouring and line numbers. The **Welcome** tab lists recent files and the examples. Close a tab with the × at its right end, a middle-click, or <kbd>Ctrl+W</kbd> (<kbd>Cmd+W</kbd> on a Mac). |
 | Plot pane (right) | The latest figure from `plot.show()`, or the newest PNG a run saved. |
 | Output | What a program prints, and its errors in red. |
 | REPL | An interactive session that keeps its variables. |

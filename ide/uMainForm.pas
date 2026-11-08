@@ -261,6 +261,10 @@ type
     procedure CmdSave(Sender: TObject);
     procedure CmdSaveAs(Sender: TObject);
     procedure CmdClose(Sender: TObject);
+    procedure SetTabTitle(Tab: TTabItem; const Title: string);
+    procedure TabMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
+      X, Y: Single);
+    procedure CloseTab(Tab: TTabItem);
 {$IFNDEF MACOS}
     procedure CmdExit(Sender: TObject);
 {$ENDIF}
@@ -503,6 +507,10 @@ begin
       CanClose := False;
       Exit;
     end;
+  // Save the layout now: on macOS, Quit asks the main form whether it may
+  // close and then ends the application without destroying the form, so
+  // FormDestroy (which also saves) never runs.
+  SaveSettings;
 end;
 
 function TfrmMain.AddButton(Parent: TFmxObject; const Text, Hint: string;
@@ -890,9 +898,72 @@ end;
 procedure TfrmMain.UpdateTabCaption(Doc: TDocument);
 begin
   if Doc.Editor.Modified then
-    Doc.Tab.Text := Doc.DisplayName + ' *'
+    SetTabTitle(Doc.Tab, Doc.DisplayName + ' *')
   else
-    Doc.Tab.Text := Doc.DisplayName;
+    SetTabTitle(Doc.Tab, Doc.DisplayName);
+end;
+
+const
+  // The close mark at the end of every editor-area tab's title, and how much
+  // of the tab's right end a click closes it in (points).
+  TabCloseMark = '   ' + #$00D7;
+  TabCloseZone = 20;
+
+{ An editor-area tab shows its title followed by a close mark (x): a click on
+  the right end of the tab, or a middle-click anywhere on it, closes it. The
+  mark is part of the text, so it takes the theme's text colour. }
+procedure TfrmMain.SetTabTitle(Tab: TTabItem; const Title: string);
+begin
+  Tab.Text := Title + TabCloseMark;
+  Tab.OnMouseUp := TabMouseUp;
+end;
+
+procedure TfrmMain.TabMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
+  X, Y: Single);
+var
+  Tab: TTabItem;
+begin
+  Tab := Sender as TTabItem;
+  if (Button = TMouseButton.mbMiddle) or
+    ((Button = TMouseButton.mbLeft) and (X >= Tab.Width - TabCloseZone)) then
+    // After this event returns: the tab is freed when it closes.
+    TThread.ForceQueue(nil,
+      procedure
+      begin
+        CloseTab(Tab);
+      end);
+end;
+
+{ Closes an editor-area tab: a file (asking to save it), the Documentation
+  tab, or the Welcome tab. }
+procedure TfrmMain.CloseTab(Tab: TTabItem);
+var
+  Doc: TDocument;
+begin
+  if Tab = nil then
+    Exit;
+  if Tab = FDocsTab then
+  begin
+    FDocsViewer := nil;
+    FDocsTab.Free;
+    FDocsTab := nil;
+    if FDocs.Count = 0 then
+      ShowWelcome;
+    UpdateTitle;
+  end
+  else if Tab = FWelcomeTab then
+  begin
+    CloseWelcome;
+    if FDocs.Count = 0 then
+      NewDocument('', '');
+  end
+  else
+    for Doc in FDocs do
+      if Doc.Tab = Tab then
+      begin
+        CloseDoc(Doc);
+        Exit;
+      end;
 end;
 
 procedure TfrmMain.UpdateTitle;
@@ -1078,6 +1149,10 @@ end;
 
 procedure TfrmMain.SaveLayout(Ini: TCustomIniFile);
 begin
+  // A window that is not maximized saves where it is now: moving a window
+  // may not go through SetBoundsF on every platform.
+  if WindowState = TWindowState.wsNormal then
+    FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
   Ini.WriteInteger('Window', 'Left', FNormalBounds.Left);
   Ini.WriteInteger('Window', 'Top', FNormalBounds.Top);
   Ini.WriteInteger('Window', 'Width', FNormalBounds.Width);
@@ -2253,7 +2328,7 @@ begin
     Exit;
   end;
   FWelcomeTab := FTabs.Add;
-  FWelcomeTab.Text := 'Welcome';
+  SetTabTitle(FWelcomeTab, 'Welcome');
   FWelcomeTab.Index := 0;
 
   Page := TLayout.Create(Self);
@@ -2558,7 +2633,7 @@ begin
   if FDocsTab = nil then
   begin
     FDocsTab := FTabs.Add;
-    FDocsTab.Text := 'Documentation';
+    SetTabTitle(FDocsTab, 'Documentation');
     Bar := TLayout.Create(Self);
     Bar.Parent := FDocsTab;
     Bar.Align := TAlignLayout.Top;
@@ -3056,23 +3131,7 @@ end;
 
 procedure TfrmMain.CmdClose(Sender: TObject);
 begin
-  if (FDocsTab <> nil) and (FTabs.ActiveTab = FDocsTab) then
-  begin
-    FDocsViewer := nil;
-    FDocsTab.Free;
-    FDocsTab := nil;
-    if FDocs.Count = 0 then
-      ShowWelcome;
-    UpdateTitle;
-  end
-  else if (FWelcomeTab <> nil) and (FTabs.ActiveTab = FWelcomeTab) then
-  begin
-    CloseWelcome;
-    if FDocs.Count = 0 then
-      NewDocument('', '');
-  end
-  else if CurrentDoc <> nil then
-    CloseDoc(CurrentDoc);
+  CloseTab(FTabs.ActiveTab);
 end;
 
 {$IFNDEF MACOS}
