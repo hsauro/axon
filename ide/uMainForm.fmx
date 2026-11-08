@@ -1,0 +1,15 @@
+object frmMain: TfrmMain
+  Left = 0
+  Top = 0
+  Caption = 'Axon'
+  ClientHeight = 760
+  ClientWidth = 1200
+  Position = ScreenCenter
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
+  OnCloseQuery = FormCloseQuery
+  DesignerMasterStyle = 0
+end

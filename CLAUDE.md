@@ -55,6 +55,7 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - Module tests: `tests/m08` holds fixture modules next to the tests. A `stdlib/` folder inside a milestone folder becomes `AXON_STDLIB` for that folder's tests.
 - `src/native/Axon.Native.*.pas`: one unit per C library. Declarations are added in the milestone that first uses the library.
 - `lib/win64/`: shipped DLLs (OpenBLAS with its MinGW runtime, SUNDIALS CVODE). A post-build step in `axon.dproj` copies them next to `axon.exe`. See `lib/README.md` for where they came from.
+- `ide/`: the Axon IDE (FMX, Win64 and macOS ARM64), `AxonIDE.dproj`. It builds into `Win64\<Config>` next to `axon.exe` and runs programs as a separate `axon` process in the file's directory (`uProcessRunner`: pipes read on threads, UTF-8 decoded, delivered with `TThread.Queue`; Stop kills the process). The editor is `TSkiaCodeEditor` from `..\RhodyComponents\RhoEditor\Source`, referenced in place through the unit search path; `uAxonHighlighter` is its Axon tokenizer (nested `#= =#` comments carry their depth in the lex state). `uRunReport` parses error reports so trace lines become links and the error location gets a squiggle marker. `build.cmd` builds the IDE when that folder exists.
 - `tests/mNN/`: tests for milestone NN
 
 ## Conventions

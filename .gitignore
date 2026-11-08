@@ -21,6 +21,11 @@ __recovery/
 *.res
 *.tvsconfig
 
+# IDE build output (the exe itself goes next to axon, in /Win64/)
+/ide/Win64/
+/ide/OSXARM64/
+/ide/OSX64/
+
 # Native test library built by build.cmd
 /tests/m09/bin/
 

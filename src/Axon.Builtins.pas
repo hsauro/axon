@@ -125,6 +125,9 @@ begin
     S := S + Display(Args[I]);
   end;
   Writeln(S);
+  // Flushed at once, so a program's output appears as it runs when stdout
+  // is a pipe (the IDE), not only when the program ends.
+  Flush(Output);
   Result := NothingValue;
 end;
 
