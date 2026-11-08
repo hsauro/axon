@@ -52,6 +52,7 @@ Nov 7, 2026 · Herbert Sauro
   - [The linalg module](#the-linalg-module)
   - [The io module](#the-io-module)
   - [The time module](#the-time-module)
+  - [The random module](#the-random-module)
   - [The graphics module](#the-graphics-module)
   - [The ode module](#the-ode-module)
   - [The plot module](#the-plot-module)
@@ -285,7 +286,7 @@ Mixed arithmetic promotes along `bool` → `int` → `real` → `complex`. Nothi
 - **Concatenation.** Entries of a matrix literal may themselves be matrices, which are concatenated as blocks. Every row must have the same total width, and each block within a row the same height, or a `DimensionError` is raised.
 - **Empty matrix.** `[]` is a 0×0 `real` matrix.
 - **Vector literals.** A literal whose rows each hold exactly one entry, every entry a scalar, a vector or a range, is a vector made by stacking them: `[5]` is a vector of length 1 and `[v; 7]` appends 7 to the vector `v`. Any other literal is a matrix built by block concatenation, in which a vector or range counts as an n×1 block and an empty `[]` block is skipped. Entries must be numbers or `bool`s; anything else raises `TypeError`.
-- **Constructors.** `zeros(m, n)` and `ones(m, n)` give m×n `real` matrices, and `zeros(n)` and `ones(n)` give vectors of length n. `eye(n)` is the n×n identity and `eye(m, n)` its m×n form. `rand()`, `rand(n)` and `rand(m, n)` give uniform reals in [0, 1). `linspace(a, b, n)` gives a `real` vector of n points from a to b inclusive. A negative or non-integer size raises `ArgumentError`.
+- **Constructors.** `zeros(m, n)` and `ones(m, n)` give m×n `real` matrices, and `zeros(n)` and `ones(n)` give vectors of length n. `eye(n)` is the n×n identity and `eye(m, n)` its m×n form. `rand()`, `rand(n)` and `rand(m, n)` give uniform reals in [0, 1), from the generator of the random module, so `random.seed` makes them repeat. `linspace(a, b, n)` gives a `real` vector of n points from a to b inclusive. A negative or non-integer size raises `ArgumentError`.
 - **Size.** `size(A)` returns two values, the row and column counts, so it is used as `[m, n] = size(A)`; a vector has n rows and 1 column, and a scalar is 1×1. `size(A, 1)` and `size(A, 2)` return one count. `length(A)` is the total number of elements, which is also the value of `end` in a single (linear) index.
 - **Shape helpers.** `reshape(A, m, n)` returns an m×n matrix holding the elements of `A` in column-major order, and `reshape(A, n)` a vector; the element count must match, or `DimensionError` is raised. `eltype(A)` gives the element type of an array (`"bool"`, `"int"`, `"real"` or `"complex"`), or the type of a scalar number.
 - **Reductions.** `sum`, `prod`, `mean`, `min`, `max`, `all` and `any` on one array reduce over every element to a scalar. `sum(A, d)`, `prod(A, d)` and `mean(A, d)` reduce along dimension `d`: `mean(A, 1)` is the 1×n row of column means and `mean(A, 2)` the m×1 column of row means. `min(a, b)` and `max(a, b)` with two arguments work elementwise with broadcasting. `min` and `max` of an empty array raise `ArgumentError`; `all` of an empty array is `true` and `any` is `false`. `all` and `any` need `bool` elements.
@@ -625,6 +626,32 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 | `format(seconds)` | The time as text with three significant digits in the largest unit that keeps it at 1 or above: `"1.50 s"`, `"12.3 ms"`, `"45.6 µs"`, `"7.00 ns"`. Rounding happens before the unit is chosen, so `0.99996` gives `"1.00 s"`; zero gives `"0 s"` |
 
 `elapsed` and `bench` call `f` from the interpreter itself, so the timings include no loop overhead from Axon code. `f` may be any function value, including a built-in or a lambda: `time.bench(function() return A * A end)`. Report `best` when comparing implementations; it is the measurement least disturbed by other activity on the machine.
+
+### The random module
+
+`random` is a core module, written in the interpreter, for random numbers. Every function draws from one generator, xoshiro256**, which the prelude's `rand` shares. A program starts from a seed taken from the clock, so each run differs; `seed(n)` sets the state from an `int`, after which every draw, `rand` included, is the same in every run on every platform.
+
+Each distribution takes its parameters first, then an optional shape: no shape gives a scalar, `n` a vector of length n, and `m, n` an m×n matrix. There are no keyword arguments.
+
+| Function | Result |
+| --- | --- |
+| `seed(n)` | Seeds the generator with the `int` n and returns `nothing` |
+| `rand()`, `rand(n)`, `rand(m, n)` | Uniform reals in [0, 1), multiples of 2^-53 |
+| `randn()`, `randn(n)`, `randn(m, n)` | Standard normal reals (mean 0, standard deviation 1) |
+| `uniform(a, b)`, `uniform(a, b, n)`, `uniform(a, b, m, n)` | Uniform reals `a + (b - a)*u` with `u` from `rand`, so in [a, b) up to rounding; `a == b` gives `a` |
+| `normal(mu, sigma)`, `normal(mu, sigma, n)`, `normal(mu, sigma, m, n)` | Normal reals with mean `mu` and standard deviation `sigma`: `mu + sigma*z` with `z` from `randn` |
+| `randint(lo, hi)`, `randint(lo, hi, n)`, `randint(lo, hi, m, n)` | `int`s from `lo` to `hi` inclusive, each equally likely; arrays have element type `int` |
+
+```axon
+import random
+random.seed(1)
+x = random.normal(10.0, 2.0, 1000)     # 1000 samples
+println(mean(x))                        # close to 10
+dice = random.randint(1, 6, 5)          # five dice rolls
+```
+
+- **Arguments.** Bounds, `mu` and `sigma` may be `int` or `real` and must be finite, or `DomainError` is raised; other types raise `TypeError`. `randint` and `seed` need `int`s. `uniform` with `a > b`, `normal` with `sigma < 0` and `randint` with `lo > hi` raise `DomainError`. Sizes follow `zeros`: a negative or non-`int` size raises `ArgumentError`.
+- **Method.** The state is 256 bits, expanded from the seed with SplitMix64. A real takes the top 53 bits of a draw. Normal deviates come from Marsaglia's polar method, which makes them in pairs; the second is kept for the next call, and `seed` discards it. `randint` rejects the few draws that would favour some values. The generator is fast and statistically strong but not cryptographic.
 
 ### The graphics module
 

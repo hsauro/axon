@@ -1,0 +1,2 @@
+DomainError: normal needs a non-negative standard deviation, got -1.0
+  at err_random_sigma.sci:3:1

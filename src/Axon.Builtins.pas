@@ -33,7 +33,8 @@ implementation
 
 uses
   System.Math, System.Character,
-  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Arrays, Axon.Tokens, Axon.Ffi, Axon.Sparse;
+  Axon.Errors, Axon.Complex, Axon.Ops, Axon.Arrays, Axon.Tokens, Axon.Ffi, Axon.Sparse,
+  Axon.Random;
 
 type
   TRealFn = function(X: Double): Double;
@@ -595,14 +596,14 @@ var
   K: Integer;
 begin
   if Length(Args) = 0 then
-    Exit(RealValue(Random));
+    Exit(RealValue(RandomUniform));
   if Length(Args) = 1 then
     A := TArrayObj.Create(etReal, SizeArg('rand', Args[0]), 1, True)
   else
     A := TArrayObj.Create(etReal, SizeArg('rand', Args[0]), SizeArg('rand', Args[1]), False);
   Result := ArrayValue(A);
   for K := 0 to A.Count - 1 do
-    A.R[K] := Random;
+    A.R[K] := RandomUniform;
 end;
 
 function BLinspace(const Args: TAxValues): TAxValue;

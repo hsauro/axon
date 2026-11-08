@@ -29,6 +29,7 @@ uses
   Axon.NativeModules in 'src\Axon.NativeModules.pas',
   Axon.IoModule in 'src\Axon.IoModule.pas',
   Axon.TimeModule in 'src\Axon.TimeModule.pas',
+  Axon.Random in 'src\Axon.Random.pas',
   Axon.OdeCore in 'src\Axon.OdeCore.pas',
   Axon.Native.Cvode in 'src\native\Axon.Native.Cvode.pas',
   Axon.Graphics in 'src\Axon.Graphics.pas',

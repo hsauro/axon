@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..81] of TBuiltinDoc = (
+  BuiltinDocs: array[0..86] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -120,6 +120,12 @@ const
     (Name: 'elapsed'; Params: '(f, args...)'; Text: 'Seconds taken by one call f(args...)'),
     (Name: 'bench';   Params: '(f, args...)'; Text: 'Times repeated calls of f(args...): a record of per-call seconds best, mean and worst, with loops and runs'),
     (Name: 'format';  Params: '(seconds)'; Text: 'Seconds as text in a fitting unit, such as "12.3 ms"'),
+    // random (rand shares the prelude's row)
+    (Name: 'seed';    Params: '(n)'; Text: 'Seeds the random generator with an int, so later draws (rand included) repeat'),
+    (Name: 'randn';   Params: '(m, n)'; Text: 'Standard normal random numbers: a scalar, an n-vector or an m' + #$00D7 + 'n matrix'),
+    (Name: 'uniform'; Params: '(a, b, m, n)'; Text: 'Uniform random reals in [a, b): a scalar, or an n-vector or m' + #$00D7 + 'n matrix'),
+    (Name: 'normal';  Params: '(mu, sigma, m, n)'; Text: 'Normal random numbers with mean mu and standard deviation sigma: a scalar, an n-vector or an m' + #$00D7 + 'n matrix'),
+    (Name: 'randint'; Params: '(lo, hi, m, n)'; Text: 'Random ints from lo to hi inclusive, each equally likely: a scalar, an n-vector or an m' + #$00D7 + 'n matrix'),
     // graphics
     (Name: 'save';       Params: '(scene, path)'; Text: 'Renders a scene to a .png, .svg or .pdf file'),
     (Name: 'text_width'; Params: '(text, size, font)'; Text: 'The width of text in points, for layout'),
