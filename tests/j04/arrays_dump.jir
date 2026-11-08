@@ -1,0 +1,45 @@
+function get(v: vector{real}, i: int): real
+  %0 = len.int v, 0
+  bound i, %0  @2:12
+  %1 = load.real v, i
+  %2 = len.int v, 0
+  bound %2, %2  @2:19
+  %3 = load.real v, %2
+  %4 = add.real %1, %3
+  ret %4
+
+function put(A: matrix{real}, x: int): matrix{real}
+  %0 = i2r x
+  %1 = len.int A, 1
+  bound 2, %1  @6:5
+  %2 = len.int A, 2
+  bound %2, %2  @6:8
+  store.real A, 2, %2, %0
+  ret A
+
+function each(v: vector{int}): int
+  var s: int
+  var x: int
+  s = 0
+  %0 = v
+  %1 = len.int %0, 0
+  %2 = 0
+L0:
+  %3 = ge.int %2, %1
+  bt %3, L2
+  %4 = add.int %2, 1
+  x = load.int %0, %4
+  s = add.int s, x  @13:5
+L1:
+  %2 = add.int %2, 1
+  jmp L0
+L2:
+  clear %0
+  ret s
+
+function axpy(a: real, x: vector{real}, y: vector{real}): vector{real}
+  %0 = op.vector{real} *(a, x)  @19:3
+  %1 = op.vector{real} +(%0, y)  @19:3
+  ret %1
+
+function plain: not compiled: parameter v: type vector needs its element type to compile, as vector{real} (22:16)

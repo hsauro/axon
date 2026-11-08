@@ -1,7 +1,7 @@
 ## A naive triple-loop matrix product, against BLAS through *.
 import time
 
-function matmul(A: matrix, B: matrix): matrix
+function matmul(A: matrix{real}, B: matrix{real}): matrix{real}
   n = size(A, 1)
   m = size(B, 2)
   p = size(A, 2)

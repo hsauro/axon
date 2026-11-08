@@ -39,10 +39,19 @@ unit Axon.Jit.Lower;
      is known before the recursive call (declared, or fixed by an earlier
      return); mutual recursion goes through the interpreter in one direction.
 
-   Not compiled yet, and rejected: arrays, indexing and fields (J4), strings
-   other than print and error arguments, complex numbers, ranges as values,
-   lambdas and nested functions, try, global, keyword arguments, and
-   unannotated parameters (J6).
+   - Arrays (J4): vector{real}, vector{int} and matrix{real}, with the
+     element type declared (plain vector or matrix could hold anything).
+     Elements are read and written with scalar int indices and `end`, each
+     index checked as soon as it is evaluated, as the interpreter does; a
+     write never widens the array. length and size are inline; zeros, ones,
+     sum and print take arrays through the interpreter's own routines, and
+     so do +, -, *, / and the dotted operators on real arrays, for the
+     shapes in LowerArrayOp. for x in v visits the elements of an array.
+
+   Not compiled yet, and rejected: ranges, masks and colons as indices,
+   fields, strings other than print and error arguments, complex numbers,
+   ranges as values, lambdas and nested functions, try, global, keyword
+   arguments, and unannotated parameters (J6).
 
    A TJSession lowers functions on demand and keeps the results, so a call
    can ask for its callee's types; the JIT keeps one session for the
@@ -149,6 +158,7 @@ type
     Entry: TJEntry;
     Context: TObject;
     LastCallRaises: Boolean;            // the last call lowered was error(...)
+    EndStack: TList<TJValue>;           // the value of `end` in the index being lowered
     Vars: TObjectList<TJVar>;
     Scopes: TObjectList<TScopeMap>;     // [0] is the function's outermost scope
     Assigned: TArray<Boolean>;           // by TJVar.Id: definitely assigned here
@@ -188,6 +198,14 @@ type
     function LowerFunctionCall(E: TCallExpr; const R: TJResolved; var Args: TArray<TJValue>;
       T: TJCallTarget; Want: Integer): TArray<TJType>;
     procedure AssignName(const Name: string; const Val: TJValue; N: TNode);
+    function ArrayLen(const A: TJValue; Dim: Integer): TJValue;
+    function LowerIndexItem(Item: TExpr; const Len: TJValue): TJValue;
+    function LowerIndex(E: TIndexExpr): TJValue;
+    procedure LowerIndexAssign(S: TAssignStmt);
+    function LowerArrayOp(E: TExpr; Op: TTokenKind; const L, R: TJValue; Unary: Boolean): TJValue;
+    function TryInlineBuiltin(E: TCallExpr; const Name: string; const Args: TArray<TJValue>;
+      Want: Integer; out Vals: TArray<TJValue>): Boolean;
+    procedure LowerForEach(S: TForStmt);
     procedure LowerDestructure(S: TDestructureStmt);
     // statements
     procedure LowerBody(Body: TStmtList; NewScope: Boolean);
@@ -211,6 +229,12 @@ begin
   Result := T in [jtBool, jtInt, jtReal];
 end;
 
+{ A type a variable, parameter or result can have. }
+function Storable(T: TJType): Boolean;
+begin
+  Result := Numeric(T) or IsArrayType(T);
+end;
+
 function Rank(T: TJType): Integer;
 begin
   case T of
@@ -225,13 +249,28 @@ end;
 { The JIR type of an annotation, if it is one that compiles. }
 function TypeOfRef(T: TTypeRef; out JT: TJType): Boolean;
 begin
-  Result := T.Param = nil;
-  if not Result then
+  Result := True;
+  if T.Param <> nil then
+  begin
+    if (T.Name = 'vector') and (T.Param.Param = nil) and (T.Param.Name = 'real') then JT := jtVecReal
+    else if (T.Name = 'vector') and (T.Param.Param = nil) and (T.Param.Name = 'int') then JT := jtVecInt
+    else if (T.Name = 'matrix') and (T.Param.Param = nil) and (T.Param.Name = 'real') then JT := jtMatReal
+    else Result := False;
     Exit;
+  end;
   if T.Name = 'bool' then JT := jtBool
   else if T.Name = 'int' then JT := jtInt
   else if T.Name = 'real' then JT := jtReal
   else Result := False;
+end;
+
+{ Why an annotation does not compile, for messages. }
+function TypeHint(T: TTypeRef): string;
+begin
+  if (T.Param = nil) and ((T.Name = 'vector') or (T.Name = 'matrix')) then
+    Result := Format('type %s needs its element type to compile, as %s{real}', [T.Name, T.Name])
+  else
+    Result := Format('type %s is not compiled yet', [T.ToString]);
 end;
 
 function MakeValue(Typ: TJType; const Opnd: TJOperand): TJValue;
@@ -265,6 +304,7 @@ begin
   Session := ASession;
   Entry := AEntry;
   Context := AContext;
+  EndStack := TList<TJValue>.Create;
   Vars := TObjectList<TJVar>.Create(True);
   Scopes := TObjectList<TScopeMap>.Create(True);
   Loops := TList<TLoop>.Create;
@@ -272,6 +312,7 @@ end;
 
 destructor TLowerer.Destroy;
 begin
+  EndStack.Free;
   Loops.Free;
   Scopes.Free;
   Vars.Free;
@@ -410,7 +451,7 @@ function TLowerer.Coerce(const Val: TJValue; Target: TJType; const What: string;
 begin
   if (Val.Typ = Target) then
     Exit(Val);
-  if not Numeric(Val.Typ) or (Rank(Val.Typ) > Rank(Target)) then
+  if not Numeric(Val.Typ) or not Numeric(Target) or (Rank(Val.Typ) > Rank(Target)) then
     Reject(What + ', a TypeError', N);
   Result := Convert(Val, Target);
 end;
@@ -453,7 +494,13 @@ begin
     if C = TCallExpr then
       Result := LowerCall(TCallExpr(E), 1)[0]
     else if C = TIndexExpr then
-      Reject('indexing is not compiled yet', E)
+      Result := LowerIndex(TIndexExpr(E))
+    else if C = TEndExpr then
+    begin
+      if EndStack.Count = 0 then
+        Reject('end outside an index', E);
+      Result := EndStack.Last;
+    end
     else if C = TFieldExpr then
       Reject('field access is not compiled yet', E)
     else if (C = TMatrixExpr) or (C = TListExpr) or (C = TRecordExpr) then
@@ -504,6 +551,8 @@ begin
       end;
     tkMinus:
       begin
+        if A.Typ in [jtVecReal, jtMatReal] then
+          Exit(LowerArrayOp(E, tkMinus, A, A, True));
         if not Numeric(A.Typ) then
           Reject('unary - on %s, a TypeError', [JTypeName(A.Typ)], E);
         if A.Typ = jtBool then
@@ -623,6 +672,8 @@ var
   Op: TJOp;
   Dst, S: Integer;
 begin
+  if IsArrayType(L.Typ) or IsArrayType(R.Typ) then
+    Exit(LowerArrayOp(E, E.Op, L, R, False));
   if not Numeric(L.Typ) or not Numeric(R.Typ) then
     Reject('operator %s on %s and %s, a TypeError',
       [TokenSpelling[E.Op], JTypeName(L.Typ), JTypeName(R.Typ)], E);
@@ -736,6 +787,9 @@ begin
       Args[K] := LowerExpr(E.Args[K].Value);
   end;
 
+  if (R.Kind = rkBuiltin) and TryInlineBuiltin(E, R.Name, Args, Want, Result) then
+    Exit;
+
   T := TJCallTarget.Create;
   F.Targets.Add(T);
   T.Name := Name;
@@ -814,9 +868,27 @@ begin
   if Name = 'print' then
   begin
     for A in Args do
-      if not (Numeric(A.Typ) or (A.Typ = jtString)) then
+      if not (Storable(A.Typ) or (A.Typ = jtString)) then
         Reject('prints %s, which is not compiled', [JTypeName(A.Typ)], E);
     Result := [];
+  end
+  else if (Name = 'zeros') or (Name = 'ones') then
+  begin
+    NeedNumbers;
+    if N = 1 then
+      Result := [jtVecReal]
+    else
+    begin
+      NeedArgs(2);
+      Result := [jtMatReal];
+    end;
+  end
+  else if Name = 'sum' then
+  begin
+    NeedArgs(1);
+    if not IsArrayType(Args[0].Typ) then
+      Reject('sum of %s is not compiled', [JTypeName(Args[0].Typ)], E);
+    Result := [ElemOf(Args[0].Typ)];
   end
   else if Name = 'error' then
   begin
@@ -948,7 +1020,7 @@ begin
   // Through the interpreter: the result type must be declared, or unused.
   T.Kind := ckInterp;
   for K := 0 to High(Args) do
-    if not Numeric(Args[K].Typ) then
+    if not Storable(Args[K].Typ) then
       Reject('passes %s to %s, which is not compiled', [JTypeName(Args[K].Typ), R.Decl.Name], E);
   if (R.Decl.ReturnType <> nil) and TypeOfRef(R.Decl.ReturnType, RT) then
     Result := [RT]
@@ -957,6 +1029,241 @@ begin
   else
     Reject('calls %s, which is not compiled (%s), and whose result type is not declared',
       [R.Decl.Name, Why], E);
+end;
+
+{ ---- arrays ---- }
+
+{ The element count (Dim 0), rows (1) or columns (2) of an array. }
+function TLowerer.ArrayLen(const A: TJValue; Dim: Integer): TJValue;
+var
+  R: Integer;
+begin
+  R := Temp(jtInt);
+  F.Emit(joLen, jtInt, R, [A.Opnd, IntOperand(Dim)]);
+  Result := MakeValue(jtInt, RegOperand(R));
+end;
+
+{ One index: an int, with `end` the length of its dimension, checked at once
+  (EvalIndexItem resolves each index before the next is evaluated). }
+function TLowerer.LowerIndexItem(Item: TExpr; const Len: TJValue): TJValue;
+begin
+  if Item is TColonExpr then
+    Reject('a colon index is not compiled yet', Item);
+  if Item is TRangeExpr then
+    Reject('a range index is not compiled yet', Item);
+  EndStack.Add(Len);
+  try
+    Result := LowerExpr(Item);
+  finally
+    EndStack.Delete(EndStack.Count - 1);
+  end;
+  if Result.Typ <> jtInt then
+    Reject('an index of type %s is not compiled (only int)', [JTypeName(Result.Typ)], Item);
+  F.Emit(joBound, jtInt, -1, [Result.Opnd, Len.Opnd], F.AddSite(Item.Line, Item.Col));
+end;
+
+{ v[i], A[k] (linear) or A[i, j]. }
+function TLowerer.LowerIndex(E: TIndexExpr): TJValue;
+var
+  A, I, J: TJValue;
+  Dst: Integer;
+begin
+  A := LowerExpr(E.Target);
+  if not IsArrayType(A.Typ) then
+    Reject('indexing %s is not compiled', [JTypeName(A.Typ)], E);
+  Dst := Temp(ElemOf(A.Typ));
+  if E.Items.Count = 1 then
+  begin
+    I := LowerIndexItem(E.Items[0], ArrayLen(A, 0));
+    F.Emit(joLoad, ElemOf(A.Typ), Dst, [A.Opnd, I.Opnd]);
+  end
+  else if (E.Items.Count = 2) and (A.Typ = jtMatReal) then
+  begin
+    I := LowerIndexItem(E.Items[0], ArrayLen(A, 1));
+    J := LowerIndexItem(E.Items[1], ArrayLen(A, 2));
+    F.Emit(joLoad, ElemOf(A.Typ), Dst, [A.Opnd, I.Opnd, J.Opnd]);
+  end
+  else
+    Reject('%s with %d indices, an IndexError', [JTypeName(A.Typ), E.Items.Count], E);
+  Result := MakeValue(ElemOf(A.Typ), RegOperand(Dst));
+end;
+
+{ v[i] = x: the value first, then the indices, then the write, which never
+  widens the array. }
+procedure TLowerer.LowerIndexAssign(S: TAssignStmt);
+var
+  T: TIndexExpr;
+  Val, A, I, J: TJValue;
+  V: TJVar;
+  Elem: TJType;
+begin
+  T := TIndexExpr(S.Target);
+  Val := LowerExpr(S.Value);
+  if not (T.Target is TNameExpr) then
+    Reject('assignment into a nested element or field is not compiled yet', S);
+  V := Lookup(TNameExpr(T.Target).Name);
+  if (V = nil) or not IsAssigned(V) then
+    Reject('assigns an element of %s, which is not a local array here', [TNameExpr(T.Target).Name], S);
+  if not IsArrayType(V.Typ) then
+    Reject('assigns an element of %s, which is %s', [V.Name, JTypeName(V.Typ)], S);
+  Elem := ElemOf(V.Typ);
+  if not Numeric(Val.Typ) or (Rank(Val.Typ) > Rank(Elem)) then
+    Reject('stores %s in %s, which would change its element type', [JTypeName(Val.Typ),
+      JTypeName(V.Typ)], S);
+  Val := Convert(Val, Elem);
+  A := MakeValue(V.Typ, RegOperand(V.Reg));
+  if T.Items.Count = 1 then
+  begin
+    I := LowerIndexItem(T.Items[0], ArrayLen(A, 0));
+    F.Emit(joStore, Elem, -1, [A.Opnd, I.Opnd, Val.Opnd]);
+  end
+  else if (T.Items.Count = 2) and (V.Typ = jtMatReal) then
+  begin
+    I := LowerIndexItem(T.Items[0], ArrayLen(A, 1));
+    J := LowerIndexItem(T.Items[1], ArrayLen(A, 2));
+    F.Emit(joStore, Elem, -1, [A.Opnd, I.Opnd, J.Opnd, Val.Opnd]);
+  end
+  else
+    Reject('%s with %d indices, an IndexError', [JTypeName(V.Typ), T.Items.Count], S);
+end;
+
+{ Operators on real arrays, computed by Axon.Ops as the interpreter does.
+  The shapes that compile, and their result types:
+    array op array (same type), op in + - .* ./
+    array op number, number op array, op in + - * .* ./ (and / with the
+      number on the right)
+    matrix * matrix, matrix * vector
+    -array }
+function TLowerer.LowerArrayOp(E: TExpr; Op: TTokenKind; const L, R: TJValue; Unary: Boolean): TJValue;
+var
+  Res: TJType;
+  Ok: Boolean;
+  Dst: Integer;
+  Tok: TJOperand;
+begin
+  Ok := False;
+  Res := jtNothing;
+  if Unary then
+  begin
+    Ok := L.Typ in [jtVecReal, jtMatReal];
+    Res := L.Typ;
+  end
+  else if (L.Typ in [jtVecReal, jtMatReal]) and (L.Typ = R.Typ) and
+    (Op in [tkPlus, tkMinus, tkDotStar, tkDotSlash]) then
+  begin
+    Ok := True;
+    Res := L.Typ;
+  end
+  else if (L.Typ in [jtVecReal, jtMatReal]) and Numeric(R.Typ) and
+    (Op in [tkPlus, tkMinus, tkStar, tkSlash, tkDotStar, tkDotSlash]) then
+  begin
+    Ok := True;
+    Res := L.Typ;
+  end
+  else if Numeric(L.Typ) and (R.Typ in [jtVecReal, jtMatReal]) and
+    (Op in [tkPlus, tkMinus, tkStar, tkDotStar, tkDotSlash]) then
+  begin
+    Ok := True;
+    Res := R.Typ;
+  end
+  else if (L.Typ = jtMatReal) and (Op = tkStar) and (R.Typ in [jtMatReal, jtVecReal]) then
+  begin
+    Ok := True;
+    Res := R.Typ;
+  end;
+  if not Ok then
+    Reject('operator %s on %s and %s is not compiled', [TokenSpelling[Op], JTypeName(L.Typ),
+      JTypeName(R.Typ)], E);
+  Dst := Temp(Res);
+  Tok := StringOperand(TokenSpelling[Op]);
+  Tok.I := Ord(Op);
+  if Unary then
+    F.Emit(joOp, Res, Dst, [L.Opnd, Tok], Site)
+  else
+    F.Emit(joOp, Res, Dst, [L.Opnd, Tok, R.Opnd], Site);
+  Result := MakeValue(Res, RegOperand(Dst));
+end;
+
+{ length(a), size(a, 1), size(a, 2) and [m, n] = size(a), from the array's
+  shape (a vector is n×1). False when the call is not one of these. }
+function TLowerer.TryInlineBuiltin(E: TCallExpr; const Name: string; const Args: TArray<TJValue>;
+  Want: Integer; out Vals: TArray<TJValue>): Boolean;
+var
+  D: Int64;
+begin
+  Result := False;
+  if (Length(Args) = 0) or not IsArrayType(Args[0].Typ) then
+    Exit;
+  if (Name = 'length') and (Length(Args) = 1) then
+    Vals := [ArrayLen(Args[0], 0)]
+  else if (Name = 'size') and (Length(Args) = 1) then
+    Vals := [ArrayLen(Args[0], 1), ArrayLen(Args[0], 2)]
+  else if (Name = 'size') and (Length(Args) = 2) and (Args[1].Opnd.Kind = jkInt) then
+  begin
+    D := Args[1].Opnd.I;
+    if (D <> 1) and (D <> 2) then
+      Exit;
+    Vals := [ArrayLen(Args[0], D)];
+  end
+  else
+    Exit;
+  if (Want >= 0) and (Length(Vals) <> Want) then
+    Reject('uses %s, which returns %d values, where %d are wanted', [Name, Length(Vals), Want], E);
+  Result := True;
+end;
+
+{ for x in a: the elements of an array, in column-major order. The array is
+  held in a hidden register for the loop, as the interpreter holds the value
+  it iterates, so writes to the variable in the body copy it. }
+procedure TLowerer.LowerForEach(S: TForStmt);
+var
+  A, N: TJValue;
+  Hidden, K, K1, Cmp, LHead, LCont, LExit: Integer;
+  V: TJVar;
+  Before: TArray<Boolean>;
+  Lp: TLoop;
+  Elem: TJType;
+begin
+  A := LowerExpr(S.Iter);
+  if not IsArrayType(A.Typ) then
+    Reject('for over %s is not compiled', [JTypeName(A.Typ)], S);
+  Elem := ElemOf(A.Typ);
+  Hidden := Temp(A.Typ);
+  F.Emit(joMov, A.Typ, Hidden, [A.Opnd]);
+  A := MakeValue(A.Typ, RegOperand(Hidden));
+  N := ArrayLen(A, 0);
+  K := Temp(jtInt);
+  F.Emit(joMov, jtInt, K, [IntOperand(0)]);
+  LHead := F.NewLabel;
+  LCont := F.NewLabel;
+  LExit := F.NewLabel;
+  F.PlaceLabel(LHead);
+  Cmp := Temp(jtBool);
+  F.Emit(joGe, jtInt, Cmp, [RegOperand(K), N.Opnd]);
+  F.Emit(joBrTrue, jtNothing, -1, [RegOperand(Cmp), LabelOperand(LExit)]);
+
+  Before := Copy(Assigned);
+  Scopes.Add(TScopeMap.Create);
+  V := NewVar(S.VarName, Elem, False, S, Scopes.Count - 1);
+  MarkAssigned(V);
+  K1 := Temp(jtInt);
+  F.Emit(joAdd, jtInt, K1, [RegOperand(K), IntOperand(1)]);    // k < n: cannot overflow
+  F.Emit(joLoad, Elem, V.Reg, [A.Opnd, RegOperand(K1)]);
+  Lp.ContinueLabel := LCont;
+  Lp.BreakLabel := LExit;
+  Lp.Breaks := 0;
+  Loops.Add(Lp);
+  LowerBody(S.Body, False);
+  Loops.Delete(Loops.Count - 1);
+  Scopes.Delete(Scopes.Count - 1);
+
+  F.PlaceLabel(LCont);
+  F.Emit(joAdd, jtInt, K, [RegOperand(K), IntOperand(1)]);
+  F.Emit(joJmp, jtNothing, -1, [LabelOperand(LHead)]);
+  F.PlaceLabel(LExit);
+  F.Emit(joClear, jtNothing, -1, [A.Opnd]);
+  Assigned := Before;
+  Reachable := True;
 end;
 
 { ---- statements ---- }
@@ -1077,13 +1384,15 @@ var
   V: TJVar;
   T: TJType;
 begin
-  if not (S.Target is TNameExpr) then
+  if S.Target is TIndexExpr then
   begin
-    if S.Target is TIndexExpr then
-      Reject('assignment to an element is not compiled yet', S)
-    else
-      Reject('assignment to a field is not compiled yet', S);
+    if S.TypeRef <> nil then
+      Reject('only a plain variable can carry a type annotation, a TypeError', S);
+    LowerIndexAssign(S);
+    Exit;
   end;
+  if not (S.Target is TNameExpr) then
+    Reject('assignment to a field is not compiled yet', S);
   Name := TNameExpr(S.Target).Name;
   // The value is evaluated before the target is resolved.
   Val := LowerExpr(S.Value);
@@ -1091,7 +1400,7 @@ begin
   begin
     // x: T = e declares x in the current scope.
     if not TypeOfRef(S.TypeRef, T) then
-      Reject('variable %s: type %s is not compiled yet', [Name, S.TypeRef.ToString], S);
+      Reject('variable %s: %s', [Name, TypeHint(S.TypeRef)], S);
     if Scopes.Last.TryGetValue(Name, V) and V.Declared and (V.Typ = T) then
       // the same declaration again: the same variable
     else if (Scopes.Count = 1) and Scopes.Last.ContainsKey(Name) then
@@ -1149,12 +1458,12 @@ begin
   if S.TypeRef <> nil then
   begin
     if not TypeOfRef(S.TypeRef, T) then
-      Reject('variable %s: type %s is not compiled yet', [S.Name, S.TypeRef.ToString], S);
+      Reject('variable %s: %s', [S.Name, TypeHint(S.TypeRef)], S);
     V := NewVar(S.Name, T, True, S, Scopes.Count - 1);
   end
   else
   begin
-    if not Numeric(Val.Typ) then
+    if not Storable(Val.Typ) then
       Reject('local %s holds %s, which is not compiled', [S.Name, JTypeName(Val.Typ)], S);
     V := NewVar(S.Name, Val.Typ, False, S, Scopes.Count - 1);
   end;
@@ -1223,7 +1532,7 @@ begin
   for K := 0 to S.Values.Count - 1 do
   begin
     Vals[K] := LowerExpr(S.Values[K]);
-    if not Numeric(Vals[K].Typ) then
+    if not Storable(Vals[K].Typ) then
       Reject('returns %s, which is not compiled', [JTypeName(Vals[K].Typ)], S);
   end;
   EmitReturn(Vals, S);
@@ -1333,7 +1642,10 @@ var
   Lp: TLoop;
 begin
   if not (S.Iter is TRangeExpr) then
-    Reject('for over anything but a range written in the loop header is not compiled yet', S);
+  begin
+    LowerForEach(S);
+    Exit;
+  end;
   R := TRangeExpr(S.Iter);
   A := LowerExpr(R.Start);
   if R.Step <> nil then
@@ -1394,7 +1706,7 @@ begin
     if P.TypeRef = nil then
       Reject('parameter %s has no type annotation', [P.Name], P);
     if not TypeOfRef(P.TypeRef, T) then
-      Reject('parameter %s: type %s is not compiled yet', [P.Name, P.TypeRef.ToString], P);
+      Reject('parameter %s: %s', [P.Name, TypeHint(P.TypeRef)], P);
     V := NewVar(P.Name, T, True, P, 0, True);
     MarkAssigned(V);
     F.Params.Add(V.Reg);
@@ -1402,7 +1714,7 @@ begin
   if Decl.ReturnType <> nil then
   begin
     if not TypeOfRef(Decl.ReturnType, T) then
-      Reject('result type %s is not compiled yet', [Decl.ReturnType.ToString], Decl.ReturnType);
+      Reject('result: %s', [TypeHint(Decl.ReturnType)], Decl.ReturnType);
     F.ResultTypes.Add(T);
     ReturnDeclared := True;
     ReturnFixed := True;

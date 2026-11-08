@@ -27,7 +27,18 @@ unit Axon.Jit.Mir;
    - Elementary built-in with a real argument: the interpreter's own routine
      (Axon.Builtins), called directly.
    - Anything else (other built-ins, print, error, functions that run
-     interpreted): rt_call, with the arguments in 8-byte slots. *)
+     interpreted): rt_call, with the arguments in 8-byte slots.
+
+   Arrays (J4): each array register is a TAxValue slot in a frame the
+   function allocates (alloca, zeroed) and releases at its single exit
+   (rt_leave), on every path, errors included. Array arguments and results
+   are passed as slot addresses; a body takes its own reference to each
+   array parameter, as Invoke's parameter cell does, so reference counts,
+   and with them every copy-on-write decision and the __copies() count, are
+   the interpreter's. Elements are read and written inline from the
+   TArrayObj's fields (offsets measured at start-up); a write first checks
+   the reference count and copies through rt_make_unique when the array is
+   shared. Operators on arrays go to Axon.Ops through rt_call. *)
 
 interface
 
@@ -51,6 +62,30 @@ uses
 
 var
   Ctx: TMirContext;
+  // Layout of values and arrays, measured in ComputeLayout.
+  LSlotSize, LObjOff, LIntfDelta, LRowsOff, LColsOff, LROff, LIOff, LRcOff: NativeInt;
+
+type
+  TRefCountAccess = class(TInterfacedObject);   // reaches the protected FRefCount
+
+procedure ComputeLayout;
+var
+  A: TArrayObj;
+  I: IInterface;
+  V: TAxValue;
+begin
+  A := TArrayObj.Create(etReal, 1, 1, True);
+  I := A;
+  LIntfDelta := NativeInt(Pointer(A)) - NativeInt(Pointer(I));
+  LRowsOff := NativeInt(@A.Rows) - NativeInt(Pointer(A));
+  LColsOff := NativeInt(@A.Cols) - NativeInt(Pointer(A));
+  LROff := NativeInt(@A.R) - NativeInt(Pointer(A));
+  LIOff := NativeInt(@A.I) - NativeInt(Pointer(A));
+  LRcOff := NativeInt(@TRefCountAccess(A).FRefCount) - NativeInt(Pointer(A));
+  LObjOff := NativeInt(@V.Obj) - NativeInt(@V);
+  LSlotSize := SizeOf(TAxValue);
+  I := nil;
+end;
 
 { MIR found invalid IR: a bug in the JIT. MIR expects this not to return. }
 procedure MirFailed(ErrorType: Int32; Message: PAnsiChar); cdecl;
@@ -73,6 +108,7 @@ begin
     Exit;
   axmir_set_error_handler(MirFailed);
   Ctx := axmir_init(2);
+  ComputeLayout;
   H := JitHelpers;
   MIR_load_external(Ctx, 'rt_error', H.Error);
   MIR_load_external(Ctx, 'rt_count_int', H.CountInt);
@@ -81,6 +117,12 @@ begin
   MIR_load_external(Ctx, 'rt_call', H.Call);
   MIR_load_external(Ctx, 'rt_frame', H.Frame);
   MIR_load_external(Ctx, 'rt_recursion', H.Recursion);
+  MIR_load_external(Ctx, 'rt_assign', H.Assign);
+  MIR_load_external(Ctx, 'rt_move', H.Move);
+  MIR_load_external(Ctx, 'rt_clear', H.Clear);
+  MIR_load_external(Ctx, 'rt_make_unique', H.MakeUnique);
+  MIR_load_external(Ctx, 'rt_leave', H.Leave);
+  MIR_load_external(Ctx, 'rt_index_error', H.IndexError);
   for N in ElementaryNames do
     MIR_load_external(Ctx, PAnsiChar(AnsiString('rt_' + N)), ElementaryRealFunction(N));
 end;
@@ -124,6 +166,23 @@ type
     ErrProto, ErrImport, CountIntProto, CountIntImport,
     CountRealProto, CountRealImport, PowProto, PowImport,
     CallProto, CallImport, FrameProto, FrameImport, RecProto, RecImport, D1Proto: TMirItem;
+    PtrProto, PtrPtrProto, AssignImport, MoveImport, ClearImport, UniqueImport,
+    LeaveProto, LeaveImport, IndexErrProto, IndexErrImport: TMirItem;
+    // Arrays: the frame of value slots, and the single exit that releases it.
+    SlotOf: TArray<Integer>;          // per JIR register: its slot, or -1
+    NSlots, JunkSlot: Integer;
+    FrameReg, StatusReg: TMirReg;
+    ExitLabel: TMirInsn;
+    function SlotAddr(Slot: Integer): TMirReg;
+    function ObjOf(R: Integer): TMirReg;
+    procedure RetFail;
+    procedure GenArrayMov(I: TJInsn);
+    procedure GenLen(I: TJInsn);
+    procedure GenBound(I: TJInsn);
+    procedure GenElem(I: TJInsn; IsStore: Boolean);
+    procedure GenOp(I: TJInsn);
+    procedure SetupResultDests(I: TJInsn; const ResultTypes: TArray<TJType>);
+    procedure ClearJunk(I: TJInsn; const ResultTypes: TArray<TJType>);
     function C(const Name: AnsiString): Int32;
     procedure E(const Name: AnsiString; const Ops: array of TAxMirOp);
     function Opnd(const O: TJOperand): TAxMirOp;
@@ -214,7 +273,11 @@ end;
 function TGen.Opnd(const O: TJOperand): TAxMirOp;
 begin
   case O.Kind of
-    jkReg:  Result := RegOp(Regs[O.Reg]);
+    jkReg:
+      if SlotOf[O.Reg] >= 0 then
+        Result := RegOp(SlotAddr(SlotOf[O.Reg]))     // an array: its slot's address
+      else
+        Result := RegOp(Regs[O.Reg]);
     jkInt:  Result := IntOp(O.I);
     jkReal: Result := DoubleOp(O.R);
     jkBool: Result := IntOp(Ord(O.B));
@@ -302,6 +365,233 @@ begin
   end;
 end;
 
+{ ---- arrays ---- }
+
+function TGen.SlotAddr(Slot: Integer): TMirReg;
+begin
+  Result := Scratch(MIR_T_I64);
+  E('add', [RegOp(Result), RegOp(FrameReg), IntOp(Slot * LSlotSize)]);
+end;
+
+{ The TArrayObj held by an array register's slot. }
+function TGen.ObjOf(R: Integer): TMirReg;
+begin
+  Result := Scratch(MIR_T_I64);
+  E('mov', [RegOp(Result), MemOp(MIR_T_I64, SlotOf[R] * LSlotSize + LObjOff, FrameReg)]);
+  E('add', [RegOp(Result), RegOp(Result), IntOp(LIntfDelta)]);
+end;
+
+{ Returns failure, through the exit that releases the frame. }
+procedure TGen.RetFail;
+begin
+  if NSlots > 0 then
+  begin
+    E('mov', [RegOp(StatusReg), IntOp(1)]);
+    E('jmp', [LabelOp(ExitLabel)]);
+  end
+  else
+    E('ret', [IntOp(1)]);
+end;
+
+{ An array register := another: a temporary's reference moves, a
+  variable's is shared. }
+procedure TGen.GenArrayMov(I: TJInsn);
+var
+  Src: Integer;
+begin
+  Src := I.Ops[0].Reg;
+  if J.Regs[Src].Name = '' then
+    E('call', [RefOp(PtrPtrProto), RefOp(MoveImport), RegOp(SlotAddr(SlotOf[I.Dst])),
+      RegOp(SlotAddr(SlotOf[Src]))])
+  else
+    E('call', [RefOp(PtrPtrProto), RefOp(AssignImport), RegOp(SlotAddr(SlotOf[I.Dst])),
+      RegOp(SlotAddr(SlotOf[Src]))]);
+end;
+
+procedure TGen.GenLen(I: TJInsn);
+var
+  Obj, T: TMirReg;
+begin
+  Obj := ObjOf(I.Ops[0].Reg);
+  case I.Ops[1].I of
+    1: E('mov', [Reg(I.Dst), MemOp(MIR_T_I32, LRowsOff, Obj)]);
+    2: E('mov', [Reg(I.Dst), MemOp(MIR_T_I32, LColsOff, Obj)]);
+  else
+    begin
+      T := Scratch(MIR_T_I64);
+      E('mov', [Reg(I.Dst), MemOp(MIR_T_I32, LRowsOff, Obj)]);
+      E('mov', [RegOp(T), MemOp(MIR_T_I32, LColsOff, Obj)]);
+      E('mul', [Reg(I.Dst), Reg(I.Dst), RegOp(T)]);
+    end;
+  end;
+end;
+
+{ IndexError unless 1 <= index <= len, reported at the index. }
+procedure TGen.GenBound(I: TJInsn);
+var
+  Idx, Len: TMirReg;
+  LErr: TMirInsn;
+  Site: Integer;
+begin
+  Idx := Scratch(MIR_T_I64);
+  Len := Scratch(MIR_T_I64);
+  E('mov', [RegOp(Idx), Opnd(I.Ops[0])]);
+  E('mov', [RegOp(Len), Opnd(I.Ops[1])]);
+  LErr := MIR_new_label(Ctx);
+  E('blt', [LabelOp(LErr), RegOp(Idx), IntOp(1)]);
+  E('bgt', [LabelOp(LErr), RegOp(Idx), RegOp(Len)]);
+  Site := I.Site;
+  Deferred.Add(
+    procedure
+    begin
+      MIR_append_insn(Ctx, Body, LErr);
+      E('call', [RefOp(IndexErrProto), RefOp(IndexErrImport), IntOp(Fid), IntOp(Site),
+        RegOp(Idx), RegOp(Len)]);
+      RetFail;
+    end);
+end;
+
+{ v[i], A[k] or A[i, j], read or written. The indices are already checked.
+  A write first makes the array unique (copy-on-write). }
+procedure TGen.GenElem(I: TJInsn; IsStore: Boolean);
+var
+  Arr, NIdx: Integer;
+  Obj, Data, Pos, Rows, Rc: TMirReg;
+  LShared, LReady: TMirInsn;
+  Typ: Int32;
+  Off: NativeInt;
+  Elem: TAxMirOp;
+begin
+  Arr := I.Ops[0].Reg;
+  if IsStore then
+    NIdx := Length(I.Ops) - 2
+  else
+    NIdx := Length(I.Ops) - 1;
+  if IsStore then
+  begin
+    // Copy-on-write, as AssignArraySlot: only when another value shares it.
+    LShared := MIR_new_label(Ctx);
+    LReady := MIR_new_label(Ctx);
+    Obj := ObjOf(Arr);
+    Rc := Scratch(MIR_T_I64);
+    E('mov', [RegOp(Rc), MemOp(MIR_T_I32, LRcOff, Obj)]);
+    E('bgt', [LabelOp(LShared), RegOp(Rc), IntOp(1)]);
+    MIR_append_insn(Ctx, Body, LReady);
+    Deferred.Add(
+      procedure
+      begin
+        MIR_append_insn(Ctx, Body, LShared);
+        E('call', [RefOp(PtrProto), RefOp(UniqueImport), RegOp(SlotAddr(SlotOf[Arr]))]);
+        E('jmp', [LabelOp(LReady)]);
+      end);
+  end;
+  Obj := ObjOf(Arr);
+  if I.Typ = jtReal then
+  begin
+    Typ := MIR_T_D;
+    Off := LROff;
+  end
+  else
+  begin
+    Typ := MIR_T_I64;
+    Off := LIOff;
+  end;
+  Data := Scratch(MIR_T_I64);
+  E('mov', [RegOp(Data), MemOp(MIR_T_I64, Off, Obj)]);
+  Pos := Scratch(MIR_T_I64);
+  if NIdx = 1 then
+    E('mov', [RegOp(Pos), Opnd(I.Ops[1])])
+  else
+  begin
+    // (j - 1)*rows + i, column-major
+    Rows := Scratch(MIR_T_I64);
+    E('mov', [RegOp(Rows), MemOp(MIR_T_I32, LRowsOff, Obj)]);
+    E('sub', [RegOp(Pos), Opnd(I.Ops[2]), IntOp(1)]);
+    E('mul', [RegOp(Pos), RegOp(Pos), RegOp(Rows)]);
+    E('add', [RegOp(Pos), RegOp(Pos), Opnd(I.Ops[1])]);
+  end;
+  Elem := MemOp(Typ, -8, Data, Pos, 8);         // 1-based position
+  if IsStore then
+  begin
+    if Typ = MIR_T_D then
+      E('dmov', [Elem, Opnd(I.Ops[High(I.Ops)])])
+    else
+      E('mov', [Elem, Opnd(I.Ops[High(I.Ops)])]);
+  end
+  else if Typ = MIR_T_D then
+    E('dmov', [Reg(I.Dst), Elem])
+  else
+    E('mov', [Reg(I.Dst), Elem]);
+end;
+
+{ An operator on arrays: Axon.Ops through rt_call. }
+procedure TGen.GenOp(I: TJInsn);
+var
+  CS: TJitCallSite;
+  St: TMirReg;
+  K, N: Integer;
+  Args: TArray<TJOperand>;
+begin
+  CS := TJitCallSite.Create;
+  Code.CallSites.Add(CS);
+  CS.IsOp := True;
+  CS.Op := I.Ops[1].I;
+  CS.Name := 'operator ' + I.Ops[1].S;
+  if Length(I.Ops) > 2 then
+    Args := [I.Ops[0], I.Ops[2]]
+  else
+    Args := [I.Ops[0]];
+  N := Length(Args);
+  SetLength(CS.ArgTypes, N);
+  for K := 0 to N - 1 do
+  begin
+    if Args[K].Kind = jkReg then
+      CS.ArgTypes[K] := J.Regs[Args[K].Reg].Typ
+    else if Args[K].Kind = jkReal then
+      CS.ArgTypes[K] := jtReal
+    else if Args[K].Kind = jkBool then
+      CS.ArgTypes[K] := jtBool
+    else
+      CS.ArgTypes[K] := jtInt;
+    if CS.ArgTypes[K] = jtReal then
+      E('dmov', [MemOp(MIR_T_D, 8 * K, ArgBuf), Opnd(Args[K])])
+    else
+      E('mov', [MemOp(MIR_T_I64, 8 * K, ArgBuf), Opnd(Args[K])]);
+  end;
+  CS.ResultTypes := [I.Typ];
+  E('mov', [MemOp(MIR_T_I64, 0, ResBuf), RegOp(SlotAddr(SlotOf[I.Dst]))]);
+  St := Scratch(MIR_T_I64);
+  E('call', [RefOp(CallProto), RefOp(CallImport), RegOp(St), IntOp(NativeInt(CS)),
+    IntOp(Fid), IntOp(I.Site), RegOp(ArgBuf), RegOp(ResBuf)]);
+  E('bne', [LabelOp(FailLabel), RegOp(St), IntOp(0)]);
+end;
+
+{ Array results are written by the callee into slots whose addresses the
+  caller puts in the result buffer; a result not used goes to the junk slot. }
+procedure TGen.SetupResultDests(I: TJInsn; const ResultTypes: TArray<TJType>);
+var
+  K, Slot: Integer;
+begin
+  for K := 0 to High(ResultTypes) do
+    if IsArrayType(ResultTypes[K]) then
+    begin
+      if (K <= High(I.Dsts)) and (I.Dsts[K] >= 0) then
+        Slot := SlotOf[I.Dsts[K]]
+      else
+        Slot := JunkSlot;
+      E('mov', [MemOp(MIR_T_I64, 8 * K, ResBuf), RegOp(SlotAddr(Slot))]);
+    end;
+end;
+
+procedure TGen.ClearJunk(I: TJInsn; const ResultTypes: TArray<TJType>);
+var
+  K: Integer;
+begin
+  for K := 0 to High(ResultTypes) do
+    if IsArrayType(ResultTypes[K]) and ((K > High(I.Dsts)) or (I.Dsts[K] < 0)) then
+      E('call', [RefOp(PtrProto), RefOp(ClearImport), RegOp(SlotAddr(JunkSlot))]);
+end;
+
 { int ^ int with a non-negative exponent: IntPow's square-and-multiply with
   checked products, so it overflows exactly when the interpreter does. }
 procedure TGen.GenPowInt(I: TJInsn);
@@ -366,7 +656,7 @@ var
   K: Integer;
 begin
   for K := 0 to High(I.Dsts) do
-    if I.Dsts[K] >= 0 then
+    if (I.Dsts[K] >= 0) and (SlotOf[I.Dsts[K]] < 0) then
       if J.Regs[I.Dsts[K]].Typ = jtReal then
         E('dmov', [Reg(I.Dsts[K]), MemOp(MIR_T_D, 8 * K, ResBuf)])
       else
@@ -393,6 +683,7 @@ begin
     else
       E('mov', [MemOp(MIR_T_I64, 8 * K, ArgBuf), Opnd(I.Ops[K])]);
     end;
+  SetupResultDests(I, CS.ResultTypes);
   St := Scratch(MIR_T_I64);
   E('call', [RefOp(CallProto), RefOp(CallImport), RegOp(St), IntOp(NativeInt(CS)),
     IntOp(Fid), IntOp(I.Site), RegOp(ArgBuf), RegOp(ResBuf)]);
@@ -454,6 +745,7 @@ begin
   E('add', [RegOp(D), RegOp(D), IntOp(1)]);
   E('mov', [MemOp(MIR_T_I32, 0, DepthAddr), RegOp(D)]);
   E('bgt', [LabelOp(LRec), RegOp(D), IntOp(JitMaxDepth)]);
+  SetupResultDests(I, T.ResultTypes);
   SetLength(Ops, 4 + Length(I.Ops));
   St := Scratch(MIR_T_I64);
   Ops[0] := RefOp(Info.Proto);
@@ -470,6 +762,7 @@ begin
   E('sub', [RegOp(D), RegOp(D), IntOp(1)]);
   E('mov', [MemOp(MIR_T_I32, 0, DepthAddr), RegOp(D)]);
   E('bne', [LabelOp(LProp), RegOp(St), IntOp(0)]);
+  ClearJunk(I, T.ResultTypes);
   MIR_append_insn(Ctx, Body, LJoin);
   LoadResults(I);
 
@@ -485,11 +778,11 @@ begin
       E('sub', [RegOp(D2), RegOp(D2), IntOp(1)]);
       E('mov', [MemOp(MIR_T_I32, 0, DepthAddr), RegOp(D2)]);
       E('call', [RefOp(RecProto), RefOp(RecImport), IntOp(NativeInt(CS)), IntOp(Fid), IntOp(I.Site)]);
-      E('ret', [IntOp(1)]);
+      RetFail;
       // The callee failed: this frame is at the call.
       MIR_append_insn(Ctx, Body, LProp);
       E('call', [RefOp(FrameProto), RefOp(FrameImport), IntOp(Fid), IntOp(I.Site)]);
-      E('ret', [IntOp(1)]);
+      RetFail;
       if LSlow <> nil then
       begin
         // The variable now holds something else: call that through the interpreter.
@@ -514,7 +807,9 @@ begin
     joLabel:
       MIR_append_insn(Ctx, Body, Labels[I.Ops[0].I]);
     joMov:
-      if J.Regs[I.Dst].Typ = jtReal then
+      if SlotOf[I.Dst] >= 0 then
+        GenArrayMov(I)
+      else if J.Regs[I.Dst].Typ = jtReal then
         E('dmov', [Reg(I.Dst), Opnd(I.Ops[0])])
       else
         E('mov', [Reg(I.Dst), Opnd(I.Ops[0])]);
@@ -624,14 +919,39 @@ begin
     joRet:
       begin
         for K := 0 to High(I.Ops) do
-          if J.ResultTypes[K] = jtReal then
+          if IsArrayType(J.ResultTypes[K]) then
+          begin
+            // The caller's slot, whose address is in the result slot.
+            T := Scratch(MIR_T_I64);
+            E('mov', [RegOp(T), MemOp(MIR_T_I64, 8 * K, ResPtr)]);
+            E('call', [RefOp(PtrPtrProto), RefOp(AssignImport), RegOp(T), Opnd(I.Ops[K])]);
+          end
+          else if J.ResultTypes[K] = jtReal then
             E('dmov', [MemOp(MIR_T_D, 8 * K, ResPtr), Opnd(I.Ops[K])])
           else
             E('mov', [MemOp(MIR_T_I64, 8 * K, ResPtr), Opnd(I.Ops[K])]);
-        E('ret', [IntOp(0)]);
+        if NSlots > 0 then
+        begin
+          E('mov', [RegOp(StatusReg), IntOp(0)]);
+          E('jmp', [LabelOp(ExitLabel)]);
+        end
+        else
+          E('ret', [IntOp(0)]);
       end;
     joCall:
       GenCall(I);
+    joLen:
+      GenLen(I);
+    joBound:
+      GenBound(I);
+    joLoad:
+      GenElem(I, False);
+    joStore:
+      GenElem(I, True);
+    joOp:
+      GenOp(I);
+    joClear:
+      E('call', [RefOp(PtrProto), RefOp(ClearImport), RegOp(SlotAddr(SlotOf[I.Ops[0].Reg]))]);
   else
     raise EMirError.CreateFmt('JIT: no code for JIR op %d', [Ord(I.Op)]);
   end;
@@ -689,7 +1009,45 @@ begin
   RecImport := MIR_new_import(Ctx, 'rt_recursion');
   V := Vars([MIR_T_D], ['x']);
   D1Proto := MIR_new_proto_arr(Ctx, 'rt_d1_p', 1, @ResD, 1, @V[0]);
+  V := Vars([MIR_T_P], ['p']);
+  PtrProto := MIR_new_proto_arr(Ctx, 'rt_p_p', 0, nil, 1, @V[0]);
+  V := Vars([MIR_T_P, MIR_T_P], ['dst', 'src']);
+  PtrPtrProto := MIR_new_proto_arr(Ctx, 'rt_pp_p', 0, nil, 2, @V[0]);
+  AssignImport := MIR_new_import(Ctx, 'rt_assign');
+  MoveImport := MIR_new_import(Ctx, 'rt_move');
+  ClearImport := MIR_new_import(Ctx, 'rt_clear');
+  UniqueImport := MIR_new_import(Ctx, 'rt_make_unique');
+  V := Vars([MIR_T_P, MIR_T_I64], ['frame', 'n']);
+  LeaveProto := MIR_new_proto_arr(Ctx, 'rt_leave_p', 0, nil, 2, @V[0]);
+  LeaveImport := MIR_new_import(Ctx, 'rt_leave');
+  V := Vars([MIR_T_I64, MIR_T_I64, MIR_T_I64, MIR_T_I64], ['fid', 'site', 'index', 'len']);
+  IndexErrProto := MIR_new_proto_arr(Ctx, 'rt_index_error_p', 0, nil, 4, @V[0]);
+  IndexErrImport := MIR_new_import(Ctx, 'rt_index_error');
   DeclareCalls;
+
+  // A slot for every array register, and a junk slot for array results that
+  // are not used.
+  SetLength(SlotOf, J.Regs.Count);
+  NSlots := 0;
+  for K := 0 to J.Regs.Count - 1 do
+    if IsArrayType(J.Regs[K].Typ) then
+    begin
+      SlotOf[K] := NSlots;
+      Inc(NSlots);
+    end
+    else
+      SlotOf[K] := -1;
+  JunkSlot := NSlots;
+  for Insn in J.Insns do
+    if Insn.Op = joCall then
+      for K := 0 to High(Insn.Target.ResultTypes) do
+        if IsArrayType(Insn.Target.ResultTypes[K]) then
+          JunkSlot := -2;
+  if (NSlots > 0) or (JunkSlot = -2) then
+  begin
+    JunkSlot := NSlots;
+    Inc(NSlots);
+  end;
 
   // The body's parameters: the result pointer, then the JIR parameters, each
   // named after its register.
@@ -712,8 +1070,8 @@ begin
   begin
     RegName := AnsiString('r' + IntToStr(K));
     if J.Regs[K].IsParam then
-      Regs[K] := axmir_reg(Ctx, Body, PAnsiChar(RegName))
-    else
+      Regs[K] := axmir_reg(Ctx, Body, PAnsiChar(RegName))   // an array parameter: its pointer
+    else if SlotOf[K] < 0 then
       Regs[K] := axmir_new_reg(Ctx, Body, MirType(J.Regs[K].Typ), PAnsiChar(RegName));
   end;
   SetLength(Labels, J.LabelCount);
@@ -732,6 +1090,23 @@ begin
       if Length(Insn.Ops) > MaxArgs then MaxArgs := Length(Insn.Ops);
       if Length(Insn.Dsts) > MaxRes then MaxRes := Length(Insn.Dsts);
     end;
+  for Insn in J.Insns do
+    if Insn.Op = joOp then
+    begin
+      HasCalls := True;
+      if MaxArgs < 2 then MaxArgs := 2;
+      if MaxRes < 1 then MaxRes := 1;
+    end;
+  if NSlots > 0 then
+  begin
+    // The frame: zeroed slots, released at the exit.
+    FrameReg := axmir_new_reg(Ctx, Body, MIR_T_I64, 'frame');
+    StatusReg := axmir_new_reg(Ctx, Body, MIR_T_I64, 'status');
+    ExitLabel := MIR_new_label(Ctx);
+    E('alloca', [RegOp(FrameReg), IntOp(NSlots * LSlotSize)]);
+    for K := 0 to (NSlots * LSlotSize) div 8 - 1 do
+      E('mov', [MemOp(MIR_T_I64, 8 * K, FrameReg), IntOp(0)]);
+  end;
   if HasCalls then
   begin
     ArgBuf := axmir_new_reg(Ctx, Body, MIR_T_I64, 'argbuf');
@@ -741,6 +1116,11 @@ begin
     E('add', [RegOp(ResBuf), RegOp(ArgBuf), IntOp(8 * MaxArgs)]);
     E('mov', [RegOp(DepthAddr), IntOp(NativeInt(JitDepth))]);
   end;
+  // Array parameters: this function's own reference, as a parameter cell holds.
+  for K := 0 to J.Params.Count - 1 do
+    if SlotOf[J.Params[K]] >= 0 then
+      E('call', [RefOp(PtrPtrProto), RefOp(AssignImport), RegOp(SlotAddr(SlotOf[J.Params[K]])),
+        RegOp(Regs[J.Params[K]])]);
 
   for Insn in J.Insns do
     GenInsn(Insn);
@@ -752,10 +1132,17 @@ begin
   begin
     MIR_append_insn(Ctx, Body, B.Lbl);
     E('call', [RefOp(ErrProto), RefOp(ErrImport), IntOp(Fid), IntOp(B.Site), IntOp(B.Code)]);
-    E('ret', [IntOp(1)]);
+    RetFail;
   end;
   MIR_append_insn(Ctx, Body, FailLabel);
-  E('ret', [IntOp(1)]);
+  RetFail;
+  if NSlots > 0 then
+  begin
+    // The single exit: release the frame's values.
+    MIR_append_insn(Ctx, Body, ExitLabel);
+    E('call', [RefOp(LeaveProto), RefOp(LeaveImport), RegOp(FrameReg), IntOp(NSlots)]);
+    E('ret', [RegOp(StatusReg)]);
+  end;
   MIR_finish_func(Ctx);
   BodyItem := Body;
 

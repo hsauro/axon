@@ -36,7 +36,18 @@ unit Axon.Jit.Ir;
      %3 = call fib(%2)  @8:10           another compiled function
      %1 = call.builtin sqrt(%0)         a built-in
      call.builtin print("x =", x)  @4:3
-     [a, b] = call.interp pair(x)  @6:3 a function that runs interpreted *)
+     [a, b] = call.interp pair(x)  @6:3 a function that runs interpreted
+
+   Arrays (J4) are vector{real}, vector{int} and matrix{real}. An array
+   register holds a value slot (a TAxValue in the call's frame), so arrays
+   are reference-counted exactly as the interpreter's variables hold them:
+
+     bound i, %0  @3:12                  IndexError unless 1 <= i <= %0, at the index
+     %1 = load.real v, i                 v[i] (or A[i, j]), after its bounds checks
+     store.real v, i, x                  v[i] = x (copy-on-write first)
+     %3 = len.int v, 0                   0: the element count, 1: rows, 2: cols
+     %4 = op.vector{real} .*(v, w)  @6:3 an operator on arrays, by Axon.Ops
+     clear %5                            releases a hidden reference *)
 
 interface
 
@@ -45,8 +56,9 @@ uses
   Axon.Values;
 
 type
-  { jtString only for string literals passed to print and error. }
-  TJType = (jtNothing, jtBool, jtInt, jtReal, jtString);
+  { jtString only for string literals passed to print and error. The
+    array types follow the scalars. }
+  TJType = (jtNothing, jtBool, jtInt, jtReal, jtString, jtVecReal, jtVecInt, jtMatReal);
 
   TJOperandKind = (jkReg, jkInt, jkReal, jkBool, jkLabel, jkString);
 
@@ -99,7 +111,13 @@ type
     joCount,                      // Dst := element count of the range Ops[0]:Ops[1]:Ops[2]
     joElem,                       // Dst := Ops[0] + Ops[2] * Ops[1] (start + k*step)
     joRet,                        // Ops: the results
-    joCall                        // Dsts := Target(Ops)
+    joCall,                       // Dsts := Target(Ops)
+    joLoad,                       // Dst := Ops[0][Ops[1]] or Ops[0][Ops[1], Ops[2]]
+    joStore,                      // Ops[0][Ops[1] (, Ops[2])] := last operand
+    joLen,                        // Dst := element count (Ops[1] = 0), rows (1) or cols (2) of Ops[0]
+    joOp,                         // Dst := Ops.Ops[1] applied to Ops[0] (and Ops[2]) by Axon.Ops; Ops[1] is the token
+    joClear,                      // Ops[0] (an array register) := nothing
+    joBound                       // IndexError unless 1 <= Ops[0] <= Ops[1]
   );
 
   TJInsn = class
@@ -111,6 +129,7 @@ type
     Site: Integer;     // index into TJFunction.Sites, or -1 when it cannot fail
     Dsts: TArray<Integer>;        // joCall: result registers (-1 for one not used)
     Target: TJCallTarget;         // joCall
+    Site2: Integer;               // joLoad/joStore with two indices: the second index's site
   end;
 
   TJReg = record
@@ -152,6 +171,9 @@ function LabelOperand(L: Integer): TJOperand;
 function StringOperand(const V: string): TJOperand;
 
 function JTypeName(T: TJType): string;
+function IsArrayType(T: TJType): Boolean; inline;
+{ The element type of an array type. }
+function ElemOf(T: TJType): TJType;
 
 implementation
 
@@ -204,9 +226,23 @@ end;
 
 function JTypeName(T: TJType): string;
 const
-  Names: array[TJType] of string = ('nothing', 'bool', 'int', 'real', 'string');
+  Names: array[TJType] of string = ('nothing', 'bool', 'int', 'real', 'string',
+    'vector{real}', 'vector{int}', 'matrix{real}');
 begin
   Result := Names[T];
+end;
+
+function IsArrayType(T: TJType): Boolean;
+begin
+  Result := T in [jtVecReal, jtVecInt, jtMatReal];
+end;
+
+function ElemOf(T: TJType): TJType;
+begin
+  if T = jtVecInt then
+    Result := jtInt
+  else
+    Result := jtReal;
 end;
 
 { TJFunction }
@@ -272,6 +308,7 @@ begin
   for K := 0 to High(Ops) do
     Result.Ops[K] := Ops[K];
   Result.Site := Site;
+  Result.Site2 := -1;
   Insns.Add(Result);
 end;
 
@@ -287,7 +324,8 @@ const
     '', '', 'b2i', 'b2r', 'i2r',
     'add', 'sub', 'mul', 'neg', 'div', 'pow',
     'eq', 'ne', 'lt', 'le', 'gt', 'ge',
-    'not', 'jmp', 'bt', 'bf', 'count', 'elem', 'ret', 'call');
+    'not', 'jmp', 'bt', 'bf', 'count', 'elem', 'ret', 'call', 'load', 'store', 'len', 'op',
+    'clear', 'bound');
 
 procedure TJFunction.Dump(Lines: TStrings);
 var
@@ -428,8 +466,16 @@ begin
         joCall: ;
         joMov:
           Line := Line + OperandText(Insn.Ops[0]);
-        joB2I, joB2R, joI2R, joJmp, joBrTrue, joBrFalse, joNot:
+        joB2I, joB2R, joI2R, joJmp, joBrTrue, joBrFalse, joNot, joClear, joBound:
           Line := Line + OpNames[Insn.Op] + ' ' + OperandList(Insn.Ops);
+        joOp:
+          begin
+            Line := Line + 'op.' + JTypeName(Insn.Typ) + ' ' + Insn.Ops[1].S + '(' +
+              OperandText(Insn.Ops[0]);
+            if Length(Insn.Ops) > 2 then
+              Line := Line + ', ' + OperandText(Insn.Ops[2]);
+            Line := Line + ')';
+          end;
         joRet:
           if Length(Insn.Ops) = 0 then
             Line := 'ret'
@@ -442,6 +488,11 @@ begin
       begin
         S := Sites[Insn.Site];
         Line := Line + '  @' + IntToStr(S.Line) + ':' + IntToStr(S.Col);
+      end;
+      if Insn.Site2 >= 0 then
+      begin
+        S := Sites[Insn.Site2];
+        Line := Line + ' @' + IntToStr(S.Line) + ':' + IntToStr(S.Col);
       end;
       Lines.Add('  ' + Line);
     end;

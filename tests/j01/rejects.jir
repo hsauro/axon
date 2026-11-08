@@ -8,7 +8,7 @@ function reads_global: not compiled: reads offset, which is not a local variable
 
 function var_power: not compiled: int ^ int with a variable exponent is an int or a real depending on the exponent's sign; use a literal exponent, or make an operand real (23:10)
 
-function calls: not compiled: calls the built-in sum, which is not compiled yet (27:10)
+function calls: not compiled: calls the built-in mean, which is not compiled yet (27:10)
 
 function bad_cond: not compiled: the condition is int, not bool, a TypeError (31:6)
 

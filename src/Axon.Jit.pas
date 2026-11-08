@@ -47,9 +47,13 @@ type
     destructor Destroy; override;
   end;
 
-  { What RtCall needs to call a callee through the interpreter. }
+  { What RtCall needs to call a callee through the interpreter, or (IsOp)
+    to apply an operator with Axon.Ops. Array arguments and results are
+    passed as pointers to value slots. }
   TJitCallSite = class
   public
+    IsOp: Boolean;
+    Op: Integer;                  // IsOp: the TTokenKind
     Name: string;
     Value: TAxValue;              // the callee, when nothing can rebind it
     ValuePtr: PAxValue;           // else the variable holding it
@@ -61,6 +65,7 @@ type
   { Addresses of the helpers, for the code generator. }
   TJitHelpers = record
     Error, CountInt, CountReal, PowReal, Call, Frame, Recursion: Pointer;
+    Assign, Move, Clear, MakeUnique, Leave, IndexError: Pointer;
   end;
 
 var
@@ -93,7 +98,7 @@ implementation
 
 uses
   System.Math,
-  Axon.Errors, Axon.Ops, Axon.NativeModules, Axon.Jit.Mir, Axon.Native.Mir;
+  Axon.Errors, Axon.Ops, Axon.Tokens, Axon.NativeModules, Axon.Jit.Mir, Axon.Native.Mir;
 
 type
   TJitFrame = record
@@ -288,6 +293,83 @@ begin
     Result := Power(X, Y);
 end;
 
+{ ---- array values in frame slots ---- }
+
+{ Dst := Src, sharing the value (the reference count goes up). }
+procedure RtAssign(Dst, Src: PAxValue); cdecl;
+begin
+  Dst^ := Src^;
+end;
+
+{ Dst := Src and Src := nothing: the reference moves, its count unchanged. }
+procedure RtMove(Dst, Src: PAxValue); cdecl;
+begin
+  Dst^ := Src^;
+  Src^ := Default(TAxValue);
+end;
+
+procedure RtClear(P: PAxValue); cdecl;
+begin
+  P^ := Default(TAxValue);
+end;
+
+{ Copy-on-write before a write, as AssignArraySlot: the array is copied
+  when another value shares it. }
+procedure RtMakeUnique(P: PAxValue); cdecl;
+var
+  A: TArrayObj;
+begin
+  A := AsArray(P^);
+  if A.RefCount > 1 then
+    P^ := ArrayValue(A.Clone);
+end;
+
+{ Releases a frame's N value slots when the function returns. }
+procedure RtLeave(Frame: PAxValue; N: Int64); cdecl;
+var
+  K: Integer;
+begin
+  for K := 0 to N - 1 do
+  begin
+    Frame^ := Default(TAxValue);
+    Inc(Frame);
+  end;
+end;
+
+procedure RtIndexError(Fid, Site, Index, Len: Int64); cdecl;
+begin
+  Pending(Fid, Site, IndexError, Format('index %d is out of bounds for a dimension of length %d',
+    [Index, Len]));
+end;
+
+{ Whether R has the JIR type T. }
+function HasType(const R: TAxValue; T: TJType): Boolean;
+var
+  A: TArrayObj;
+begin
+  case T of
+    jtBool: Result := R.Kind = vkBool;
+    jtInt:  Result := R.Kind = vkInt;
+    jtReal: Result := R.Kind = vkReal;
+    jtVecReal, jtVecInt, jtMatReal:
+      begin
+        Result := R.Kind = vkArray;
+        if Result then
+        begin
+          A := AsArray(R);
+          case T of
+            jtVecReal: Result := A.IsVector and (A.ElemType = etReal);
+            jtVecInt:  Result := A.IsVector and (A.ElemType = etInt);
+          else
+            Result := not A.IsVector and (A.ElemType = etReal);
+          end;
+        end;
+      end;
+  else
+    Result := False;
+  end;
+end;
+
 { A call through the interpreter: a built-in, a function that is not
   compiled, or a compiled one whose variable now holds something else. The
   arguments are boxed from their slots, the callee called as the
@@ -315,23 +397,27 @@ begin
         jtInt:    Boxed[K] := IntValue(Slot^);
         jtReal:   Boxed[K] := RealValue(PDouble(Slot)^);
         jtString: Boxed[K] := StringValue(CS.Strings[K]);
+        jtVecReal, jtVecInt, jtMatReal:
+          Boxed[K] := PAxValue(PPointer(Slot)^)^;
       else
         Boxed[K] := NothingValue;
       end;
     end;
-    R := CallAxon(Callee, Boxed);
+    if CS.IsOp then
+    begin
+      if Length(Boxed) = 1 then
+        R := UnaryOp(TTokenKind(CS.Op), Boxed[0])
+      else
+        R := BinaryOp(TTokenKind(CS.Op), Boxed[0], Boxed[1]);
+    end
+    else
+      R := CallAxon(Callee, Boxed);
     if Length(CS.ResultTypes) > 1 then
       RaiseFmt(TypeError, '%s was rebound; a compiled caller cannot use its several results',
         [CS.Name]);
     if Length(CS.ResultTypes) = 1 then
     begin
-      case CS.ResultTypes[0] of
-        jtBool: Ok := R.Kind = vkBool;
-        jtInt:  Ok := R.Kind = vkInt;
-        jtReal: Ok := R.Kind = vkReal;
-      else
-        Ok := False;
-      end;
+      Ok := HasType(R, CS.ResultTypes[0]);
       if not Ok then
         RaiseFmt(TypeError, '%s returned %s where compiled code expects %s',
           [CS.Name, TypeName(R), JTypeName(CS.ResultTypes[0])]);
@@ -339,6 +425,8 @@ begin
         jtBool: Res^ := Ord(R.B);
         jtInt:  Res^ := R.I;
         jtReal: PDouble(Res)^ := R.R;
+        jtVecReal, jtVecInt, jtMatReal:
+          PAxValue(PPointer(Res)^)^ := R;
       end;
     end;
     Result := 0;
@@ -361,6 +449,12 @@ begin
   Result.Call := @RtCall;
   Result.Frame := @RtFrame;
   Result.Recursion := @RtRecursion;
+  Result.Assign := @RtAssign;
+  Result.Move := @RtMove;
+  Result.Clear := @RtClear;
+  Result.MakeUnique := @RtMakeUnique;
+  Result.Leave := @RtLeave;
+  Result.IndexError := @RtIndexError;
 end;
 
 { ---- compiling ---- }

@@ -158,7 +158,7 @@ J2 measurements, on Win64 Release (`AXON_JIT=on bench.cmd`):
 | `harmonic(100000)` | 88.2 ms | 108 µs | 817× |
 | `mandel(60, 50)`: `escape` compiled, `mandel` still interpreted | 193 ms | 19.4 ms | 10× |
 
-The other kernels need calls (`fib`, `ones` in `sieve`) or arrays (`matmul`) and are unchanged until J3 and J4.
+The other kernels needed calls (`fib`, `ones` in `sieve`) or arrays (`matmul`), which J3 and J4 added.
 
 ### J3 — Calls
 
@@ -188,10 +188,26 @@ In the full suite with the JIT forced on, 50 functions compile (13 after J2). Mo
 
 ### J4 — Arrays
 
-- [ ] `real` and `int` vectors and `real` matrices as parameters, locals and results
-- [ ] Indexing `v[i]`, `A[i, j]` and `end` inside an index, with the reference's bounds checks and `IndexError` messages
-- [ ] `length`, `size`, `zeros`, `ones`, and element writes `v[i] = x` with copy-on-write (D7). `__copies()` counts stay exactly the same as interpreted
-- [ ] Whole-array operations (`+`, `.*`, `*`, `sum`) call the existing `Axon.Arrays`/BLAS routines through helpers instead of compiling them
+- [x] `vector{real}`, `vector{int}` and `matrix{real}` as parameters, locals and results. The element type must be declared, because a plain `vector` or `matrix` can hold any element type; the message says so, and J6 will specialise on the type at run time instead
+- [x] Values and reference counts (D7):
+  - **Frames.** Each array register is a `TAxValue` slot in a frame the function allocates on entry and releases at its single exit, on every path.
+  - **Parameters.** A body takes its own reference to each array parameter, as `Invoke`'s parameter cell does.
+  - **Moves.** Moving from a temporary transfers the reference, while assigning from a variable shares it.
+
+  Reference counts are therefore the interpreter's, and so are copy-on-write decisions and `__copies()` counts. `tests/j04` checks the counts against interpreted runs: a shared argument, a write to the array being iterated, and arrays that must not be copied
+- [x] Indexing `v[i]`, linear `A[k]`, `A[i, j]` and `end`, read and written inline from the `TArrayObj`'s fields; their offsets are measured at start-up. Each index is checked as soon as it is evaluated, as `EvalIndexItem` does, with the same `IndexError` message and position. A write first checks the reference count and copies through `rt_make_unique` when the array is shared. It never widens the array: a value that would widen it is rejected, and a `bool` stored in an `int` vector converts, as `Put` does. Ranges, colons and masks as indices are not compiled yet
+- [x] `length`, `size(A)`, `size(A, 1)` and `size(A, 2)` inline. `zeros`, `ones`, `sum` and `print` of arrays go through the built-ins
+- [x] Operators on real arrays go to `Axon.Ops` through `rt_call`, so they give the same results and errors. The shapes covered: array with array (`+ - .* ./`), array with number, number with array, matrix `*` matrix or vector, and unary `-`. The result's type is checked at run time
+- [x] `for x in v` over the elements of an array, holding it for the loop as the interpreter does
+
+J4 measurements, on Win64 Release. `bench/matmul.sci` now declares `matrix{real}` parameters; it takes the same time interpreted.
+
+| Kernel | Interpreted | Compiled | Speed-up |
+| --- | --- | --- | --- |
+| `sieve(100000)` | 373 ms | 743 µs | 500× |
+| `matmul` of two 60×60 matrices, triple loop | 472 ms | 397 µs | 1190× (BLAS: 35.5 µs) |
+
+Every kernel in `bench/` now compiles. In the full suite with the JIT forced on, 85 functions compile (50 after J3).
 
 ### J5 — Turn it on
 

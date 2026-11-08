@@ -1005,17 +1005,24 @@ function TInterpreter.RunCompiled(Code: TObject; const Args: TAxValues): TAxValu
 var
   C: TJitCode;
   ArgSlots, ResSlots: TArray<Int64>;
+  ResVals: TAxValues;
   K: Integer;
 begin
   C := TJitCode(Code);
   SetLength(ArgSlots, Length(Args) + 1);
   SetLength(ResSlots, Length(C.ResultTypes) + 1);
+  SetLength(ResVals, Length(C.ResultTypes));
+  // Arrays go by the address of their value; compiled code shares it.
   for K := 0 to High(Args) do
     case C.ParamTypes[K] of
       jtBool: ArgSlots[K] := Ord(Args[K].B);
       jtInt:  ArgSlots[K] := Args[K].I;
       jtReal: PDouble(@ArgSlots[K])^ := Args[K].R;
+      jtVecReal, jtVecInt, jtMatReal: ArgSlots[K] := NativeInt(@Args[K]);
     end;
+  for K := 0 to High(C.ResultTypes) do
+    if C.ResultTypes[K] in [jtVecReal, jtVecInt, jtMatReal] then
+      ResSlots[K] := NativeInt(@ResVals[K]);
   if C.Entry(@ArgSlots[0], @ResSlots[0]) <> 0 then
     raise TakeJitError;
   if Length(C.ResultTypes) = 0 then
@@ -1029,6 +1036,7 @@ begin
       jtBool: Result[K] := BoolValue(ResSlots[K] <> 0);
       jtInt:  Result[K] := IntValue(ResSlots[K]);
       jtReal: Result[K] := RealValue(PDouble(@ResSlots[K])^);
+      jtVecReal, jtVecInt, jtMatReal: Result[K] := ResVals[K];
     end;
 end;
 
