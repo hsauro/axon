@@ -9,6 +9,7 @@ unit Axon.Cli;
     axon --jir file.sci     print the JIT's typed IR of each top-level function (L2)
     axon test [-v] [path]   run the conformance tests
     axon --jit-selftest     check that the MIR JIT works here (L2, J0)
+    axon --jit=MODE ...     run with the JIT off, on or force (also AXON_JIT)
     axon --version | --help
 
   Exit codes are defined in Axon.Errors. }
@@ -24,7 +25,8 @@ uses
   Axon.Version, Axon.Errors, Axon.Platform, Axon.Source, Axon.TestRunner,
   System.Math,
   Axon.Tokens, Axon.Lexer, Axon.Ast, Axon.Parser, Axon.AstDump, Axon.Interp,
-  Axon.Repl, Axon.JitSelfTest, Axon.Jit.Ir, Axon.Jit.Lower, System.Classes;
+  Axon.Repl, Axon.JitSelfTest, Axon.Jit, Axon.Jit.Ir, Axon.Jit.Lower, System.Classes,
+  System.Generics.Collections, Axon.Values, Axon.Builtins;
 
 procedure PrintUsage;
 begin
@@ -40,6 +42,7 @@ begin
   Writeln('  axon --check file|-     check the syntax without running (- reads stdin)');
   Writeln('  axon test [-v] [path]   run the conformance tests (default path: tests)');
   Writeln('  axon --jit-selftest     check that the MIR JIT library works');
+  Writeln('  axon --jit=MODE ...     run with the JIT off (default), on or force; also AXON_JIT');
   Writeln('  axon --version          print the version');
 end;
 
@@ -128,35 +131,70 @@ begin
 end;
 
 { --jir: each named function at the top level of the program, lowered to
-  JIR, or the reason it is not compiled. Blank lines separate functions. }
+  JIR, or the reason it is not compiled. Blank lines separate functions.
+  Called names resolve statically: to the program's top-level functions,
+  then to the prelude. }
 function DumpJir(Prog: TProgram): string;
 var
   S: TStmt;
-  J: TJFunction;
+  E: TJEntry;
   Lines: TStringList;
+  Funcs: TDictionary<string, TFunctionDecl>;
+  Prelude: TDictionary<string, TAxValue>;
+  Session: TJSession;
 begin
   Lines := TStringList.Create;
+  Funcs := TDictionary<string, TFunctionDecl>.Create;
+  Prelude := TDictionary<string, TAxValue>.Create;
   try
     for S in Prog.Body do
       if S is TFunctionStmt then
+        Funcs.AddOrSetValue(TFunctionStmt(S).Func.Name, TFunctionStmt(S).Func);
+    DefineBuiltins(
+      procedure(Name: string; V: TAxValue)
       begin
-        if Lines.Count > 0 then
-          Lines.Add('');
-        try
-          J := LowerFunction(TFunctionStmt(S).Func);
-          try
-            J.Dump(Lines);
-          finally
-            J.Free;
-          end;
-        except
-          on E: EJitReject do
-            Lines.Add(Format('function %s: not compiled: %s (%d:%d)',
-              [TFunctionStmt(S).Func.Name, E.Message, E.Line, E.Col]));
+        Prelude.AddOrSetValue(Name, V);
+      end);
+    Session := TJSession.Create(
+      function(Context: TObject; const Name: string): TJResolved
+      var
+        D: TFunctionDecl;
+        V: TAxValue;
+      begin
+        Result := Default(TJResolved);
+        if Funcs.TryGetValue(Name, D) then
+        begin
+          Result.Kind := rkFunction;
+          Result.Decl := D;
+          Result.FileName := Prog.FileName;
+        end
+        else if Prelude.TryGetValue(Name, V) then
+        begin
+          Result.Kind := rkBuiltin;
+          Result.Name := Name;
+          Result.Value := V;
         end;
-      end;
+      end);
+    try
+      for S in Prog.Body do
+        if S is TFunctionStmt then
+        begin
+          if Lines.Count > 0 then
+            Lines.Add('');
+          E := Session.Lower(TFunctionStmt(S).Func, nil, Prog.FileName);
+          if E.State = esLowered then
+            E.Func.Dump(Lines)
+          else
+            Lines.Add(Format('function %s: not compiled: %s (%d:%d)',
+              [TFunctionStmt(S).Func.Name, E.Reason, E.RejectLine, E.RejectCol]));
+        end;
+    finally
+      Session.Free;
+    end;
     Result := Lines.Text;
   finally
+    Prelude.Free;
+    Funcs.Free;
     Lines.Free;
   end;
 end;
@@ -274,6 +312,22 @@ begin
   SetLength(Args, ParamCount);
   for I := 1 to ParamCount do
     Args[I - 1] := ParamStr(I);
+  // The JIT mode: AXON_JIT, then a leading --jit=MODE.
+  if (GetEnvironmentVariable('AXON_JIT') <> '') and
+     not SetJitMode(GetEnvironmentVariable('AXON_JIT')) then
+  begin
+    Writeln(ErrOutput, 'axon: AXON_JIT must be off, on or force');
+    Exit(ExitUsage);
+  end;
+  if (Length(Args) > 0) and Args[0].StartsWith('--jit=') then
+  begin
+    if not SetJitMode(Args[0].Substring(6)) then
+    begin
+      Writeln(ErrOutput, 'axon: --jit must be off, on or force');
+      Exit(ExitUsage);
+    end;
+    Args := Copy(Args, 1, MaxInt);
+  end;
   try
     Result := Dispatch(Args);
   except

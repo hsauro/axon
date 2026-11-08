@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..77] of TBuiltinDoc = (
+  BuiltinDocs: array[0..80] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -103,6 +103,9 @@ const
     (Name: 'factorial'; Params: '(n)';    Text: 'n! for an int n >= 0'),
     (Name: '__copies'; Params: '()';      Text: 'The number of array copies made so far (for tests)'),
     (Name: '__native_library'; Params: '(name)'; Text: 'The path a native library name resolves to (for tests)'),
+    (Name: '__jit_compiled'; Params: '(f)'; Text: 'True once f has compiled code (JIT; for tests)'),
+    (Name: '__jit_reason'; Params: '(f)'; Text: 'Why f was not compiled (JIT; for tests)'),
+    (Name: '__jit_mode'; Params: '([mode])'; Text: 'The JIT mode; with "off", "on" or "force", sets it and returns the old one'),
     // io
     (Name: 'read_file';   Params: '(path)'; Text: 'The contents of a UTF-8 text file, as a string'),
     (Name: 'read_bytes';  Params: '(path)'; Text: 'The bytes of a file, as an int vector'),

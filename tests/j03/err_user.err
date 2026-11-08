@@ -1,0 +1,3 @@
+UserError: negative input
+  at err_user.sci:5:5 in check
+  at err_user.sci:10:1

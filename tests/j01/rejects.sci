@@ -24,7 +24,7 @@ function var_power(a: int, b: int)
 end
 
 function calls(x: real): real
-  return sin(x)
+  return sum(x)
 end
 
 function bad_cond(n: int)

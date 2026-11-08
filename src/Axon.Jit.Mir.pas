@@ -1,0 +1,815 @@
+unit Axon.Jit.Mir;
+
+(* JIR to MIR to machine code (doc/Axon-JIT-Plan.md, J2 and J3).
+
+   Each compiled function becomes a MIR module with two functions:
+
+     f<id>(res: p, params...) -> i64   the typed body; 0 = ok, 1 = error
+     e<id>(args: p, res: p) -> i64     the entry thunk the interpreter calls
+
+   f<id> is exported, so other modules call it directly. Registers map one
+   to one: bool and int to i64 (bools are 0 or 1), real to double. Results
+   are stored in 8-byte slots at res. All modules live in one MIR context for
+   the life of the process; a group of modules is generated, then linked
+   together (LinkModules).
+
+   Errors (decision D4): checked int arithmetic uses MIR's overflow
+   instructions (addo, subo, mulo with bo); an overflow branches to an error
+   block at the end of the function that calls rt_error(fid, site, code) and
+   returns 1. Helpers that can fail record the error themselves.
+
+   Calls (J3):
+   - Compiled callee: a guard checks that the variable the name resolved to
+     still holds the same function (else the call goes through rt_call); the
+     interpreter's call depth is raised and checked as Invoke does, the body
+     called directly, the depth lowered, and a failure passed on after
+     rt_frame records this caller's call site.
+   - Elementary built-in with a real argument: the interpreter's own routine
+     (Axon.Builtins), called directly.
+   - Anything else (other built-ins, print, error, functions that run
+     interpreted): rt_call, with the arguments in 8-byte slots. *)
+
+interface
+
+uses
+  Axon.Jit.Ir, Axon.Jit, Axon.Native.Mir;
+
+{ Generates the module of J (not linked yet) and returns its entry item.
+  Call descriptors are added to Code.CallSites. }
+function GenerateModule(J: TJFunction; Code: TJitCode): TMirItem;
+
+{ Links the modules generated since the last call. }
+procedure LinkModules;
+
+function MirFunctionAddress(Item: TMirItem): Pointer;
+
+implementation
+
+uses
+  System.SysUtils, System.Generics.Collections,
+  Axon.Errors, Axon.Values, Axon.Builtins;
+
+var
+  Ctx: TMirContext;
+
+{ MIR found invalid IR: a bug in the JIT. MIR expects this not to return. }
+procedure MirFailed(ErrorType: Int32; Message: PAnsiChar); cdecl;
+begin
+  Writeln(ErrOutput, 'InternalError: MIR: ', string(AnsiString(Message)));
+  Flush(Output);
+  Halt(ExitInternal);
+end;
+
+const
+  ElementaryNames: array[0..14] of string = ('sqrt', 'exp', 'log', 'sin', 'cos', 'tan',
+    'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh');
+
+procedure EnsureContext;
+var
+  H: TJitHelpers;
+  N: string;
+begin
+  if Ctx <> nil then
+    Exit;
+  axmir_set_error_handler(MirFailed);
+  Ctx := axmir_init(2);
+  H := JitHelpers;
+  MIR_load_external(Ctx, 'rt_error', H.Error);
+  MIR_load_external(Ctx, 'rt_count_int', H.CountInt);
+  MIR_load_external(Ctx, 'rt_count_real', H.CountReal);
+  MIR_load_external(Ctx, 'rt_pow_real', H.PowReal);
+  MIR_load_external(Ctx, 'rt_call', H.Call);
+  MIR_load_external(Ctx, 'rt_frame', H.Frame);
+  MIR_load_external(Ctx, 'rt_recursion', H.Recursion);
+  for N in ElementaryNames do
+    MIR_load_external(Ctx, PAnsiChar(AnsiString('rt_' + N)), ElementaryRealFunction(N));
+end;
+
+procedure LinkModules;
+begin
+  axmir_link(Ctx);
+end;
+
+function MirFunctionAddress(Item: TMirItem): Pointer;
+begin
+  Result := axmir_func_addr(Item);
+end;
+
+type
+  TErrorBlock = record
+    Lbl: TMirInsn;
+    Site, Code: Integer;
+  end;
+
+  { Per call instruction: its prototype and callee item. }
+  TCallInfo = record
+    Proto, Callee: TMirItem;
+  end;
+
+  TGen = class
+  private
+    J: TJFunction;
+    Code: TJitCode;
+    Fid: Integer;
+    Body: TMirItem;
+    Regs: TArray<TMirReg>;
+    Labels: TArray<TMirInsn>;
+    ErrorBlocks: TList<TErrorBlock>;
+    Deferred: TList<TProc>;           // out-of-line blocks, emitted after the body
+    Calls: TDictionary<TJInsn, TCallInfo>;
+    FailLabel: TMirInsn;
+    ResPtr: TMirReg;
+    ArgBuf, ResBuf, DepthAddr: TMirReg;
+    TempCount, ProtoCount: Integer;
+    ErrProto, ErrImport, CountIntProto, CountIntImport,
+    CountRealProto, CountRealImport, PowProto, PowImport,
+    CallProto, CallImport, FrameProto, FrameImport, RecProto, RecImport, D1Proto: TMirItem;
+    function C(const Name: AnsiString): Int32;
+    procedure E(const Name: AnsiString; const Ops: array of TAxMirOp);
+    function Opnd(const O: TJOperand): TAxMirOp;
+    function Reg(R: Integer): TAxMirOp;
+    function Scratch(Typ: Int32): TMirReg;
+    function ErrorLabel(Site, ErrCode: Integer): TMirInsn;
+    procedure DeclareCalls;
+    procedure GenInsn(I: TJInsn);
+    procedure GenPowInt(I: TJInsn);
+    procedure GenCall(I: TJInsn);
+    procedure GenCallThroughInterp(I: TJInsn; CS: TJitCallSite; Join: TMirInsn);
+    procedure LoadResults(I: TJInsn);
+    function NewCallSite(I: TJInsn): TJitCallSite;
+  public
+    constructor Create(AJ: TJFunction; ACode: TJitCode);
+    destructor Destroy; override;
+    function Run: TMirItem;
+  end;
+
+function MirType(T: TJType): Int32;
+begin
+  if T = jtReal then
+    Result := MIR_T_D
+  else
+    Result := MIR_T_I64;
+end;
+
+function Vars(const Types: array of Int32; const Names: array of AnsiString): TArray<TMirVar>;
+var
+  K: Integer;
+begin
+  SetLength(Result, Length(Types));
+  for K := 0 to High(Types) do
+  begin
+    Result[K].Typ := Types[K];
+    Result[K].Name := PAnsiChar(Names[K]);
+    Result[K].Size := 0;
+  end;
+end;
+
+{ The bits of a value's object pointer, which the guard compares. }
+function ObjBits(const V: TAxValue): NativeInt;
+begin
+  Result := NativeInt(PPointer(@V.Obj)^);
+end;
+
+function ObjOffset: NativeInt;
+var
+  V: TAxValue;
+begin
+  Result := NativeInt(@V.Obj) - NativeInt(@V);
+end;
+
+constructor TGen.Create(AJ: TJFunction; ACode: TJitCode);
+begin
+  inherited Create;
+  J := AJ;
+  Code := ACode;
+  Fid := ACode.Id;
+  ErrorBlocks := TList<TErrorBlock>.Create;
+  Deferred := TList<TProc>.Create;
+  Calls := TDictionary<TJInsn, TCallInfo>.Create;
+end;
+
+destructor TGen.Destroy;
+begin
+  Calls.Free;
+  Deferred.Free;
+  ErrorBlocks.Free;
+  inherited;
+end;
+
+function TGen.C(const Name: AnsiString): Int32;
+begin
+  Result := MirCode(Ctx, Name);
+end;
+
+procedure TGen.E(const Name: AnsiString; const Ops: array of TAxMirOp);
+begin
+  Emit(Ctx, Body, C(Name), Ops);
+end;
+
+function TGen.Reg(R: Integer): TAxMirOp;
+begin
+  Result := RegOp(Regs[R]);
+end;
+
+function TGen.Opnd(const O: TJOperand): TAxMirOp;
+begin
+  case O.Kind of
+    jkReg:  Result := RegOp(Regs[O.Reg]);
+    jkInt:  Result := IntOp(O.I);
+    jkReal: Result := DoubleOp(O.R);
+    jkBool: Result := IntOp(Ord(O.B));
+  else
+    raise EMirError.Create('JIT: a label or string used as a value');
+  end;
+end;
+
+function TGen.Scratch(Typ: Int32): TMirReg;
+var
+  Name: AnsiString;
+begin
+  Inc(TempCount);
+  Name := AnsiString('t' + IntToStr(TempCount));
+  Result := axmir_new_reg(Ctx, Body, Typ, PAnsiChar(Name));
+end;
+
+{ The block that reports error ErrCode at Site; one per pair. }
+function TGen.ErrorLabel(Site, ErrCode: Integer): TMirInsn;
+var
+  B: TErrorBlock;
+begin
+  for B in ErrorBlocks do
+    if (B.Site = Site) and (B.Code = ErrCode) then
+      Exit(B.Lbl);
+  B.Lbl := MIR_new_label(Ctx);
+  B.Site := Site;
+  B.Code := ErrCode;
+  ErrorBlocks.Add(B);
+  Result := B.Lbl;
+end;
+
+const
+  // rt_error codes (Axon.Jit.RtError)
+  ErrAdd = 1; ErrSub = 2; ErrMul = 3; ErrNeg = 4; ErrPow = 5;
+
+{ Prototypes and imports for the calls, which MIR wants before the function. }
+procedure TGen.DeclareCalls;
+var
+  Insn: TJInsn;
+  Info: TCallInfo;
+  V: TArray<TMirVar>;
+  Types: TArray<Int32>;
+  Names: TArray<AnsiString>;
+  K: Integer;
+  ResI64: Int32;
+  ProtoName, ImportName: AnsiString;
+begin
+  ResI64 := MIR_T_I64;
+  for Insn in J.Insns do
+  begin
+    if Insn.Op <> joCall then
+      Continue;
+    Info.Proto := nil;
+    Info.Callee := nil;
+    if Insn.Target.Kind = ckCompiled then
+    begin
+      // (res, params) -> i64, as the callee's body.
+      SetLength(Types, Length(Insn.Target.ParamTypes) + 1);
+      SetLength(Names, Length(Types));
+      Types[0] := MIR_T_P;
+      Names[0] := 'res';
+      for K := 0 to High(Insn.Target.ParamTypes) do
+      begin
+        Types[K + 1] := MirType(Insn.Target.ParamTypes[K]);
+        Names[K + 1] := AnsiString('a' + IntToStr(K));
+      end;
+      V := Vars(Types, Names);
+      Inc(ProtoCount);
+      ProtoName := AnsiString('cp' + IntToStr(ProtoCount));
+      Info.Proto := MIR_new_proto_arr(Ctx, PAnsiChar(ProtoName), 1, @ResI64, Length(V), @V[0]);
+      if Insn.Target.CalleeId <> Fid then
+      begin
+        ImportName := AnsiString('f' + IntToStr(Insn.Target.CalleeId));
+        Info.Callee := MIR_new_import(Ctx, PAnsiChar(ImportName));
+      end;
+    end
+    else if (Insn.Target.Kind = ckBuiltin) and Insn.Target.Direct then
+    begin
+      Info.Proto := D1Proto;
+      ImportName := AnsiString('rt_' + Insn.Target.Name);
+      Info.Callee := MIR_new_import(Ctx, PAnsiChar(ImportName));
+    end;
+    Calls.AddOrSetValue(Insn, Info);
+  end;
+end;
+
+{ int ^ int with a non-negative exponent: IntPow's square-and-multiply with
+  checked products, so it overflows exactly when the interpreter does. }
+procedure TGen.GenPowInt(I: TJInsn);
+var
+  Res, Base, Ex, T: TMirReg;
+  LLoop, LSkip, LDone, LErr: TMirInsn;
+begin
+  Res := Scratch(MIR_T_I64);
+  Base := Scratch(MIR_T_I64);
+  Ex := Scratch(MIR_T_I64);
+  T := Scratch(MIR_T_I64);
+  LLoop := MIR_new_label(Ctx);
+  LSkip := MIR_new_label(Ctx);
+  LDone := MIR_new_label(Ctx);
+  LErr := ErrorLabel(I.Site, ErrPow);
+  E('mov', [RegOp(Res), IntOp(1)]);
+  E('mov', [RegOp(Base), Opnd(I.Ops[0])]);
+  E('mov', [RegOp(Ex), Opnd(I.Ops[1])]);
+  MIR_append_insn(Ctx, Body, LLoop);
+  E('ble', [LabelOp(LDone), RegOp(Ex), IntOp(0)]);
+  E('and', [RegOp(T), RegOp(Ex), IntOp(1)]);
+  E('beq', [LabelOp(LSkip), RegOp(T), IntOp(0)]);
+  E('mulo', [RegOp(Res), RegOp(Res), RegOp(Base)]);
+  E('bo', [LabelOp(LErr)]);
+  MIR_append_insn(Ctx, Body, LSkip);
+  E('rsh', [RegOp(Ex), RegOp(Ex), IntOp(1)]);
+  E('ble', [LabelOp(LDone), RegOp(Ex), IntOp(0)]);
+  E('mulo', [RegOp(Base), RegOp(Base), RegOp(Base)]);
+  E('bo', [LabelOp(LErr)]);
+  E('jmp', [LabelOp(LLoop)]);
+  MIR_append_insn(Ctx, Body, LDone);
+  E('mov', [Reg(I.Dst), RegOp(Res)]);
+end;
+
+function TGen.NewCallSite(I: TJInsn): TJitCallSite;
+var
+  K: Integer;
+  Used: Boolean;
+begin
+  Result := TJitCallSite.Create;
+  Code.CallSites.Add(Result);
+  Result.Name := I.Target.Name;
+  Result.Value := I.Target.Value;
+  Result.ValuePtr := I.Target.ValuePtr;
+  Result.ArgTypes := I.Target.ArgTypes;
+  SetLength(Result.Strings, Length(I.Ops));
+  for K := 0 to High(I.Ops) do
+    if I.Ops[K].Kind = jkString then
+      Result.Strings[K] := I.Ops[K].S;
+  // The results the caller loads (none for a statement).
+  Used := False;
+  for K := 0 to High(I.Dsts) do
+    if I.Dsts[K] >= 0 then
+      Used := True;
+  if Used then
+    Result.ResultTypes := I.Target.ResultTypes;
+end;
+
+{ Results from the result buffer into the registers that use them. }
+procedure TGen.LoadResults(I: TJInsn);
+var
+  K: Integer;
+begin
+  for K := 0 to High(I.Dsts) do
+    if I.Dsts[K] >= 0 then
+      if J.Regs[I.Dsts[K]].Typ = jtReal then
+        E('dmov', [Reg(I.Dsts[K]), MemOp(MIR_T_D, 8 * K, ResBuf)])
+      else
+        E('mov', [Reg(I.Dsts[K]), MemOp(MIR_T_I64, 8 * K, ResBuf)]);
+end;
+
+{ rt_call(site, fid, siteindex, args, res), the arguments stored in slots.
+  Join, when not nil, is where the call continues (an out-of-line path). }
+procedure TGen.GenCallThroughInterp(I: TJInsn; CS: TJitCallSite; Join: TMirInsn);
+var
+  K: Integer;
+  St: TMirReg;
+begin
+  for K := 0 to High(I.Ops) do
+    case I.Ops[K].Kind of
+      jkString: ;
+      jkReal:
+        E('dmov', [MemOp(MIR_T_D, 8 * K, ArgBuf), Opnd(I.Ops[K])]);
+      jkReg:
+        if J.Regs[I.Ops[K].Reg].Typ = jtReal then
+          E('dmov', [MemOp(MIR_T_D, 8 * K, ArgBuf), Opnd(I.Ops[K])])
+        else
+          E('mov', [MemOp(MIR_T_I64, 8 * K, ArgBuf), Opnd(I.Ops[K])]);
+    else
+      E('mov', [MemOp(MIR_T_I64, 8 * K, ArgBuf), Opnd(I.Ops[K])]);
+    end;
+  St := Scratch(MIR_T_I64);
+  E('call', [RefOp(CallProto), RefOp(CallImport), RegOp(St), IntOp(NativeInt(CS)),
+    IntOp(Fid), IntOp(I.Site), RegOp(ArgBuf), RegOp(ResBuf)]);
+  E('bne', [LabelOp(FailLabel), RegOp(St), IntOp(0)]);
+  if Join <> nil then
+    E('jmp', [LabelOp(Join)]);
+end;
+
+procedure TGen.GenCall(I: TJInsn);
+var
+  Info: TCallInfo;
+  T: TJCallTarget;
+  CS: TJitCallSite;
+  G, D, St, Dst: TMirReg;
+  LSlow, LJoin, LRec, LProp: TMirInsn;
+  Ops: TArray<TAxMirOp>;
+  K: Integer;
+begin
+  T := I.Target;
+  Info := Calls[I];
+  CS := NewCallSite(I);
+
+  if (T.Kind = ckBuiltin) and T.Direct then
+  begin
+    // RF(x): the interpreter's own routine.
+    if I.Dsts[0] >= 0 then
+      Dst := Regs[I.Dsts[0]]
+    else
+      Dst := Scratch(MIR_T_D);
+    E('call', [RefOp(Info.Proto), RefOp(Info.Callee), RegOp(Dst), Opnd(I.Ops[0])]);
+    Exit;
+  end;
+
+  if T.Kind <> ckCompiled then
+  begin
+    GenCallThroughInterp(I, CS, nil);
+    LoadResults(I);
+    Exit;
+  end;
+
+  // A compiled callee.
+  LJoin := MIR_new_label(Ctx);
+  LRec := MIR_new_label(Ctx);
+  LProp := MIR_new_label(Ctx);
+  if T.ValuePtr <> nil then
+  begin
+    // The guard: the variable still holds the function compiled against.
+    LSlow := MIR_new_label(Ctx);
+    G := Scratch(MIR_T_I64);
+    E('mov', [RegOp(G), IntOp(NativeInt(T.ValuePtr))]);
+    E('mov', [RegOp(G), MemOp(MIR_T_I64, ObjOffset, G)]);
+    E('bne', [LabelOp(LSlow), RegOp(G), IntOp(ObjBits(T.Value))]);
+  end
+  else
+    LSlow := nil;
+  // Invoke's depth check: raise, check, and lower again after the call.
+  D := Scratch(MIR_T_I64);
+  E('mov', [RegOp(D), MemOp(MIR_T_I32, 0, DepthAddr)]);
+  E('add', [RegOp(D), RegOp(D), IntOp(1)]);
+  E('mov', [MemOp(MIR_T_I32, 0, DepthAddr), RegOp(D)]);
+  E('bgt', [LabelOp(LRec), RegOp(D), IntOp(JitMaxDepth)]);
+  SetLength(Ops, 4 + Length(I.Ops));
+  St := Scratch(MIR_T_I64);
+  Ops[0] := RefOp(Info.Proto);
+  if Info.Callee <> nil then
+    Ops[1] := RefOp(Info.Callee)
+  else
+    Ops[1] := RefOp(Body);         // recursion: this function
+  Ops[2] := RegOp(St);
+  Ops[3] := RegOp(ResBuf);
+  for K := 0 to High(I.Ops) do
+    Ops[4 + K] := Opnd(I.Ops[K]);
+  E('call', Ops);
+  E('mov', [RegOp(D), MemOp(MIR_T_I32, 0, DepthAddr)]);
+  E('sub', [RegOp(D), RegOp(D), IntOp(1)]);
+  E('mov', [MemOp(MIR_T_I32, 0, DepthAddr), RegOp(D)]);
+  E('bne', [LabelOp(LProp), RegOp(St), IntOp(0)]);
+  MIR_append_insn(Ctx, Body, LJoin);
+  LoadResults(I);
+
+  Deferred.Add(
+    procedure
+    var
+      D2: TMirReg;
+    begin
+      // Too deep: lower the depth again, as Invoke's finally does.
+      MIR_append_insn(Ctx, Body, LRec);
+      D2 := Scratch(MIR_T_I64);
+      E('mov', [RegOp(D2), MemOp(MIR_T_I32, 0, DepthAddr)]);
+      E('sub', [RegOp(D2), RegOp(D2), IntOp(1)]);
+      E('mov', [MemOp(MIR_T_I32, 0, DepthAddr), RegOp(D2)]);
+      E('call', [RefOp(RecProto), RefOp(RecImport), IntOp(NativeInt(CS)), IntOp(Fid), IntOp(I.Site)]);
+      E('ret', [IntOp(1)]);
+      // The callee failed: this frame is at the call.
+      MIR_append_insn(Ctx, Body, LProp);
+      E('call', [RefOp(FrameProto), RefOp(FrameImport), IntOp(Fid), IntOp(I.Site)]);
+      E('ret', [IntOp(1)]);
+      if LSlow <> nil then
+      begin
+        // The variable now holds something else: call that through the interpreter.
+        MIR_append_insn(Ctx, Body, LSlow);
+        GenCallThroughInterp(I, CS, LJoin);
+      end;
+    end);
+end;
+
+procedure TGen.GenInsn(I: TJInsn);
+const
+  IntCmp: array[joEq..joGe] of AnsiString = ('eq', 'ne', 'lt', 'le', 'gt', 'ge');
+  RealCmp: array[joEq..joGe] of AnsiString = ('deq', 'dne', 'dlt', 'dle', 'dgt', 'dge');
+var
+  IsReal: Boolean;
+  T: TMirReg;
+  K: Integer;
+  Name: AnsiString;
+begin
+  IsReal := I.Typ = jtReal;
+  case I.Op of
+    joLabel:
+      MIR_append_insn(Ctx, Body, Labels[I.Ops[0].I]);
+    joMov:
+      if J.Regs[I.Dst].Typ = jtReal then
+        E('dmov', [Reg(I.Dst), Opnd(I.Ops[0])])
+      else
+        E('mov', [Reg(I.Dst), Opnd(I.Ops[0])]);
+    joB2I:
+      E('mov', [Reg(I.Dst), Opnd(I.Ops[0])]);
+    joB2R, joI2R:
+      if I.Ops[0].IsImm then
+        E('dmov', [Reg(I.Dst), DoubleOp(Opnd(I.Ops[0]).I)])
+      else
+        E('i2d', [Reg(I.Dst), Opnd(I.Ops[0])]);
+    joAdd, joSub, joMul:
+      if IsReal then
+      begin
+        case I.Op of
+          joAdd: Name := 'dadd';
+          joSub: Name := 'dsub';
+        else
+          Name := 'dmul';
+        end;
+        E(Name, [Reg(I.Dst), Opnd(I.Ops[0]), Opnd(I.Ops[1])]);
+      end
+      else if I.Site < 0 then
+      begin
+        case I.Op of
+          joAdd: Name := 'add';
+          joSub: Name := 'sub';
+        else
+          Name := 'mul';
+        end;
+        E(Name, [Reg(I.Dst), Opnd(I.Ops[0]), Opnd(I.Ops[1])]);
+      end
+      else
+      begin
+        case I.Op of
+          joAdd: begin Name := 'addo'; K := ErrAdd; end;
+          joSub: begin Name := 'subo'; K := ErrSub; end;
+        else
+          begin Name := 'mulo'; K := ErrMul; end;
+        end;
+        E(Name, [Reg(I.Dst), Opnd(I.Ops[0]), Opnd(I.Ops[1])]);
+        E('bo', [LabelOp(ErrorLabel(I.Site, K))]);
+      end;
+    joNeg:
+      if IsReal then
+        E('dneg', [Reg(I.Dst), Opnd(I.Ops[0])])
+      else if I.Site < 0 then
+        E('neg', [Reg(I.Dst), Opnd(I.Ops[0])])
+      else
+      begin
+        // -x overflows only for the most negative int: 0 - x with subo.
+        E('subo', [Reg(I.Dst), IntOp(0), Opnd(I.Ops[0])]);
+        E('bo', [LabelOp(ErrorLabel(I.Site, ErrNeg))]);
+      end;
+    joDiv:
+      E('ddiv', [Reg(I.Dst), Opnd(I.Ops[0]), Opnd(I.Ops[1])]);
+    joPow:
+      if IsReal then
+        E('call', [RefOp(PowProto), RefOp(PowImport), Reg(I.Dst), Opnd(I.Ops[0]), Opnd(I.Ops[1])])
+      else
+        GenPowInt(I);
+    joEq..joGe:
+      if IsReal then
+        E(RealCmp[I.Op], [Reg(I.Dst), Opnd(I.Ops[0]), Opnd(I.Ops[1])])
+      else
+        E(IntCmp[I.Op], [Reg(I.Dst), Opnd(I.Ops[0]), Opnd(I.Ops[1])]);
+    joNot:
+      E('eq', [Reg(I.Dst), Opnd(I.Ops[0]), IntOp(0)]);
+    joJmp:
+      E('jmp', [LabelOp(Labels[I.Ops[0].I])]);
+    joBrTrue, joBrFalse:
+      if I.Ops[0].Kind = jkBool then
+      begin
+        // A constant condition: always or never.
+        if I.Ops[0].B = (I.Op = joBrTrue) then
+          E('jmp', [LabelOp(Labels[I.Ops[1].I])]);
+      end
+      else if I.Op = joBrTrue then
+        E('bt', [LabelOp(Labels[I.Ops[1].I]), Opnd(I.Ops[0])])
+      else
+        E('bf', [LabelOp(Labels[I.Ops[1].I]), Opnd(I.Ops[0])]);
+    joCount:
+      begin
+        if IsReal then
+          E('call', [RefOp(CountRealProto), RefOp(CountRealImport), Reg(I.Dst),
+            Opnd(I.Ops[0]), Opnd(I.Ops[1]), Opnd(I.Ops[2]), IntOp(Fid), IntOp(I.Site)])
+        else
+          E('call', [RefOp(CountIntProto), RefOp(CountIntImport), Reg(I.Dst),
+            Opnd(I.Ops[0]), Opnd(I.Ops[1]), Opnd(I.Ops[2]), IntOp(Fid), IntOp(I.Site)]);
+        // The helper has recorded the error.
+        E('blt', [LabelOp(FailLabel), Reg(I.Dst), IntOp(0)]);
+      end;
+    joElem:
+      if IsReal then
+      begin
+        // start + k*step, with k converted first, as TRangeObj.ItemAt.
+        T := Scratch(MIR_T_D);
+        E('i2d', [RegOp(T), Opnd(I.Ops[2])]);
+        E('dmul', [RegOp(T), RegOp(T), Opnd(I.Ops[1])]);
+        E('dadd', [Reg(I.Dst), Opnd(I.Ops[0]), RegOp(T)]);
+      end
+      else
+      begin
+        T := Scratch(MIR_T_I64);
+        E('mul', [RegOp(T), Opnd(I.Ops[2]), Opnd(I.Ops[1])]);
+        E('add', [Reg(I.Dst), Opnd(I.Ops[0]), RegOp(T)]);
+      end;
+    joRet:
+      begin
+        for K := 0 to High(I.Ops) do
+          if J.ResultTypes[K] = jtReal then
+            E('dmov', [MemOp(MIR_T_D, 8 * K, ResPtr), Opnd(I.Ops[K])])
+          else
+            E('mov', [MemOp(MIR_T_I64, 8 * K, ResPtr), Opnd(I.Ops[K])]);
+        E('ret', [IntOp(0)]);
+      end;
+    joCall:
+      GenCall(I);
+  else
+    raise EMirError.CreateFmt('JIT: no code for JIR op %d', [Ord(I.Op)]);
+  end;
+end;
+
+function TGen.Run: TMirItem;
+var
+  Module: TMirModule;
+  V, EV: TArray<TMirVar>;
+  Types: TArray<Int32>;
+  Names: TArray<AnsiString>;
+  ResI64, ResD: Int32;
+  BodyProto, BodyItem, Entry: TMirItem;
+  K, P, MaxArgs, MaxRes: Integer;
+  ModName, BodyName, EntryName, ProtoName: AnsiString;
+  Insn: TJInsn;
+  B: TErrorBlock;
+  ArgsReg, EntryRes, Status: TMirReg;
+  CallOps: TArray<TAxMirOp>;
+  Loaded: TArray<TMirReg>;
+  RegName: AnsiString;
+  Block: TProc;
+  HasCalls: Boolean;
+begin
+  ResI64 := MIR_T_I64;
+  ResD := MIR_T_D;
+  ModName := AnsiString('m' + IntToStr(Fid));
+  BodyName := AnsiString('f' + IntToStr(Fid));
+  EntryName := AnsiString('e' + IntToStr(Fid));
+  ProtoName := AnsiString('p' + IntToStr(Fid));
+  Module := MIR_new_module(Ctx, PAnsiChar(ModName));
+  MIR_new_export(Ctx, PAnsiChar(BodyName));
+
+  // Prototypes and imports of the helpers.
+  V := Vars([MIR_T_I64, MIR_T_I64, MIR_T_I64], ['fid', 'site', 'code']);
+  ErrProto := MIR_new_proto_arr(Ctx, 'rt_error_p', 0, nil, 3, @V[0]);
+  ErrImport := MIR_new_import(Ctx, 'rt_error');
+  V := Vars([MIR_T_I64, MIR_T_I64, MIR_T_I64, MIR_T_I64, MIR_T_I64], ['a', 'h', 'b', 'fid', 'site']);
+  CountIntProto := MIR_new_proto_arr(Ctx, 'rt_count_int_p', 1, @ResI64, 5, @V[0]);
+  CountIntImport := MIR_new_import(Ctx, 'rt_count_int');
+  V := Vars([MIR_T_D, MIR_T_D, MIR_T_D, MIR_T_I64, MIR_T_I64], ['a', 'h', 'b', 'fid', 'site']);
+  CountRealProto := MIR_new_proto_arr(Ctx, 'rt_count_real_p', 1, @ResI64, 5, @V[0]);
+  CountRealImport := MIR_new_import(Ctx, 'rt_count_real');
+  V := Vars([MIR_T_D, MIR_T_D], ['x', 'y']);
+  PowProto := MIR_new_proto_arr(Ctx, 'rt_pow_real_p', 1, @ResD, 2, @V[0]);
+  PowImport := MIR_new_import(Ctx, 'rt_pow_real');
+  V := Vars([MIR_T_P, MIR_T_I64, MIR_T_I64, MIR_T_P, MIR_T_P], ['cs', 'fid', 'site', 'args', 'res']);
+  CallProto := MIR_new_proto_arr(Ctx, 'rt_call_p', 1, @ResI64, 5, @V[0]);
+  CallImport := MIR_new_import(Ctx, 'rt_call');
+  V := Vars([MIR_T_I64, MIR_T_I64], ['fid', 'site']);
+  FrameProto := MIR_new_proto_arr(Ctx, 'rt_frame_p', 0, nil, 2, @V[0]);
+  FrameImport := MIR_new_import(Ctx, 'rt_frame');
+  V := Vars([MIR_T_P, MIR_T_I64, MIR_T_I64], ['cs', 'fid', 'site']);
+  RecProto := MIR_new_proto_arr(Ctx, 'rt_recursion_p', 0, nil, 3, @V[0]);
+  RecImport := MIR_new_import(Ctx, 'rt_recursion');
+  V := Vars([MIR_T_D], ['x']);
+  D1Proto := MIR_new_proto_arr(Ctx, 'rt_d1_p', 1, @ResD, 1, @V[0]);
+  DeclareCalls;
+
+  // The body's parameters: the result pointer, then the JIR parameters, each
+  // named after its register.
+  SetLength(Types, J.Params.Count + 1);
+  SetLength(Names, J.Params.Count + 1);
+  Types[0] := MIR_T_P;
+  Names[0] := 'res';
+  for K := 0 to J.Params.Count - 1 do
+  begin
+    Types[K + 1] := MirType(J.Regs[J.Params[K]].Typ);
+    Names[K + 1] := AnsiString('r' + IntToStr(J.Params[K]));
+  end;
+  V := Vars(Types, Names);
+  BodyProto := MIR_new_proto_arr(Ctx, PAnsiChar(ProtoName), 1, @ResI64, Length(V), @V[0]);
+
+  Body := MIR_new_func_arr(Ctx, PAnsiChar(BodyName), 1, @ResI64, Length(V), @V[0]);
+  ResPtr := axmir_reg(Ctx, Body, 'res');
+  SetLength(Regs, J.Regs.Count);
+  for K := 0 to J.Regs.Count - 1 do
+  begin
+    RegName := AnsiString('r' + IntToStr(K));
+    if J.Regs[K].IsParam then
+      Regs[K] := axmir_reg(Ctx, Body, PAnsiChar(RegName))
+    else
+      Regs[K] := axmir_new_reg(Ctx, Body, MirType(J.Regs[K].Typ), PAnsiChar(RegName));
+  end;
+  SetLength(Labels, J.LabelCount);
+  for K := 0 to J.LabelCount - 1 do
+    Labels[K] := MIR_new_label(Ctx);
+  FailLabel := MIR_new_label(Ctx);
+
+  // Calls need slots for arguments and results, and the depth counter.
+  MaxArgs := 0;
+  MaxRes := 0;
+  HasCalls := False;
+  for Insn in J.Insns do
+    if Insn.Op = joCall then
+    begin
+      HasCalls := True;
+      if Length(Insn.Ops) > MaxArgs then MaxArgs := Length(Insn.Ops);
+      if Length(Insn.Dsts) > MaxRes then MaxRes := Length(Insn.Dsts);
+    end;
+  if HasCalls then
+  begin
+    ArgBuf := axmir_new_reg(Ctx, Body, MIR_T_I64, 'argbuf');
+    ResBuf := axmir_new_reg(Ctx, Body, MIR_T_I64, 'resbuf');
+    DepthAddr := axmir_new_reg(Ctx, Body, MIR_T_I64, 'depth');
+    E('alloca', [RegOp(ArgBuf), IntOp(8 * (MaxArgs + MaxRes + 1))]);
+    E('add', [RegOp(ResBuf), RegOp(ArgBuf), IntOp(8 * MaxArgs)]);
+    E('mov', [RegOp(DepthAddr), IntOp(NativeInt(JitDepth))]);
+  end;
+
+  for Insn in J.Insns do
+    GenInsn(Insn);
+
+  // Out-of-line blocks, error blocks, then the common failure return.
+  for Block in Deferred do
+    Block();
+  for B in ErrorBlocks do
+  begin
+    MIR_append_insn(Ctx, Body, B.Lbl);
+    E('call', [RefOp(ErrProto), RefOp(ErrImport), IntOp(Fid), IntOp(B.Site), IntOp(B.Code)]);
+    E('ret', [IntOp(1)]);
+  end;
+  MIR_append_insn(Ctx, Body, FailLabel);
+  E('ret', [IntOp(1)]);
+  MIR_finish_func(Ctx);
+  BodyItem := Body;
+
+  // The entry thunk: e(args, res) loads the parameters and calls the body.
+  EV := Vars([MIR_T_P, MIR_T_P], ['args', 'res']);
+  Entry := MIR_new_func_arr(Ctx, PAnsiChar(EntryName), 1, @ResI64, 2, @EV[0]);
+  Body := Entry;   // E() appends to Body
+  ArgsReg := axmir_reg(Ctx, Entry, 'args');
+  EntryRes := axmir_reg(Ctx, Entry, 'res');
+  Status := axmir_new_reg(Ctx, Entry, MIR_T_I64, 'status');
+  SetLength(Loaded, J.Params.Count);
+  for K := 0 to J.Params.Count - 1 do
+  begin
+    P := J.Params[K];
+    RegName := AnsiString('a' + IntToStr(K));
+    Loaded[K] := axmir_new_reg(Ctx, Entry, MirType(J.Regs[P].Typ), PAnsiChar(RegName));
+    if J.Regs[P].Typ = jtReal then
+      E('dmov', [RegOp(Loaded[K]), MemOp(MIR_T_D, 8 * K, ArgsReg)])
+    else
+      E('mov', [RegOp(Loaded[K]), MemOp(MIR_T_I64, 8 * K, ArgsReg)]);
+  end;
+  SetLength(CallOps, 4 + J.Params.Count);
+  CallOps[0] := RefOp(BodyProto);
+  CallOps[1] := RefOp(BodyItem);
+  CallOps[2] := RegOp(Status);
+  CallOps[3] := RegOp(EntryRes);
+  for K := 0 to J.Params.Count - 1 do
+    CallOps[4 + K] := RegOp(Loaded[K]);
+  E('call', CallOps);
+  E('ret', [RegOp(Status)]);
+  MIR_finish_func(Ctx);
+
+  MIR_finish_module(Ctx);
+  MIR_load_module(Ctx, Module);
+  Result := Entry;
+end;
+
+function GenerateModule(J: TJFunction; Code: TJitCode): TMirItem;
+var
+  G: TGen;
+begin
+  EnsureContext;
+  G := TGen.Create(J, Code);
+  try
+    Result := G.Run;
+  finally
+    G.Free;
+  end;
+end;
+
+initialization
+
+finalization
+  if Ctx <> nil then
+    axmir_finish(Ctx);
+
+end.

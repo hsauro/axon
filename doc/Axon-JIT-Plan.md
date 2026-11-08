@@ -133,19 +133,58 @@ Any other read could reach the module at run time, so the function is rejected. 
 
 ### J2 — Scalar code generation
 
-- [ ] `src/Axon.Jit.Mir.pas`: JIR translated to MIR, then generated and linked; entry thunks (D7)
-- [ ] Exact arithmetic (D5): checked `int` overflow, floored `div`/`mod`, `int / int` as `real`, and literal non-negative integer powers
-- [ ] Runtime-error path (D4): an error in compiled code gives the same report, trace and exit code as the interpreter. `.err` tests compare it exactly
-- [ ] `--jit` modes and `AXON_JIT`; `__jit_compiled`
-- [ ] All M0–M13 tests pass with `--jit=force` (most functions still fall back at this stage, and that is fine)
+- [x] `src/Axon.Jit.Mir.pas`: JIR translated to MIR, generated and linked in one MIR context for the process. Each function is a module with two functions: a typed body `f<id>(res, params…)` returning a status, and an entry thunk `e<id>(args, res)` that loads 8-byte argument slots and calls the body (D7)
+- [x] Exact arithmetic (D5):
+  - checked `int` `+`, `-`, `*` and unary `-` with `addo`/`subo`/`mulo` and `bo`;
+  - `int ^ literal` as IntPow's square-and-multiply with checked products, so it overflows exactly when the interpreter does;
+  - `real ^` through a helper with RealArith's rule;
+  - range counts through helpers with MakeRange's code;
+  - range elements as `start + k*step`.
+
+  `div` and `mod` are calls, so they come in J3
+- [x] Runtime-error path (D4). A failing instruction branches to an error block that calls `rt_error(fid, site, code)` and returns status 1; a failing helper records its own error. The interpreter raises the pending error at its site inside Invoke's frame handling. Tests in `tests/j02` check, with `.err` files, that reports and traces are identical to the interpreter's (verified against interpreted runs too)
+- [x] Modes `--jit=off|on|force` and `AXON_JIT`; the default stays `off` until J5. Built-ins for tests:
+  - `__jit_compiled(f)`
+  - `__jit_reason(f)`
+  - `__jit_mode([m])`, which switches the mode inside a test, so a file can run the same function compiled and then interpreted and compare
+
+  `AXON_JIT_LOG=file` records every compile decision
+- [x] The full suite passes with the JIT off, on and forced (394 tests each). Only 13 functions of M0–M13 compile at this stage, so `tests/j02` holds the tests that exercise compiled code: arithmetic, comparisons including NaN, short-circuiting, int and real ranges, `break`/`continue`, `while`, and every error kind
+
+J2 measurements, on Win64 Release (`AXON_JIT=on bench.cmd`):
+
+| Kernel | Interpreted | Compiled | Speed-up |
+| --- | --- | --- | --- |
+| `harmonic(100000)` | 88.2 ms | 108 µs | 817× |
+| `mandel(60, 50)`: `escape` compiled, `mandel` still interpreted | 193 ms | 19.4 ms | 10× |
+
+The other kernels need calls (`fib`, `ones` in `sieve`) or arrays (`matmul`) and are unchanged until J3 and J4.
 
 ### J3 — Calls
 
-- [ ] Calls between compiled functions, including recursion: `fib` is the reference benchmark
-- [ ] Elementary built-ins inlined or called through the helper table: `abs`, `sqrt`, `exp`, `log`, `sin` … `atanh`, `floor`, `ceil`, `round`, `int`, `real`, `min`, `max`, `div`, `mod`
-- [ ] Multiple return values (`return a, b`)
-- [ ] Calls to functions that did not compile go back into the interpreter through a boxing helper (slow, but allowed), so one uncompilable callee does not stop its caller compiling
-- [ ] `print` and `error` from compiled code, through helpers, with identical output
+- [x] Calls between compiled functions, including recursion. A called name resolves in the function's defining scope, as the interpreter's lookup would. Compiled code is generated in groups: the session lowers a function and the functions it calls, and the group is generated and linked at once. Each body is exported as `f<id>`, and calls go directly to it:
+  - **Guard.** A guard checks that the module variable still holds the function the call was compiled against; after rebinding, the call goes through the interpreter.
+  - **Call depth.** The interpreter's call-depth counter is raised and checked around the call, as `Invoke` does, so `RecursionError` comes at the same depth with the same 10,000-frame trace.
+  - **Recursion.** Recursion compiles when the result type is known before the recursive call: declared, or fixed by an earlier `return`. Mutual recursion goes through the interpreter in one direction.
+- [x] Built-ins with scalar arguments:
+  - **Elementary functions** (`sqrt` … `atanh`) call the interpreter's own real routines directly (`ElementaryRealFunction` in `Axon.Builtins`), so the result has the same bits.
+  - **`abs`, `floor`, `ceil`, `round`, `int`, `real`, `min`, `max`, `div` and `mod`** call the built-in itself through `rt_call`. This is exact by construction, errors included.
+- [x] Multiple return values, `return a, b`, and multiple assignment from a call, `[q, r] = f(x)`
+- [x] Calls to functions that do not compile go through the interpreter (`rt_call` boxes the arguments and calls `CallValue`), so an uncompilable callee does not stop its caller compiling. The callee's result type must be declared, or the result unused
+- [x] `print` and `error` from compiled code, with numbers and string literals, through `rt_call`
+- [x] Errors through any mix of frames. The function where an error starts records it, as a kind and message or as the exception an interpreted call raised. Each compiled caller adds its call site (`rt_frame`). `TakeJitError` builds the trace exactly as the interpreter would. Tests in `tests/j03` cover errors from a compiled callee, from an interpreted function between compiled ones, from a built-in, from `error`, and from recursion depth; all are checked against interpreted runs too
+
+Known limits: the elementary-function shortcut assumes a prelude name is not shadowed by a module variable created after the caller compiled. A compiled function returning several values that is rebound to another function is reported as a `TypeError` rather than called.
+
+J3 measurements, Win64 Release:
+
+| Kernel | Interpreted | Compiled | Speed-up |
+| --- | --- | --- | --- |
+| `fib(22)` | 134 ms | 223 µs | 600× |
+| `harmonic(100000)` | 88.5 ms | 108 µs | 820× |
+| `mandel(60, 50)` | 196 ms | 216 µs | 900× |
+
+In the full suite with the JIT forced on, 50 functions compile (13 after J2). Most of the rest have unannotated parameters, which is J6.
 
 ### J4 — Arrays
 

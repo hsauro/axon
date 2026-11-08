@@ -71,6 +71,10 @@ type
     IsClosure: Boolean;       // lambda or nested function: rule 5 reaches outward
     FileName: string;         // the module file it was defined in (for errors)
     FilePath: string;         // its full path (for imports made while it runs)
+    // The JIT (Axon.Jit): compiled at the first call when the mode is on.
+    JitTried: Boolean;
+    JitCode: TObject;         // a TJitCode, owned by the JIT's registry; nil if not compiled
+    JitReason: string;        // why it was not compiled
     constructor Create(ADecl: TFunctionDecl; AClosure: TScope; AIsClosure: Boolean);
     destructor Destroy; override;
   end;
@@ -165,6 +169,7 @@ type
   public
     { Calls any function value with positional arguments (used for callbacks). }
     function CallValue(const Fn: TAxValue; const Args: TAxValues): TAxValue;
+    function RunCompiled(Code: TObject; const Args: TAxValues): TAxValues;
   private
     function MakeRange(E: TRangeExpr; Scope: TScope): TAxValue;
     function EvalLogical(E: TBinaryExpr; Scope: TScope): TAxValue;
@@ -201,9 +206,13 @@ uses
   System.Math, System.Character, System.IOUtils,
   Axon.Packages, Axon.Source, Axon.Lexer, Axon.Parser,
   Axon.Sparse, Axon.NativeModules,
-  Axon.Errors, Axon.Tokens, Axon.Ops, Axon.Builtins, Axon.Complex, Axon.Arrays;
+  Axon.Errors, Axon.Tokens, Axon.Ops, Axon.Builtins, Axon.Complex, Axon.Arrays,
+  Axon.Jit, Axon.Jit.Ir, Axon.Jit.Lower;
 
 function StringChars(const S: string): TArray<string>; forward;
+function BJitCompiled(const Args: TAxValues): TAxValue; forward;
+function BJitReason(const Args: TAxValues): TAxValue; forward;
+function BJitMode(const Args: TAxValues): TAxValue; forward;
 
 { ===================== type annotations ===================== }
 
@@ -407,6 +416,9 @@ begin
     begin
       Prelude.Define(Name).Value := V;
     end);
+  Prelude.Define('__jit_compiled').Value := BuiltinValue('__jit_compiled', BJitCompiled, 1, 1);
+  Prelude.Define('__jit_reason').Value := BuiltinValue('__jit_reason', BJitReason, 1, 1);
+  Prelude.Define('__jit_mode').Value := BuiltinValue('__jit_mode', BJitMode, 0, 1);
   FGlobals := TScope.Create(FPrelude, rkModule);
   FHoisted := TDictionary<TFunctionDecl, Boolean>.Create;
   FHoistedRecords := TDictionary<TRecordStmt, Boolean>.Create;
@@ -427,6 +439,50 @@ begin
     begin
       Result := CallValue(Fn, Args);
     end;
+  // The JIT resolves a called name as a call in a top-level function would:
+  // through the function's defining scope, up to the prelude.
+  JitSetup(
+    function(Context: TObject; const Name: string): TJResolved
+    var
+      S: TScope;
+      Cell: TVarCell;
+      V: TAxValue;
+      Fo: TFunctionObj;
+    begin
+      Result := Default(TJResolved);
+      if Context = nil then
+        Exit;
+      S := TFunctionObj(Context).Closure;
+      Cell := nil;
+      while (S <> nil) and (Cell = nil) do
+      begin
+        Cell := S.Find(Name);
+        S := S.Parent;
+      end;
+      if Cell = nil then
+        Exit;
+      V := Cell.Value;
+      Result.Value := V;
+      Result.ValuePtr := @Cell.Value;
+      case V.Kind of
+        vkFunction:
+          begin
+            Fo := TFunctionObj(V.Obj);
+            Result.Kind := rkFunction;
+            Result.Decl := Fo.Decl;
+            Result.FuncObj := Fo;
+            Result.FileName := Fo.FileName;
+            Result.IsClosure := Fo.IsClosure;
+          end;
+        vkBuiltin:
+          begin
+            Result.Kind := rkBuiltin;
+            Result.Name := AsBuiltin(V).Name;
+          end;
+      else
+        Result.Kind := rkOther;
+      end;
+    end, @FCallDepth, MaxCallDepth);
 end;
 
 destructor TInterpreter.Destroy;
@@ -942,6 +998,69 @@ begin
     Result := 'anonymous function';
 end;
 
+{ Calls compiled code with the bound arguments. An error it reports is
+  raised here, at its site, inside Invoke's frame handling, so the report and
+  trace match the interpreter's. }
+function TInterpreter.RunCompiled(Code: TObject; const Args: TAxValues): TAxValues;
+var
+  C: TJitCode;
+  ArgSlots, ResSlots: TArray<Int64>;
+  K: Integer;
+begin
+  C := TJitCode(Code);
+  SetLength(ArgSlots, Length(Args) + 1);
+  SetLength(ResSlots, Length(C.ResultTypes) + 1);
+  for K := 0 to High(Args) do
+    case C.ParamTypes[K] of
+      jtBool: ArgSlots[K] := Ord(Args[K].B);
+      jtInt:  ArgSlots[K] := Args[K].I;
+      jtReal: PDouble(@ArgSlots[K])^ := Args[K].R;
+    end;
+  if C.Entry(@ArgSlots[0], @ResSlots[0]) <> 0 then
+    raise TakeJitError;
+  if Length(C.ResultTypes) = 0 then
+  begin
+    Result := [NothingValue];
+    Exit;
+  end;
+  SetLength(Result, Length(C.ResultTypes));
+  for K := 0 to High(C.ResultTypes) do
+    case C.ResultTypes[K] of
+      jtBool: Result[K] := BoolValue(ResSlots[K] <> 0);
+      jtInt:  Result[K] := IntValue(ResSlots[K]);
+      jtReal: Result[K] := RealValue(PDouble(@ResSlots[K])^);
+    end;
+end;
+
+{ __jit_compiled(f): true once f has compiled code. }
+function BJitCompiled(const Args: TAxValues): TAxValue;
+begin
+  Result := BoolValue((Args[0].Kind = vkFunction) and
+    (JitCodeOf(TFunctionObj(Args[0].Obj).Decl) <> nil));
+end;
+
+{ __jit_reason(f): why f was not compiled ("" when it was, or was not tried). }
+function BJitReason(const Args: TAxValues): TAxValue;
+begin
+  if Args[0].Kind <> vkFunction then
+    Result := StringValue('not an Axon function')
+  else
+    Result := StringValue(TFunctionObj(Args[0].Obj).JitReason);
+end;
+
+{ __jit_mode() gives the mode; __jit_mode(m) sets it ("off", "on" or "force")
+  and gives the previous one. }
+function BJitMode(const Args: TAxValues): TAxValue;
+var
+  Old: string;
+begin
+  Old := JitModeName;
+  if Length(Args) = 1 then
+    if (Args[0].Kind <> vkString) or not SetJitMode(AsString(Args[0])) then
+      RaiseError(ArgumentError, '__jit_mode needs "off", "on" or "force"');
+  Result := StringValue(Old);
+end;
+
 { Binds arguments (reference, "Argument binding"), runs the body and returns
   its values. }
 function TInterpreter.Invoke(F: TFunctionObj; const Pos: TAxValues;
@@ -958,6 +1077,7 @@ var
   Kind: TRootKind;
   V: TAxValue;
   Cell: TVarCell;
+  Bound: TAxValues;            // the bound parameter values, for compiled code
 begin
   D := F.Decl;
   Fn := DescribeFunction(F);
@@ -1014,6 +1134,7 @@ begin
       // scope (whose parent is the defining scope), so a default may refer to
       // earlier parameters. Annotated parameters are checked and widened.
       J := 0;
+      SetLength(Bound, D.Params.Count);
       for I := 0 to D.Params.Count - 1 do
       begin
         P := D.Params[I];
@@ -1031,9 +1152,19 @@ begin
         Cell := Root.Define(P.Name);
         Cell.TypeRef := P.TypeRef;
         Cell.Value := V;
+        Bound[I] := V;
       end;
 
-      if ExecBody(D.Body, Root) = sigReturn then
+      // Compiled code, when the JIT is on and the function compiles. Closures
+      // are never compiled: their assignments can reach enclosing scopes.
+      if (JitMode <> jmOff) and not F.IsClosure and not F.JitTried then
+      begin
+        F.JitTried := True;
+        F.JitCode := JitCompile(D, F, F.FileName, F.JitReason);
+      end;
+      if (JitMode <> jmOff) and (F.JitCode <> nil) then
+        Result := RunCompiled(TJitCode(F.JitCode), Bound)
+      else if ExecBody(D.Body, Root) = sigReturn then
       begin
         Result := FReturn;
         FReturn := nil;

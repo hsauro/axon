@@ -45,7 +45,9 @@ uses
   Axon.Native.Mir in 'src\native\Axon.Native.Mir.pas',
   Axon.JitSelfTest in 'src\Axon.JitSelfTest.pas',
   Axon.Jit.Ir in 'src\Axon.Jit.Ir.pas',
-  Axon.Jit.Lower in 'src\Axon.Jit.Lower.pas';
+  Axon.Jit.Lower in 'src\Axon.Jit.Lower.pas',
+  Axon.Jit.Mir in 'src\Axon.Jit.Mir.pas',
+  Axon.Jit in 'src\Axon.Jit.pas';
 
 begin
   ExitCode := RunCli;

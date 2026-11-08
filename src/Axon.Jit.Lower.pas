@@ -28,15 +28,31 @@ unit Axon.Jit.Lower;
    - Errors. Instructions that can fail carry the position of the innermost
      statement around them, where the interpreter locates such errors.
 
-   Not compiled yet, and rejected: calls (J3), arrays, indexing and fields
-   (J4), strings, complex numbers, ranges as values, lambdas and nested
-   functions, try, global, multiple assignment, unannotated parameters (J6). *)
+   - Calls (J3). A called name resolves, through the session's resolver,
+     in the function's defining scope, as the interpreter would at the call.
+     A function that compiles is called directly with its parameter types;
+     one that does not runs interpreted, and its result type must then be
+     declared (or the result unused). Built-ins with scalar arguments and a
+     known result type are compiled (elementary functions, abs, floor, ceil,
+     round, int, real, min, max, div, mod), and so are print and error with
+     numbers and string literals. Recursion is compiled when the result type
+     is known before the recursive call (declared, or fixed by an earlier
+     return); mutual recursion goes through the interpreter in one direction.
+
+   Not compiled yet, and rejected: arrays, indexing and fields (J4), strings
+   other than print and error arguments, complex numbers, ranges as values,
+   lambdas and nested functions, try, global, keyword arguments, and
+   unannotated parameters (J6).
+
+   A TJSession lowers functions on demand and keeps the results, so a call
+   can ask for its callee's types; the JIT keeps one session for the
+   process, and --jir makes one per file. *)
 
 interface
 
 uses
-  System.SysUtils,
-  Axon.Ast, Axon.Jit.Ir;
+  System.SysUtils, System.Generics.Collections,
+  Axon.Ast, Axon.Values, Axon.Jit.Ir;
 
 type
   EJitReject = class(Exception)
@@ -45,14 +61,55 @@ type
     constructor Create(const Msg: string; ALine, ACol: Integer);
   end;
 
-{ Lowers one named function. Raises EJitReject with the reason when the
-  function cannot be compiled. }
-function LowerFunction(F: TFunctionDecl): TJFunction;
+  TJResolvedKind = (rkNone, rkFunction, rkBuiltin, rkOther);
+
+  { What a called name refers to. }
+  TJResolved = record
+    Kind: TJResolvedKind;
+    Name: string;            // rkBuiltin: the built-in's own name
+    Decl: TFunctionDecl;     // rkFunction
+    FuncObj: TObject;        // rkFunction at run time; nil for --jir
+    FileName: string;        // rkFunction: the file it was defined in
+    IsClosure: Boolean;      // rkFunction: a lambda or nested function
+    Value: TAxValue;         // the value, for calls through the interpreter
+    ValuePtr: PAxValue;      // the variable holding it (for the guard); nil if none
+  end;
+
+  { Resolves Name as a call in Context (the calling function's FuncObj). }
+  TJResolver = reference to function(Context: TObject; const Name: string): TJResolved;
+
+  TJEntryState = (esLowering, esLowered, esRejected);
+
+  { A function the session has lowered, or is lowering. }
+  TJEntry = class
+  public
+    Decl: TFunctionDecl;
+    FuncObj: TObject;
+    FileName: string;
+    State: TJEntryState;
+    Func: TJFunction;        // esLowered; owned
+    Reason: string;          // esRejected
+    RejectLine, RejectCol: Integer;
+    Code: TObject;           // set by the JIT once generated (a TJitCode, not owned)
+    destructor Destroy; override;
+  end;
+
+  TJSession = class
+  public
+    Resolver: TJResolver;
+    Entries: TObjectDictionary<TFunctionDecl, TJEntry>;
+    constructor Create(const AResolver: TJResolver);
+    destructor Destroy; override;
+    { Lowers Decl, or returns what an earlier call found. Never raises for
+      a rejection: the entry's State says. }
+    function Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string): TJEntry;
+    function Resolve(Context: TObject; const Name: string): TJResolved;
+  end;
 
 implementation
 
 uses
-  System.Math, System.Generics.Collections,
+  System.Math,
   Axon.Tokens;
 
 constructor EJitReject.Create(const Msg: string; ALine, ACol: Integer);
@@ -88,6 +145,10 @@ type
   private
     F: TJFunction;
     Decl: TFunctionDecl;
+    Session: TJSession;
+    Entry: TJEntry;
+    Context: TObject;
+    LastCallRaises: Boolean;            // the last call lowered was error(...)
     Vars: TObjectList<TJVar>;
     Scopes: TObjectList<TScopeMap>;     // [0] is the function's outermost scope
     Assigned: TArray<Boolean>;           // by TJVar.Id: definitely assigned here
@@ -121,6 +182,13 @@ type
     function LowerCompare(E: TBinaryExpr; const L, R: TJValue): TJValue;
     function LowerArith(E: TBinaryExpr; const L, R: TJValue): TJValue;
     function LowerCond(E: TExpr): TJOperand;
+    function LowerCall(E: TCallExpr; Want: Integer): TArray<TJValue>;
+    function LowerBuiltin(E: TCallExpr; const Name: string; var Args: TArray<TJValue>;
+      T: TJCallTarget; Want: Integer): TArray<TJType>;
+    function LowerFunctionCall(E: TCallExpr; const R: TJResolved; var Args: TArray<TJValue>;
+      T: TJCallTarget; Want: Integer): TArray<TJType>;
+    procedure AssignName(const Name: string; const Val: TJValue; N: TNode);
+    procedure LowerDestructure(S: TDestructureStmt);
     // statements
     procedure LowerBody(Body: TStmtList; NewScope: Boolean);
     procedure LowerStmt(S: TStmt);
@@ -133,7 +201,7 @@ type
     procedure EmitReturn(const Vals: TArray<TJValue>; N: TNode);
     procedure CheckBodyShape(Body: TStmtList);
   public
-    constructor Create(ADecl: TFunctionDecl);
+    constructor Create(ADecl: TFunctionDecl; ASession: TJSession; AEntry: TJEntry; AContext: TObject);
     destructor Destroy; override;
     function Run: TJFunction;
   end;
@@ -189,10 +257,14 @@ end;
 
 { TLowerer }
 
-constructor TLowerer.Create(ADecl: TFunctionDecl);
+constructor TLowerer.Create(ADecl: TFunctionDecl; ASession: TJSession; AEntry: TJEntry;
+  AContext: TObject);
 begin
   inherited Create;
   Decl := ADecl;
+  Session := ASession;
+  Entry := AEntry;
+  Context := AContext;
   Vars := TObjectList<TJVar>.Create(True);
   Scopes := TObjectList<TScopeMap>.Create(True);
   Loops := TList<TLoop>.Create;
@@ -377,13 +449,9 @@ begin
     Result := LowerBinary(TBinaryExpr(E))
   else
   begin
+    Result := Default(TJValue);
     if C = TCallExpr then
-    begin
-      if TCallExpr(E).Callee is TNameExpr then
-        Reject('calls %s; calls are not compiled yet', [TNameExpr(TCallExpr(E).Callee).Name], E)
-      else
-        Reject('calls are not compiled yet', E);
-    end
+      Result := LowerCall(TCallExpr(E), 1)[0]
     else if C = TIndexExpr then
       Reject('indexing is not compiled yet', E)
     else if C = TFieldExpr then
@@ -610,6 +678,287 @@ begin
   Result := V.Opnd;
 end;
 
+{ ---- calls ---- }
+
+const
+  ElementaryNames: array[0..14] of string = ('sqrt', 'exp', 'log', 'sin', 'cos', 'tan',
+    'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh');
+
+function IsElementary(const Name: string): Boolean;
+var
+  N: string;
+begin
+  for N in ElementaryNames do
+    if N = Name then
+      Exit(True);
+  Result := False;
+end;
+
+{ A call f(args). Want is the number of values used (1 in an expression,
+  the target count in a multiple assignment), or -1 for a statement, whose
+  values are discarded. }
+function TLowerer.LowerCall(E: TCallExpr; Want: Integer): TArray<TJValue>;
+var
+  Name: string;
+  R: TJResolved;
+  Args: TArray<TJValue>;
+  A: TArg;
+  K: Integer;
+  T: TJCallTarget;
+  Results: TArray<TJType>;
+  Ops: TArray<TJOperand>;
+  Insn: TJInsn;
+  Literal: Boolean;
+begin
+  if not (E.Callee is TNameExpr) then
+    Reject('calls through an expression are not compiled', E);
+  Name := TNameExpr(E.Callee).Name;
+  if Lookup(Name) <> nil then
+    Reject('calls the local variable %s; calls of function values are not compiled', [Name], E);
+  for A in E.Args do
+    if A.Kind <> akPositional then
+      Reject('keyword arguments are not compiled yet', E);
+  R := Session.Resolve(Context, Name);
+  if R.Kind = rkNone then
+    Reject('calls %s, which is not defined', [Name], E);
+  if R.Kind = rkOther then
+    Reject('calls %s, which is not a function', [Name], E);
+
+  // Arguments, left to right. String literals only for print and error.
+  SetLength(Args, E.Args.Count);
+  for K := 0 to E.Args.Count - 1 do
+  begin
+    Literal := (R.Kind = rkBuiltin) and ((R.Name = 'print') or (R.Name = 'error')) and
+      (E.Args[K].Value is TStringLit);
+    if Literal then
+      Args[K] := MakeValue(jtString, StringOperand(TStringLit(E.Args[K].Value).Value))
+    else
+      Args[K] := LowerExpr(E.Args[K].Value);
+  end;
+
+  T := TJCallTarget.Create;
+  F.Targets.Add(T);
+  T.Name := Name;
+  T.Value := R.Value;
+  T.ValuePtr := R.ValuePtr;
+  if R.Kind = rkBuiltin then
+    Results := LowerBuiltin(E, R.Name, Args, T, Want)
+  else
+    Results := LowerFunctionCall(E, R, Args, T, Want);
+  T.ResultTypes := Results;
+
+  if Want >= 0 then
+  begin
+    if Length(Results) <> Want then
+    begin
+      if Length(Results) = 0 then
+        Reject('uses the result of %s, which is nothing', [Name], E)
+      else
+        Reject('uses %s, which returns %d values, where %d are wanted',
+          [Name, Length(Results), Want], E);
+    end;
+  end;
+
+  SetLength(Ops, Length(Args));
+  SetLength(T.ArgTypes, Length(Args));
+  for K := 0 to High(Args) do
+  begin
+    Ops[K] := Args[K].Opnd;
+    T.ArgTypes[K] := Args[K].Typ;
+  end;
+  Insn := F.Emit(joCall, jtNothing, -1, Ops, F.AddSite(E.Line, E.Col));
+  Insn.Target := T;
+  SetLength(Insn.Dsts, Length(Results));
+  SetLength(Result, 0);
+  for K := 0 to High(Results) do
+    if Want >= 0 then
+    begin
+      Insn.Dsts[K] := Temp(Results[K]);
+      Result := Result + [MakeValue(Results[K], RegOperand(Insn.Dsts[K]))];
+    end
+    else
+      Insn.Dsts[K] := -1;
+end;
+
+{ A built-in with scalar arguments, as the interpreter's own routine
+  computes it (Axon.Builtins). Gives the result types. }
+function TLowerer.LowerBuiltin(E: TCallExpr; const Name: string; var Args: TArray<TJValue>;
+  T: TJCallTarget; Want: Integer): TArray<TJType>;
+var
+  N: Integer;
+  A: TJValue;
+
+  procedure NeedArgs(Count: Integer);
+  begin
+    if N <> Count then
+      Reject('calls %s with %d argument(s), an ArgumentError', [Name, N], E);
+  end;
+
+  procedure NeedNumbers;
+  var
+    V: TJValue;
+  begin
+    for V in Args do
+      if not Numeric(V.Typ) then
+        Reject('passes %s to %s, which is not compiled', [JTypeName(V.Typ), Name], E);
+  end;
+
+  function Wider: TJType;
+  begin
+    if Max(Rank(Args[0].Typ), Rank(Args[1].Typ)) <= 1 then Result := jtInt else Result := jtReal;
+  end;
+
+begin
+  T.Kind := ckBuiltin;
+  N := Length(Args);
+  if Name = 'print' then
+  begin
+    for A in Args do
+      if not (Numeric(A.Typ) or (A.Typ = jtString)) then
+        Reject('prints %s, which is not compiled', [JTypeName(A.Typ)], E);
+    Result := [];
+  end
+  else if Name = 'error' then
+  begin
+    if (N < 1) or (N > 2) then
+      NeedArgs(1);
+    for A in Args do
+      if A.Typ <> jtString then
+        Reject('error with anything but string literals is not compiled', E);
+    LastCallRaises := True;
+    Result := [];
+  end
+  else if IsElementary(Name) then
+  begin
+    // RF(ToReal(x)), as ApplyElementary: called directly with a real.
+    NeedArgs(1);
+    NeedNumbers;
+    Args[0] := Convert(Args[0], jtReal);
+    T.Direct := True;
+    Result := [jtReal];
+  end
+  else if Name = 'abs' then
+  begin
+    NeedArgs(1);
+    NeedNumbers;
+    if Args[0].Typ = jtReal then Result := [jtReal] else Result := [jtInt];
+  end
+  else if (Name = 'floor') or (Name = 'ceil') or (Name = 'round') or (Name = 'int') then
+  begin
+    NeedArgs(1);
+    NeedNumbers;
+    Result := [jtInt];
+  end
+  else if Name = 'real' then
+  begin
+    NeedArgs(1);
+    NeedNumbers;
+    Result := [jtReal];
+  end
+  else if (Name = 'min') or (Name = 'max') then
+  begin
+    NeedNumbers;
+    if N = 1 then
+      Result := [Args[0].Typ]           // min(x) of a number is x
+    else
+    begin
+      NeedArgs(2);
+      Result := [Wider];
+    end;
+  end
+  else if (Name = 'div') or (Name = 'mod') then
+  begin
+    NeedArgs(2);
+    NeedNumbers;
+    Result := [Wider];
+  end
+  else
+    Reject('calls the built-in %s, which is not compiled yet', [Name], E);
+end;
+
+{ A call of an Axon function: direct when the callee compiles, through the
+  interpreter otherwise. }
+function TLowerer.LowerFunctionCall(E: TCallExpr; const R: TJResolved; var Args: TArray<TJValue>;
+  T: TJCallTarget; Want: Integer): TArray<TJType>;
+var
+  Callee: TJEntry;
+  Compiled, Positional: Boolean;
+  P: TParam;
+  K: Integer;
+  Why: string;
+  RT: TJType;
+  Params: TArray<TJType>;
+begin
+  Compiled := False;
+  Why := '';
+  Positional := True;
+  for P in R.Decl.Params do
+    if P.IsKeyword then
+      Positional := False;
+  if R.IsClosure then
+    Why := 'it is a closure'
+  else if not Positional then
+    Why := 'it has keyword parameters'
+  else
+  begin
+    Callee := Session.Lower(R.Decl, R.FuncObj, R.FileName);
+    case Callee.State of
+      esLowered:
+        begin
+          Compiled := True;
+          SetLength(Params, Callee.Func.Params.Count);
+          for K := 0 to High(Params) do
+            Params[K] := Callee.Func.Regs[Callee.Func.Params[K]].Typ;
+          Result := Callee.Func.ResultTypes.ToArray;
+        end;
+      esLowering:
+        if Callee = Entry then
+        begin
+          // Recursion: the result type must be known by now.
+          if not ReturnFixed then
+            Reject('calls itself before its result type is known; declare the result ' +
+              'type, or return a value before the recursive call', E);
+          Compiled := True;
+          SetLength(Params, F.Params.Count);
+          for K := 0 to High(Params) do
+            Params[K] := F.Regs[F.Params[K]].Typ;
+          Result := F.ResultTypes.ToArray;
+        end
+        else
+          Why := 'it is being compiled (mutual recursion)';
+    else
+      Why := Callee.Reason;
+    end;
+  end;
+
+  if Compiled then
+  begin
+    if Length(Args) <> Length(Params) then
+      Reject('passes %d argument(s) to %s, which takes %d, an ArgumentError',
+        [Length(Args), R.Decl.Name, Length(Params)], E);
+    for K := 0 to High(Args) do
+      Args[K] := Coerce(Args[K], Params[K], Format('passes %s to parameter %s of %s, declared %s',
+        [JTypeName(Args[K].Typ), R.Decl.Params[K].Name, R.Decl.Name, JTypeName(Params[K])]), E);
+    T.Kind := ckCompiled;
+    T.Callee := Callee;
+    T.ParamTypes := Params;
+    Exit;
+  end;
+
+  // Through the interpreter: the result type must be declared, or unused.
+  T.Kind := ckInterp;
+  for K := 0 to High(Args) do
+    if not Numeric(Args[K].Typ) then
+      Reject('passes %s to %s, which is not compiled', [JTypeName(Args[K].Typ), R.Decl.Name], E);
+  if (R.Decl.ReturnType <> nil) and TypeOfRef(R.Decl.ReturnType, RT) then
+    Result := [RT]
+  else if Want < 0 then
+    Result := []
+  else
+    Reject('calls %s, which is not compiled (%s), and whose result type is not declared',
+      [R.Decl.Name, Why], E);
+end;
+
 { ---- statements ---- }
 
 { Constructs anywhere in the body that change name resolution for the whole
@@ -674,7 +1023,18 @@ begin
   StmtCol := S.Col;
   C := S.ClassType;
   if C = TExprStmt then
-    LowerExpr(TExprStmt(S).Expr)
+  begin
+    if TExprStmt(S).Expr is TCallExpr then
+    begin
+      // A call as a statement: its values are discarded.
+      LastCallRaises := False;
+      LowerCall(TCallExpr(TExprStmt(S).Expr), -1);
+      if LastCallRaises then
+        Reachable := False;      // error(...) never returns
+    end
+    else
+      LowerExpr(TExprStmt(S).Expr);
+  end
   else if C = TAssignStmt then
     LowerAssign(TAssignStmt(S))
   else if C = TDeclStmt then
@@ -701,7 +1061,7 @@ begin
     Reachable := False;
   end
   else if C = TDestructureStmt then
-    Reject('multiple assignment is not compiled yet', S)
+    LowerDestructure(TDestructureStmt(S))
   else if C = TTryStmt then
     Reject('try is not compiled', S)
   else
@@ -741,12 +1101,39 @@ begin
   end
   else
   begin
-    // Rule 5: the nearest x, or a new one in the function's outermost scope.
-    V := Lookup(Name);
-    if V = nil then
-      V := NewVar(Name, Val.Typ, False, S, 0);
+    AssignName(Name, Val, S);
+    Exit;
   end;
   StoreVar(V, Val, S);
+end;
+
+{ name = value: rule 5, the nearest name, or a new one in the function's
+  outermost scope. }
+procedure TLowerer.AssignName(const Name: string; const Val: TJValue; N: TNode);
+var
+  V: TJVar;
+begin
+  V := Lookup(Name);
+  if V = nil then
+    V := NewVar(Name, Val.Typ, False, N, 0);
+  StoreVar(V, Val, N);
+end;
+
+{ [a, b] = f(...): the call's values assigned in order, as plain assignments. }
+procedure TLowerer.LowerDestructure(S: TDestructureStmt);
+var
+  T: TExpr;
+  Vals: TArray<TJValue>;
+  K: Integer;
+begin
+  if not (S.Value is TCallExpr) then
+    Reject('multiple assignment from anything but a call is not compiled', S);
+  for T in S.Targets do
+    if not (T is TNameExpr) then
+      Reject('multiple assignment to an element or field is not compiled yet', S);
+  Vals := LowerCall(TCallExpr(S.Value), S.Targets.Count);
+  for K := 0 to S.Targets.Count - 1 do
+    AssignName(TNameExpr(S.Targets[K]).Name, Vals[K], S);
 end;
 
 procedure TLowerer.LowerDecl(S: TDeclStmt);
@@ -1032,13 +1419,66 @@ begin
   F := nil;
 end;
 
-function LowerFunction(F: TFunctionDecl): TJFunction;
+{ TJEntry }
+
+destructor TJEntry.Destroy;
+begin
+  Func.Free;
+  inherited;
+end;
+
+{ TJSession }
+
+constructor TJSession.Create(const AResolver: TJResolver);
+begin
+  inherited Create;
+  Resolver := AResolver;
+  Entries := TObjectDictionary<TFunctionDecl, TJEntry>.Create([doOwnsValues]);
+end;
+
+destructor TJSession.Destroy;
+begin
+  Entries.Free;
+  inherited;
+end;
+
+function TJSession.Resolve(Context: TObject; const Name: string): TJResolved;
+var
+  F: TJResolver;
+begin
+  F := Resolver;
+  if Assigned(F) then
+    Result := F(Context, Name)
+  else
+    Result := Default(TJResolved);
+end;
+
+function TJSession.Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string): TJEntry;
 var
   L: TLowerer;
 begin
-  L := TLowerer.Create(F);
+  if Entries.TryGetValue(Decl, Result) then
+    Exit;
+  Result := TJEntry.Create;
+  Result.Decl := Decl;
+  Result.FuncObj := FuncObj;
+  Result.FileName := FileName;
+  Result.State := esLowering;
+  Entries.Add(Decl, Result);
+  L := TLowerer.Create(Decl, Self, Result, FuncObj);
   try
-    Result := L.Run;
+    try
+      Result.Func := L.Run;
+      Result.State := esLowered;
+    except
+      on E: EJitReject do
+      begin
+        Result.State := esRejected;
+        Result.Reason := E.Message;
+        Result.RejectLine := E.Line;
+        Result.RejectCol := E.Col;
+      end;
+    end;
   finally
     L.Free;
   end;

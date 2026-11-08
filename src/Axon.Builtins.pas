@@ -15,6 +15,12 @@ uses
 { Calls Define once for every prelude function. }
 procedure DefineBuiltins(const Define: TProc<string, TAxValue>);
 
+{ The real routine behind an elementary function ("sqrt" … "atanh"): a
+  function(X: Double): Double in the platform's calling convention, which
+  the JIT calls directly, so compiled and interpreted results are the same
+  bits. nil for another name. }
+function ElementaryRealFunction(const Name: string): Pointer;
+
 implementation
 
 uses
@@ -108,6 +114,26 @@ begin
   else if X = 1 then Result := Infinity
   else if X = -1 then Result := NegInfinity
   else Result := ArcTanh(X);
+end;
+
+function ElementaryRealFunction(const Name: string): Pointer;
+begin
+  if Name = 'sqrt' then Result := @RSqrt
+  else if Name = 'exp' then Result := @RExp
+  else if Name = 'log' then Result := @RLog
+  else if Name = 'sin' then Result := @RSin
+  else if Name = 'cos' then Result := @RCos
+  else if Name = 'tan' then Result := @RTan
+  else if Name = 'asin' then Result := @RAsin
+  else if Name = 'acos' then Result := @RAcos
+  else if Name = 'atan' then Result := @RAtan
+  else if Name = 'sinh' then Result := @RSinh
+  else if Name = 'cosh' then Result := @RCosh
+  else if Name = 'tanh' then Result := @RTanh
+  else if Name = 'asinh' then Result := @RAsinh
+  else if Name = 'acosh' then Result := @RAcosh
+  else if Name = 'atanh' then Result := @RAtanh
+  else Result := nil;
 end;
 
 { ---- the builtins ---- }

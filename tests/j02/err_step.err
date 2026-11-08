@@ -1,0 +1,3 @@
+ArgumentError: the step of a range cannot be zero
+  at err_step.sci:5:3 in count
+  at err_step.sci:11:7

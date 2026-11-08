@@ -1,0 +1,5 @@
+DomainError: floor of NaN has no int value
+  at err_deep.sci:10:10 in c
+  at err_deep.sci:7:10 in b
+  at err_deep.sci:4:10 in a
+  at err_deep.sci:12:1

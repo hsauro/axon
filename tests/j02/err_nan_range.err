@@ -1,0 +1,3 @@
+ArgumentError: range bounds and step cannot be NaN
+  at err_nan_range.sci:5:3 in count
+  at err_nan_range.sci:10:1

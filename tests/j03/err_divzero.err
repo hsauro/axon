@@ -1,0 +1,4 @@
+DomainError: div by zero
+  at err_divzero.sci:4:10 in inner
+  at err_divzero.sci:7:10 in outer
+  at err_divzero.sci:9:1

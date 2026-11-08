@@ -27,17 +27,28 @@ unit Axon.Jit.Ir;
        bt %2, L2
 
    Opcodes carry the type they work in (add.int, lt.real). Conversions are
-   b2i, b2r and i2r. A move prints as `dst = src`. *)
+   b2i, b2r and i2r. A move prints as `dst = src`.
+
+   A call (J3) has a target describing the callee and any number of result
+   registers, and its site is the position of the call expression, where the
+   interpreter locates errors from a call:
+
+     %3 = call fib(%2)  @8:10           another compiled function
+     %1 = call.builtin sqrt(%0)         a built-in
+     call.builtin print("x =", x)  @4:3
+     [a, b] = call.interp pair(x)  @6:3 a function that runs interpreted *)
 
 interface
 
 uses
-  System.SysUtils, System.Classes, System.Generics.Collections;
+  System.SysUtils, System.Classes, System.Generics.Collections,
+  Axon.Values;
 
 type
-  TJType = (jtNothing, jtBool, jtInt, jtReal);
+  { jtString only for string literals passed to print and error. }
+  TJType = (jtNothing, jtBool, jtInt, jtReal, jtString);
 
-  TJOperandKind = (jkReg, jkInt, jkReal, jkBool, jkLabel);
+  TJOperandKind = (jkReg, jkInt, jkReal, jkBool, jkLabel, jkString);
 
   TJOperand = record
     Kind: TJOperandKind;
@@ -45,7 +56,33 @@ type
     I: Int64;          // jkInt; jkLabel: the label number
     R: Double;         // jkReal
     B: Boolean;        // jkBool
+    S: string;         // jkString
     function IsImm: Boolean;
+  end;
+
+  PAxValue = ^TAxValue;
+
+  TJCallKind = (
+    ckCompiled,        // a compiled Axon function: a direct call
+    ckInterp,          // an Axon function that runs interpreted, called through the interpreter
+    ckBuiltin          // a built-in
+  );
+
+  { The callee of a call instruction. }
+  TJCallTarget = class
+  public
+    Kind: TJCallKind;
+    Name: string;
+    Callee: TObject;              // ckCompiled: the callee's TJEntry (Axon.Jit.Lower)
+    CalleeId: Integer;            // ckCompiled: the callee's code id, set before generation
+    ParamTypes: TArray<TJType>;   // ckCompiled: the callee's parameter types
+    ArgTypes: TArray<TJType>;     // the types of the operands passed
+    ResultTypes: TArray<TJType>;  // what the call yields (empty when nothing is used)
+    Direct: Boolean;              // ckBuiltin: an elementary function called directly
+    // Run time: the callee value, and the variable holding it (a guard
+    // checks it still holds the function; nil when nothing can rebind it).
+    Value: TAxValue;
+    ValuePtr: PAxValue;
   end;
 
   TJOp = (
@@ -61,7 +98,8 @@ type
     joBrTrue, joBrFalse,          // Ops[0]: condition, Ops[1]: label
     joCount,                      // Dst := element count of the range Ops[0]:Ops[1]:Ops[2]
     joElem,                       // Dst := Ops[0] + Ops[2] * Ops[1] (start + k*step)
-    joRet                         // Ops: the results
+    joRet,                        // Ops: the results
+    joCall                        // Dsts := Target(Ops)
   );
 
   TJInsn = class
@@ -71,6 +109,8 @@ type
     Dst: Integer;      // a register, or -1
     Ops: TArray<TJOperand>;
     Site: Integer;     // index into TJFunction.Sites, or -1 when it cannot fail
+    Dsts: TArray<Integer>;        // joCall: result registers (-1 for one not used)
+    Target: TJCallTarget;         // joCall
   end;
 
   TJReg = record
@@ -91,6 +131,7 @@ type
     Regs: TList<TJReg>;
     Insns: TObjectList<TJInsn>;
     Sites: TList<TJSite>;
+    Targets: TObjectList<TJCallTarget>;   // owned
     LabelCount: Integer;
     constructor Create(const AName: string);
     destructor Destroy; override;
@@ -108,22 +149,20 @@ function IntOperand(V: Int64): TJOperand;
 function RealOperand(V: Double): TJOperand;
 function BoolOperand(V: Boolean): TJOperand;
 function LabelOperand(L: Integer): TJOperand;
+function StringOperand(const V: string): TJOperand;
 
 function JTypeName(T: TJType): string;
 
 implementation
 
-uses
-  Axon.Values;
-
 function TJOperand.IsImm: Boolean;
 begin
-  Result := Kind in [jkInt, jkReal, jkBool];
+  Result := Kind in [jkInt, jkReal, jkBool, jkString];
 end;
 
 function Blank(Kind: TJOperandKind): TJOperand;
 begin
-  FillChar(Result, SizeOf(Result), 0);
+  Result := Default(TJOperand);
   Result.Kind := Kind;
 end;
 
@@ -151,6 +190,12 @@ begin
   Result.B := V;
 end;
 
+function StringOperand(const V: string): TJOperand;
+begin
+  Result := Blank(jkString);
+  Result.S := V;
+end;
+
 function LabelOperand(L: Integer): TJOperand;
 begin
   Result := Blank(jkLabel);
@@ -159,7 +204,7 @@ end;
 
 function JTypeName(T: TJType): string;
 const
-  Names: array[TJType] of string = ('nothing', 'bool', 'int', 'real');
+  Names: array[TJType] of string = ('nothing', 'bool', 'int', 'real', 'string');
 begin
   Result := Names[T];
 end;
@@ -175,6 +220,7 @@ begin
   Regs := TList<TJReg>.Create;
   Insns := TObjectList<TJInsn>.Create(True);
   Sites := TList<TJSite>.Create;
+  Targets := TObjectList<TJCallTarget>.Create(True);
 end;
 
 destructor TJFunction.Destroy;
@@ -184,6 +230,7 @@ begin
   Regs.Free;
   Insns.Free;
   Sites.Free;
+  Targets.Free;
   inherited;
 end;
 
@@ -240,7 +287,7 @@ const
     '', '', 'b2i', 'b2r', 'i2r',
     'add', 'sub', 'mul', 'neg', 'div', 'pow',
     'eq', 'ne', 'lt', 'le', 'gt', 'ge',
-    'not', 'jmp', 'bt', 'bf', 'count', 'elem', 'ret');
+    'not', 'jmp', 'bt', 'bf', 'count', 'elem', 'ret', 'call');
 
 procedure TJFunction.Dump(Lines: TStrings);
 var
@@ -279,6 +326,7 @@ var
       jkInt:   Result := IntToStr(O.I);
       jkReal:  Result := Display(RealValue(O.R));
       jkBool:  if O.B then Result := 'true' else Result := 'false';
+      jkString: Result := Display(StringValue(O.S), True);
     else
       Result := 'L' + IntToStr(O.I);
     end;
@@ -295,6 +343,41 @@ var
         Result := Result + ', ';
       Result := Result + OperandText(Ops[K]);
     end;
+  end;
+
+  function CallText(I: TJInsn): string;
+  const
+    KindNames: array[TJCallKind] of string = ('call', 'call.interp', 'call.builtin');
+  var
+    K: Integer;
+    Used: Integer;
+  begin
+    Result := '';
+    Used := 0;
+    for K := 0 to High(I.Dsts) do
+      if I.Dsts[K] >= 0 then
+        Inc(Used);
+    if Length(I.Dsts) = 1 then
+    begin
+      if I.Dsts[0] >= 0 then
+        Result := RegText(I.Dsts[0]) + ' = ';
+    end
+    else if Used > 0 then
+    begin
+      Result := '[';
+      for K := 0 to High(I.Dsts) do
+      begin
+        if K > 0 then
+          Result := Result + ', ';
+        if I.Dsts[K] >= 0 then
+          Result := Result + RegText(I.Dsts[K])
+        else
+          Result := Result + '_';
+      end;
+      Result := Result + '] = ';
+    end;
+    Result := Result + KindNames[I.Target.Kind] + ' ' + I.Target.Name + '(' +
+      OperandList(I.Ops) + ')';
   end;
 
 var
@@ -335,11 +418,14 @@ begin
         Continue;
       end;
       // Built in reading order, so temporaries are numbered left to right.
-      if Insn.Dst >= 0 then
+      if Insn.Op = joCall then
+        Line := CallText(Insn)
+      else if Insn.Dst >= 0 then
         Line := RegText(Insn.Dst) + ' = '
       else
         Line := '';
       case Insn.Op of
+        joCall: ;
         joMov:
           Line := Line + OperandText(Insn.Ops[0]);
         joB2I, joB2R, joI2R, joJmp, joBrTrue, joBrFalse, joNot:
