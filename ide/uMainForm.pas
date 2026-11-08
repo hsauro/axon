@@ -131,7 +131,7 @@ type
     procedure CheckOutput(Kind: TOutputKind; const Text: string);
     procedure CheckExit(ExitCode: Integer);
     procedure SetupShowDir;
-    procedure FormResized(Sender: TObject);
+    procedure RecordNormalBounds;
     procedure LoadLayout(Ini: TCustomIniFile);
     procedure SaveLayout(Ini: TCustomIniFile);
     function TryShowFigure(const Line: string): Boolean;
@@ -195,6 +195,10 @@ type
     procedure CmdReplRestart(Sender: TObject);
     procedure CmdReplClear(Sender: TObject);
     procedure CmdHelpWord(Sender: TObject);
+  public
+    { Every move and resize of the window arrives here (FMX has no move
+      event), so the normal bounds are recorded from it. }
+    procedure SetBoundsF(const ALeft, ATop, AWidth, AHeight: Single); override;
   end;
 
 var
@@ -261,7 +265,6 @@ begin
   BuildUI;
   BuildMenu;
   FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
-  OnResize := FormResized;
   LoadSettings;
   RebuildRecentMenu;
   // Files named on the command line, or an empty document.
@@ -753,12 +756,19 @@ begin
   end;
 end;
 
-{ Keeps the bounds of the normal (not maximized) window, which is what a
-  maximized window returns to and what is saved. }
-procedure TfrmMain.FormResized(Sender: TObject);
+procedure TfrmMain.SetBoundsF(const ALeft, ATop, AWidth, AHeight: Single);
 begin
-  // The resize that maximizes a window arrives before WindowState changes,
-  // so the state is read once the event has been handled.
+  inherited;
+  if not (csDestroying in ComponentState) then
+    RecordNormalBounds;
+end;
+
+{ Keeps the bounds of the normal (not maximized) window, which is what a
+  maximized window returns to and what is saved. The change of bounds that
+  maximizes a window arrives before WindowState changes, so the state is
+  read once the change has been handled. }
+procedure TfrmMain.RecordNormalBounds;
+begin
   TThread.ForceQueue(nil,
     procedure
     begin
