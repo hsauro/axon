@@ -22,6 +22,9 @@ uses
   uPreferences in 'uPreferences.pas',
   uRefSections in 'uRefSections.pas';
 
+// The build's resources (AxonIDE.res: icon, version information and the
+// Windows manifest that makes the IDE DPI-aware), then the dark style.
+{$R *.res}
 {$R 'AxonIDEStyles.res' 'AxonIDEStyles.rc'}
 
 
