@@ -472,6 +472,42 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
+        <DeployFile Include="..\lib\macos\libsundials_core.dylib" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libsundials_core.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libsundials_core.dylib" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libsundials_core.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libsundials_cvode.dylib" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libsundials_cvode.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libsundials_cvode.dylib" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libsundials_cvode.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
         <DeployFile Include="..\help\getting-started.md" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
             <RemoteName>getting-started.md</RemoteName>
