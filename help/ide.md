@@ -28,6 +28,11 @@ When a program stops with an error, the error's line is underlined in the
 editor and the caret moves there. In the Output pane, each trace line
 (`at file:line:col`) is a link to that place.
 
+The grey lines in the Output pane are the IDE's own notes: *Running …* and
+*Finished in …* around each run, and the JIT report after it. To hide
+them, untick **Show run notes** or **Show JIT report** in
+**Edit > Preferences**. Errors and the program's own output always show.
+
 ## Compiled and interpreted
 
 Functions are compiled to native code at their first call, which makes

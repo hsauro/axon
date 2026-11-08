@@ -3,8 +3,10 @@ unit uPreferences;
 (* The IDE's preferences and the dialog that edits them (Edit > Preferences).
 
    The dialog is built in code and shown modally. Each size has a spin box and
-   a preview line in the monospace font that follows it as it changes; Reset
-   restores the defaults. The caller applies the result and saves it. *)
+   a preview line in the monospace font that follows it as it changes. Two
+   checkboxes choose which of the IDE's own notes (the grey lines) a run
+   writes to the Output pane. Reset restores the defaults. The caller applies
+   the result and saves it. *)
 
 interface
 
@@ -12,6 +14,8 @@ type
   TIdePreferences = record
     EditorFontSize: Single;
     OutputFontSize: Single;     // Output, REPL and Help panes
+    ShowRunNotes: Boolean;      // "Running ..." and "Finished in ..."
+    ShowJitReport: Boolean;     // "JIT compiled: ..." and "Interpreted: ..."
     class function Defaults: TIdePreferences; static;
   end;
 
@@ -33,6 +37,8 @@ class function TIdePreferences.Defaults: TIdePreferences;
 begin
   Result.EditorFontSize := 13;
   Result.OutputFontSize := 12;
+  Result.ShowRunNotes := True;
+  Result.ShowJitReport := True;
 end;
 
 type
@@ -42,10 +48,12 @@ type
     FForm: TForm;
     FEditorSize, FOutputSize: TSpinBox;
     FEditorPreview, FOutputPreview: TLabel;
+    FRunNotes, FJitReport: TCheckBox;
     FMono: string;
     FNextRowY: Single;          // Top-aligned rows keep the order of their Position.Y
     function AddRow(const Caption, Sample: string; Value: Single;
       out Preview: TLabel): TSpinBox;
+    function AddCheck(const Caption: string; Value: Boolean): TCheckBox;
     procedure SizeChanged(Sender: TObject);
     procedure ResetClick(Sender: TObject);
   public
@@ -65,7 +73,7 @@ begin
   FForm := TForm.CreateNew(nil);
   FForm.Caption := 'Preferences';
   FForm.ClientWidth := 560;
-  FForm.ClientHeight := 230;
+  FForm.ClientHeight := 290;
   FForm.Position := TFormPosition.MainFormCenter;
   FForm.BorderStyle := TFmxFormBorderStyle.Single;
   FForm.BorderIcons := [TBorderIcon.biSystemMenu];
@@ -83,6 +91,12 @@ begin
   Note.Height := 30;
   Note.Margins.Top := 6;
   Note.Text := 'The output size applies to the Output, REPL and Help panes.';
+  FNextRowY := FNextRowY + 1000;
+
+  // Which of the IDE's own notes (grey) a run writes to the Output pane.
+  FRunNotes := AddCheck('Show run notes ("Running ...", "Finished in ...")', Prefs.ShowRunNotes);
+  FJitReport := AddCheck('Show JIT report (functions compiled, and why others ran interpreted)',
+    Prefs.ShowJitReport);
 
   Buttons := TLayout.Create(FForm);
   Buttons.Parent := FForm;
@@ -110,6 +124,19 @@ begin
   B.Text := 'OK';
   B.Default := True;
   B.ModalResult := mrOk;
+end;
+
+{ A checkbox on its own row, below the rows before it. }
+function TPreferencesDialog.AddCheck(const Caption: string; Value: Boolean): TCheckBox;
+begin
+  Result := TCheckBox.Create(FForm);
+  Result.Parent := FForm;
+  Result.Position.Y := FNextRowY;
+  FNextRowY := FNextRowY + 1000;
+  Result.Align := TAlignLayout.Top;
+  Result.Height := 28;
+  Result.Text := Caption;
+  Result.IsChecked := Value;
 end;
 
 destructor TPreferencesDialog.Destroy;
@@ -170,6 +197,8 @@ begin
   D := TIdePreferences.Defaults;
   FEditorSize.Value := D.EditorFontSize;
   FOutputSize.Value := D.OutputFontSize;
+  FRunNotes.IsChecked := D.ShowRunNotes;
+  FJitReport.IsChecked := D.ShowJitReport;
 end;
 
 function TPreferencesDialog.Execute(var Prefs: TIdePreferences): Boolean;
@@ -179,6 +208,8 @@ begin
   begin
     Prefs.EditorFontSize := EnsureRange(FEditorSize.Value, MinFontSize, MaxFontSize);
     Prefs.OutputFontSize := EnsureRange(FOutputSize.Value, MinFontSize, MaxFontSize);
+    Prefs.ShowRunNotes := FRunNotes.IsChecked;
+    Prefs.ShowJitReport := FJitReport.IsChecked;
   end;
 end;
 

@@ -1015,6 +1015,8 @@ begin
       Round(FPrefs.EditorFontSize)), MinFontSize, MaxFontSize);
     FPrefs.OutputFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'OutputFontSize',
       Round(FPrefs.OutputFontSize)), MinFontSize, MaxFontSize);
+    FPrefs.ShowRunNotes := Ini.ReadBool('Preferences', 'ShowRunNotes', True);
+    FPrefs.ShowJitReport := Ini.ReadBool('Preferences', 'ShowJitReport', True);
     ApplyPreferences;
     ApplyJit(Ini.ReadBool('Preferences', 'Jit', True));
     Exit;
@@ -1056,6 +1058,8 @@ begin
     Round(FPrefs.EditorFontSize)), MinFontSize, MaxFontSize);
   FPrefs.OutputFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'OutputFontSize',
     Round(FPrefs.OutputFontSize)), MinFontSize, MaxFontSize);
+  FPrefs.ShowRunNotes := Ini.ReadBool('Preferences', 'ShowRunNotes', True);
+  FPrefs.ShowJitReport := Ini.ReadBool('Preferences', 'ShowJitReport', True);
   ApplyPreferences;
   ApplyJit(Ini.ReadBool('Preferences', 'Jit', True));
   K := Ini.ReadInteger('Window', 'BottomTab', 0);
@@ -1079,6 +1083,8 @@ begin
     Ini.WriteString('Window', 'Theme', 'light');
   Ini.WriteInteger('Preferences', 'EditorFontSize', Round(FPrefs.EditorFontSize));
   Ini.WriteInteger('Preferences', 'OutputFontSize', Round(FPrefs.OutputFontSize));
+  Ini.WriteBool('Preferences', 'ShowRunNotes', FPrefs.ShowRunNotes);
+  Ini.WriteBool('Preferences', 'ShowJitReport', FPrefs.ShowJitReport);
   Ini.WriteBool('Preferences', 'Jit', FJit);
 end;
 
@@ -1190,10 +1196,11 @@ begin
   FBottomTabs.ActiveTab := FOutputTab;
   FJitCompiled.Clear;
   FJitRejected.Clear;
-  if FJit then
-    AddNote(Format('Running %s (JIT on)', [Doc.FilePath]), FPal.Note)
-  else
-    AddNote(Format('Running %s (JIT off: interpreted)', [Doc.FilePath]), FPal.Note);
+  if FPrefs.ShowRunNotes then
+    if FJit then
+      AddNote(Format('Running %s (JIT on)', [Doc.FilePath]), FPal.Note)
+    else
+      AddNote(Format('Running %s (JIT off: interpreted)', [Doc.FilePath]), FPal.Note);
   try
     FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir);
   except
@@ -1256,7 +1263,8 @@ begin
   end
   else if ExitCode = 0 then
   begin
-    AddNote(Format('Finished in %.2f s', [Secs]), FPal.Note);
+    if FPrefs.ShowRunNotes then
+      AddNote(Format('Finished in %.2f s', [Secs]), FPal.Note);
     FStatus.Text := 'Finished';
   end
   else
@@ -2692,7 +2700,8 @@ const
 var
   K: Integer;
 begin
-  if not FJit or ((FJitCompiled.Count = 0) and (FJitRejected.Count = 0)) then
+  if not FJit or not FPrefs.ShowJitReport or
+    ((FJitCompiled.Count = 0) and (FJitRejected.Count = 0)) then
     Exit;
   if FJitCompiled.Count > 0 then
     AddNote('JIT compiled: ' + string.Join(', ', FJitCompiled.ToStringArray), FPal.Note);
