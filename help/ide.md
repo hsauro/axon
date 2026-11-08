@@ -39,8 +39,30 @@ on the welcome screen is made for this.
 
 After a run with the JIT on, the Output pane lists the functions that were
 compiled, and for those that ran interpreted, the reason, such as a
-parameter without a type annotation. The REPL follows the setting when it
-starts: use **Run > Restart REPL** after switching.
+variable whose type changes or an argument that is a string. The REPL
+follows the setting when it starts: use **Run > Restart REPL** after
+switching.
+
+How much faster? These are Axon's benchmarks (`bench/run.sci` in the
+source tree), each the best of five runs on a desktop PC (Intel Core
+i9-9900X), with identical results both ways:
+
+| Program | Interpreted | Compiled | Faster |
+| --- | --- | --- | --- |
+| Recursive `fib(22)` | 132 ms | 222 µs | 595× |
+| A sum loop, 100,000 terms | 89 ms | 106 µs | 841× |
+| Sieve of Eratosthenes to 100,000 | 375 ms | 724 µs | 517× |
+| Mandelbrot set, 60 × 60 points | 190 ms | 212 µs | 896× |
+| 60 × 60 matrix product, written as loops | 462 ms | 411 µs | 1123× |
+| N-body, 1000 steps | 210 ms | 302 µs | 695× |
+| `ode.solve` with `rk45` (Lotka–Volterra) | 22.6 ms | 5.63 ms | 4× |
+| `ode.solve` with `bdf` (Robertson) | 4.79 ms | 1.13 ms | 4× |
+
+The ODE solvers' own loops are native either way, so there the JIT speeds
+up only the right-hand side `f`. Compilation itself happens once, at the
+first call, and takes about a millisecond. For matrix work, the built-in
+operators are faster still: `A * B` on the same 60 × 60 matrices takes
+36 µs, because it calls an optimised BLAS library.
 
 ## The REPL pane
 
