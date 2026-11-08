@@ -34,11 +34,13 @@ const
   ForeignError   = 'ForeignError';
   ImportError    = 'ImportError';
   IndexError     = 'IndexError';
+  IOError        = 'IOError';
   KeyError       = 'KeyError';
   NameError      = 'NameError';
   OverflowError  = 'OverflowError';
   RecursionError = 'RecursionError';
   SingularMatrix = 'SingularMatrix';
+  SolverError    = 'SolverError';
   SyntaxError    = 'SyntaxError';
   TypeError      = 'TypeError';
   UserError      = 'UserError';

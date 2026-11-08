@@ -1,0 +1,9 @@
+# For ffi_out_pointer.sci: the C runtime, a system library on every platform.
+[package]
+name = "m13"
+version = "0.1.0"
+
+[native.libc]
+windows = "msvcrt.dll"
+macos = "libSystem.B.dylib"
+linux = "libc.so.6"

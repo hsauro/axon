@@ -469,11 +469,13 @@ end
 | `ForeignError` | A native library cannot be loaded, a symbol is missing, or a native call reports failure |
 | `ImportError` | A module cannot be found, or imports form a cycle |
 | `IndexError` | An index is out of bounds or not an integer |
+| `IOError` | A file cannot be read, written or deleted |
 | `KeyError` | A dictionary key is missing |
 | `NameError` | A name is read before it is bound |
 | `OverflowError` | Integer arithmetic exceeds 64 bits |
 | `RecursionError` | Function calls nest more than 10,000 deep |
 | `SingularMatrix` | A solve or inverse meets a singular matrix |
+| `SolverError` | A numerical solver fails, such as an ODE integration whose step size falls below the limit |
 | `SyntaxError` | Source text cannot be lexed or parsed; the message gives the file, line and column and what was expected |
 | `TypeError` | A value has the wrong type for an operation, annotation or condition |
 | `UserError` | Raised by `error("text")` |
@@ -510,6 +512,82 @@ The first line is `Kind: message`. Each further line is one trace frame, innermo
 
 Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `solve`, the functions accept a sparse matrix by working on `full(A)`.
 
+### The io module
+
+`io` is a core module, written in the interpreter, for whole-file reading and writing. Relative paths are relative to the working directory, and a failure raises `IOError`.
+
+| Function | Result |
+| --- | --- |
+| `read_file(path)` | The contents of a UTF-8 text file, as a string; a leading byte-order mark is dropped, and a file that is not valid UTF-8 raises `IOError` |
+| `read_bytes(path)` | The bytes of a file, as an `int` vector of values 0 to 255 |
+| `write_file(path, text)` | Writes the string as UTF-8, replacing the file; returns `nothing` |
+| `file_exists(path)` | `true` when the file exists |
+| `delete_file(path)` | Deletes the file and returns `true`, or returns `false` when there was no such file |
+
+### The graphics module
+
+`graphics` is a core module that renders a scene to a file through the Skia library. It is the drawing layer under `plot`. Skia loads at the first call that needs it; when it cannot be loaded, that call raises `ForeignError` and the rest of the language is unaffected. On Windows Skia is the shipped `sk4d.dll`; on macOS it is linked into the interpreter.
+
+- **`save(scene, path)`** writes the scene to `path`, whose extension chooses the format: `.png` (raster), `.svg` or `.pdf` (vector, with text kept as text). Any other extension raises `ArgumentError`, and a file that cannot be written raises `IOError`.
+- **`text_width(text, size)`** and **`text_width(text, size, font)`** return the width in points of the text as drawn, for layout.
+- **Scenes.** A scene is a record with `width` and `height` in points (1/72 inch; default 640 by 480), `background` (a colour, default `"white"`), `scale` (pixels per point for PNG, default 1) and `items`, a list of item records drawn in order. Coordinates run from the top-left corner with y pointing down.
+- **Items.** Each item has a `kind`:
+
+| Kind | Fields (defaults) |
+| --- | --- |
+| `"line"` or `"polyline"` | `x`, `y` (vectors of equal length), `color` (`"black"`), `width` (1), `dash` (a vector of on and off lengths, or `nothing`); a non-finite point breaks the line |
+| `"polygon"` | `x`, `y`, `fill` (`"none"`), `color` (`"none"`, the outline), `width` (1), `dash` |
+| `"rect"` | `x`, `y`, `w`, `h`, and `fill`, `color`, `width` and `dash` as for a polygon |
+| `"markers"` | `x`, `y`, `shape` (`"circle"`, `"square"`, `"diamond"`, `"triangle"`, `"plus"` or `"cross"`), `size` (6, the width), `color` (`"black"`), `fill` (the colour) |
+| `"text"` | `x`, `y`, `text`, `size` (10), `color`, `font` (`"sans-serif"`; also `"serif"`, `"monospace"` or a family name), `bold` (`false`), `anchor` (`"start"`, `"middle"` or `"end"`), `baseline` (`"alphabetic"`, `"middle"`, `"top"` or `"bottom"`), `angle` (degrees anticlockwise) |
+| `"group"` | `items`, and `clip` (a record `{x, y, w, h}` or `nothing`) that limits drawing to a rectangle |
+
+- **Colours** are names (`"black"`, `"white"`, `"red"`, `"green"`, `"blue"`, `"orange"`, `"purple"`, `"brown"`, `"pink"`, `"gray"`, `"olive"`, `"cyan"`, `"yellow"`, `"lightgray"`, `"darkgray"`), `"#rrggbb"`, `"#rrggbbaa"`, `"none"`, or a real vector `[r, g, b]` or `[r, g, b, a]` with components from 0 to 1. Anything else raises `ArgumentError`.
+- **Checks.** A field of the wrong type raises `TypeError`, a missing required field `FieldError`, `x` and `y` of different lengths `DimensionError`, and an unknown kind, shape, anchor or baseline `ArgumentError`. Each message names the item by its position.
+
+### The ode module
+
+`ode` is a standard-library module written in Axon. `ode.solve(f, y0, tspan; …)` solves y' = f(t, y) from `tspan[1]` to `tspan[2]` with y(`tspan[1]`) = `y0` and returns a result record.
+
+- **Problem.** `f(t, y)` receives a real `t` and a real vector `y` and returns the derivative as a real vector of the same length (a scalar for one equation). `y0` is a real scalar or vector. `tspan` holds two different times; integration may run backwards.
+- **Methods.** `method = "rk45"` (the default) is the explicit Dormand–Prince 5(4) pair with step-size control and its fourth-order dense output, written in Axon. `method = "bdf"` uses the variable-order BDF method of SUNDIALS CVODE with a dense direct linear solver, for stiff problems; CVODE is called through `extern`, with the right-hand side as a callback.
+- **Keywords.**
+
+| Keyword | Meaning (default) |
+| --- | --- |
+| `rtol`, `atol` | Relative and absolute error tolerances (`1e-6`, `1e-9`) |
+| `t_eval` | Times at which to report the solution, within `tspan` and strictly increasing in the direction of integration; by default every step is reported, starting with `tspan[1]` |
+| `events` | An event function `g(t, y)` returning a real number, or a list of them (`nothing`) |
+| `terminal` | Whether an event stops the integration: a `bool` for all, or a list with one per event (`false`) |
+| `direction` | Which zero crossings count: `0` both, `1` rising, `-1` falling; a number or a list (`0`) |
+| `names` | The names of the components, a list of strings (`{"y1", "y2", …}`) |
+| `max_step` | The largest step (unlimited) |
+| `first_step` | The first step size (chosen automatically) |
+| `max_steps` | The most steps before giving up (`100000`) |
+
+- **Result.** A record with fields `t` (a vector of the reported times), `y` (a matrix with one column per reported time, so `sol.y[1, :]` is the first component over time), `names`, `status` (`"success"`, or `"event"` when a terminal event stopped the integration), `t_events` and `y_events` (lists with one entry per event function: a vector of the times and a matrix of the states at which it occurred), `nfev` (right-hand-side evaluations), `nsteps` (accepted steps), `method`, and `at`, the dense output: `sol.at(t)` returns the state at any time in the solved range, and `sol.at(v)` for a vector of times returns a matrix with one column per time. A time outside the range raises `DomainError`.
+- **Events.** An event occurs where an event function changes sign in the counted direction; a function that starts at exactly zero does not trigger at the start. RK45 locates the crossing on the dense output; BDF uses CVODE's root finding. A terminal event ends the solution at the event time, which becomes the last reported time when `t_eval` is not given.
+- **Errors.** A right-hand side of the wrong length raises `DimensionError`, and one of the wrong type `TypeError`. An error raised inside `f` or an event function propagates unchanged. A step size that falls below what the precision allows, too many steps, a non-finite solution or a CVODE failure raises `SolverError`. Invalid keywords raise `ArgumentError` or `TypeError`.
+
+### The plot module
+
+`plot` is a standard-library module written in Axon over `graphics`. Plotting calls add to the current figure, which `plot.save` writes. A script can therefore build a figure without writing anything, as the white paper's worked example does.
+
+| Function | Effect |
+| --- | --- |
+| `figure(; width = 640, height = 480, title)` | Starts a new current figure, sized in points |
+| `line(x, y; label, color, width = 1.5, style = "-", marker, marker_size = 5)` | Adds a line; `style` is `"-"`, `"--"`, `":"` or `"-."`, and `marker` draws a marker of that shape at each point |
+| `scatter(x, y; label, color, size = 6, marker = "circle")` | Adds markers at the points |
+| `surface(x, y, Z; label, colormap = "viridis", edges = true, elev = 30, azim = -60)` | Adds the surface with height `Z[i, j]` over `(x[j], y[i])`, coloured by height (`"viridis"` or `"gray"`), seen from the given elevation and azimuth in degrees |
+| `title(s)`, `xlabel(s)`, `ylabel(s)`, `zlabel(s)` | Set the title and axis labels |
+| `xlim(lo, hi)`, `ylim(lo, hi)` | Fix an axis range; otherwise it is the data range padded by 5% |
+| `grid(on)`, `legend(on)` | Show or hide the grid and the legend (both shown by default) |
+| `save(path; scale = 2)` | Writes the current figure as PNG, SVG or PDF, chosen by the extension; `scale` sets PNG pixels per point |
+| `gcf()` | The current figure as a record, or `nothing` before the first plotting call |
+
+- **Defaults.** Series without a `color` take the next colour of a ten-colour cycle. A legend lists the series that have a `label`. Axis ticks are round numbers (1, 2 or 5 times a power of ten). Colours are given as for `graphics`.
+- **Errors.** `x` and `y` of different lengths raise `DimensionError`, and so does a `Z` that is not `length(y)` by `length(x)`. Non-real data raises `TypeError`. An unknown style, colour map or marker, a figure that mixes a surface with lines or markers, and `save` with no figure raise `ArgumentError`.
+
 ## Modules and foreign functions
 
 ### Modules
@@ -529,11 +607,11 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 
 ### Foreign functions
 
-- **Library resolution.** `extern "lib"` resolves `lib` through `package.toml` (the `[native.lib]` entry for the current platform), then through the system's library search path. The library loads at the first call into it, and a failure raises `ForeignError`.
+- **Library resolution.** `extern "lib"` resolves `lib` through `package.toml` (the `[native.lib]` entry for the current platform), then through the system's library search path. A manifest entry that names no existing file next to the manifest is looked up by its file name on the system search path, so system libraries can be listed per platform (`windows = "msvcrt.dll"`, `macos = "libSystem.B.dylib"`). The library loads at the first call into it, and a failure raises `ForeignError`.
 - **C types.** Parameters and results use the fixed-width numerics `int8` … `int64`, `uint8` … `uint64`, `float32` and `float64`, the platform-sized integers `clong` and `csize`, and `char`, `cstring`, `ref T`, `ptr T` and `callback(…)`.
 - **Platform-sized integers.** `clong` is C `long`, which is 32 bits on Windows and 64 bits on macOS and Linux. `csize` is C `size_t`, which is 64 bits on every supported platform. Both convert to and from Axon `int`, so a binding such as CVODE's `long int` counters works unchanged on every platform.
 - **Argument conversion.** Each argument is converted to its declared C type before the call. A value that does not fit, such as `3.5` for `int32` or `2^40` for `int32`, raises `TypeError`.
-- **`ref T`.** The runtime passes a pointer to a temporary holding the converted value. After the call, it converts the temporary back and assigns it to the argument variable, which must therefore be a variable, not an expression.
+- **`ref T`.** The runtime passes a pointer to a temporary holding the converted value. After the call, it converts the temporary back and assigns it to the argument variable, which must therefore be a variable, not an expression. `T` is a number type, or a `ptr` type for a C out-parameter such as `void**`: the variable then holds a pointer value or `nothing`, as in `ctx = nothing; SUNContext_Create(0, ctx)`.
 - **`ptr T`.** The value must be an array whose element type matches `T` exactly: `ptr float64` needs a real array and `ptr complex` a complex one. Its buffer is passed directly, after being made unique if it is shared, so native writes affect only that variable. A mismatch raises `TypeError`.
 - **`callback`.** An Axon function passed for a callback parameter gets a native trampoline with the declared signature. The trampoline stays alive until the extern function returns, and longer if it is stored with `keep(cb)`. An error inside the callback is recorded, the callback returns 0 (or a null pointer), and the error is re-raised in Axon once the outer native call returns.
 - **Threads.** Native code must not call a trampoline from another thread. Doing so raises `ForeignError` and does not run the Axon function. The error is raised once the outer native call returns.

@@ -194,10 +194,10 @@ This milestone finishes the interactive environment. A basic REPL exists from M3
 
 This milestone ships `ode` and `plot` as packages written in Axon. It is the first full end-to-end test of the language.
 
-- [ ] `ode.solve` with RK45 (written in Axon) and BDF (CVODE through `extern` with a callback), events, dense output, and a result record with `t`, `y`, `names` and `status`
-- [ ] `plot.line`, `plot.scatter` and `plot.surface`, with styling through keyword arguments, writing PNG and SVG files
-- [ ] The white paper's Lotka–Volterra [worked example](Axon-White-Paper.md#worked-example) runs unchanged, and the eigenvalues of its Jacobian form a purely imaginary pair
-- [ ] ODE results checked against analytic solutions, such as exponential decay and the harmonic oscillator
+- [x] `ode.solve` with RK45 (written in Axon) and BDF (CVODE through `extern` with a callback), events, dense output, and a result record with `t`, `y`, `names` and `status`
+- [x] `plot.line`, `plot.scatter` and `plot.surface`, with styling through keyword arguments, writing PNG and SVG files
+- [x] The white paper's Lotka–Volterra [worked example](Axon-White-Paper.md#worked-example) runs unchanged, and the eigenvalues of its Jacobian form a purely imaginary pair
+- [x] ODE results checked against analytic solutions, such as exponential decay and the harmonic oscillator
 
 ## Later stages
 

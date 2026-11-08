@@ -7,7 +7,7 @@ interface
 function IsSourceFileName(const FileName: string): Boolean;
 
 { Reads a source file as UTF-8, dropping a leading BOM. Raises EInOutError if
-  the file cannot be read. }
+  the file cannot be read, and a SyntaxError if it is not valid UTF-8. }
 function LoadSourceFile(const FileName: string): string;
 
 { Reads any text file as UTF-8 (used for expected-output files). }
@@ -16,7 +16,8 @@ function LoadUtf8File(const FileName: string): string;
 implementation
 
 uses
-  System.SysUtils, System.IOUtils;
+  System.SysUtils, System.IOUtils,
+  Axon.Errors;
 
 function IsSourceFileName(const FileName: string): Boolean;
 var
@@ -40,7 +41,13 @@ end;
 
 function LoadSourceFile(const FileName: string): string;
 begin
-  Result := LoadUtf8File(FileName);
+  try
+    Result := LoadUtf8File(FileName);
+  except
+    on EEncodingError do
+      raise EAxonError.Create(SyntaxError,
+        Format('%s is not valid UTF-8 text', [FileName.Replace('', '/')]));
+  end;
 end;
 
 end.

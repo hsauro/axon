@@ -90,7 +90,7 @@ x = S \ b                     # sparse direct solve
 F = full(S)                   # convert to dense
 ```
 
-Operators work unchanged on sparse operands. A result stays sparse where sparsity is guaranteed (`S + S`, `S * S`, `2*S`, `S'`) and becomes dense otherwise (`S + A` with dense `A`). Sparse solves call a native direct solver such as UMFPACK or KLU through `extern`.
+Operators work unchanged on sparse operands. A result stays sparse where sparsity is guaranteed (`S + S`, `S * S`, `2*S`, `S'`) and becomes dense otherwise (`S + A` with dense `A`). Sparse solves use a sparse LU built into the interpreter (minimum-degree ordering and Gilbert–Peierls factorisation), so no extra native library is needed.
 
 ## Collections: lists, records and dictionaries
 
@@ -408,7 +408,7 @@ The core ships linear algebra, the elementary functions and complex arithmetic. 
 | Complex basics | Core, prelude | `complex` type, `real`, `imag`, `conj`, `arg`, `abs` |
 | Sparse basics | Core, prelude | Sparse matrix type, `sparse`, `speye`, `nnz`, `full` |
 | `complex` | Core module | `polar`, `cis`, principal-branch and branch-specified `log` and `sqrt`, `isreal` |
-| `linalg` | Core module | `solve`, `lstsq`, `det`, `inv`, `eig`, `svd`, `qr`, `lu`, `chol`, `rank`, `null`, `norm`, `expm`, backed by BLAS/LAPACK; sparse `lu` and `solve` via UMFPACK/KLU |
+| `linalg` | Core module | `solve`, `lstsq`, `det`, `inv`, `eig`, `svd`, `qr`, `lu`, `chol`, `rank`, `null`, `norm`, `expm`, backed by BLAS/LAPACK; sparse `lu` and `solve` through the built-in sparse LU |
 | `ode` | Official package | Explicit and stiff solvers (RK45, BDF via CVODE), events, dense output; returns a result record |
 | `plot` | Official package | Line, scatter and surface plots, with styling through keyword arguments |
 

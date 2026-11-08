@@ -23,3 +23,6 @@ __recovery/
 
 # Native test library built by build.cmd
 /tests/m09/bin/
+
+# Files tests write and delete (left behind only if a test is interrupted)
+_tmp_*

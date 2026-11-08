@@ -1,0 +1,12 @@
+# The standard library's native libraries, per platform. Names that are not
+# files in this directory are looked up on the system library search path.
+
+[package]
+name = "stdlib"
+version = "0.1.0"
+
+# The C runtime, for memcpy (ode copies CVODE's vectors through it).
+[native.libc]
+windows = "msvcrt.dll"
+macos = "libSystem.B.dylib"
+linux = "libc.so.6"

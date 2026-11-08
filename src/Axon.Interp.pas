@@ -200,7 +200,7 @@ implementation
 uses
   System.Math, System.Character, System.IOUtils,
   Axon.Packages, Axon.Source, Axon.Lexer, Axon.Parser,
-  Axon.Sparse,
+  Axon.Sparse, Axon.NativeModules,
   Axon.Errors, Axon.Tokens, Axon.Ops, Axon.Builtins, Axon.Complex, Axon.Arrays;
 
 function StringChars(const S: string): TArray<string>; forward;
@@ -1881,6 +1881,7 @@ end;
 
 function TInterpreter.IndexString(const T: TAxValue; E: TIndexExpr; Scope: TScope): TAxValue;
 var
+  S, Direct: string;
   Chars: TArray<string>;
   Pos: TArray<Integer>;
   Scalar: Boolean;
@@ -1890,6 +1891,18 @@ begin
   if E.Items.Count <> 1 then
     raise EAxonError.CreateAt(IndexError, Format('a string takes one index, got %d',
       [E.Items.Count]), FFile, E.Line, E.Col);
+  // Without surrogate pairs, characters are UTF-16 units: index directly.
+  if not TStringObj(T.Obj).HasSurrogates then
+  begin
+    S := AsString(T);
+    EvalIndexItem(E.Items[0], Length(S), Scope, Pos, Scalar);
+    if Scalar then
+      Exit(StringValue(S[Pos[0] + 1]));
+    SetLength(Direct, Length(Pos));
+    for K := 0 to High(Pos) do
+      Direct[K + 1] := S[Pos[K] + 1];
+    Exit(StringValue(Direct));
+  end;
   Chars := StringChars(AsString(T));
   EvalIndexItem(E.Items[0], Length(Chars), Scope, Pos, Scalar);
   if Scalar then
@@ -2069,11 +2082,34 @@ var
   Prog: TProgram;
   S: TStmt;
   I, Start: Integer;
+  Definer: TModuleDefiner;
+  NativeDoc: TArray<string>;
 begin
   Path := ResolveModule(Name);
   if Path = '' then
+  begin
+    // No file: a core module written in Delphi (io, graphics), if any.
+    if FindNativeModule(Name, Definer, NativeDoc) then
+    begin
+      Key := 'native:' + Name;
+      if FModules.TryGetValue(Key, Result) then
+        Exit;
+      M := TModuleObj.Create(Name);
+      Result := ModuleValue(M);
+      M.Doc := NativeDoc;
+      M.Globals := TScope.Create(FPrelude, rkModule);
+      Definer(
+        procedure(Fn: string; V: TAxValue)
+        begin
+          M.Globals.Define(Fn).Value := V;
+          M.ExportNames.Add(Fn);
+        end);
+      FModules.Add(Key, Result);
+      Exit;
+    end;
     raise EAxonError.CreateAt(ImportError, Format('module "%s" not found', [Name]),
       FFile, Node.Line, Node.Col);
+  end;
   Key := FileKey(Path);
   if FModules.TryGetValue(Key, Result) then
   begin

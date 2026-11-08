@@ -1,0 +1,14 @@
+rk45 success rk45 {"y1"} matrix
+0.0 10.0 2.0
+true
+true
+true true
+bdf success bdf {"y1"} matrix
+0.0 10.0 2.0
+true
+true
+true true
+6 2.0 10.0 true
+0.0 true
+{"a", "b"} true
+true

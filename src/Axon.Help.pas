@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..63] of TBuiltinDoc = (
+  BuiltinDocs: array[0..70] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -102,7 +102,16 @@ const
     (Name: 'max';      Params: '(a, b)';  Text: 'The larger of two values, or the largest element of an array'),
     (Name: 'factorial'; Params: '(n)';    Text: 'n! for an int n >= 0'),
     (Name: '__copies'; Params: '()';      Text: 'The number of array copies made so far (for tests)'),
-    (Name: '__native_library'; Params: '(name)'; Text: 'The path a native library name resolves to (for tests)')
+    (Name: '__native_library'; Params: '(name)'; Text: 'The path a native library name resolves to (for tests)'),
+    // io
+    (Name: 'read_file';   Params: '(path)'; Text: 'The contents of a UTF-8 text file, as a string'),
+    (Name: 'read_bytes';  Params: '(path)'; Text: 'The bytes of a file, as an int vector'),
+    (Name: 'write_file';  Params: '(path, text)'; Text: 'Writes a string to a file as UTF-8, replacing it'),
+    (Name: 'file_exists'; Params: '(path)'; Text: 'True when the file exists'),
+    (Name: 'delete_file'; Params: '(path)'; Text: 'Deletes a file; false when there was no such file'),
+    // graphics
+    (Name: 'save';       Params: '(scene, path)'; Text: 'Renders a scene to a .png, .svg or .pdf file'),
+    (Name: 'text_width'; Params: '(text, size, font)'; Text: 'The width of text in points, for layout')
   );
 
 function DocLines(const Doc: TArray<string>): TArray<string>;

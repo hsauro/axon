@@ -37,9 +37,14 @@ type
   TAxValues = TArray<TAxValue>;
 
   TStringObj = class(TInterfacedObject)
+  private
+    FPairs: (spUnknown, spNone, spSome);
   public
     Value: string;
     constructor Create(const S: string);
+    { True when Value holds a surrogate pair, so that characters (code
+      points) and UTF-16 units differ; computed once, as strings never change. }
+    function HasSurrogates: Boolean;
   end;
 
   { A lazy arithmetic sequence. Int ranges have int bounds and step; any real
@@ -274,6 +279,23 @@ begin
   Result.Obj := nil;
   Result.C.Re := Re;
   Result.C.Im := Im;
+end;
+
+function TStringObj.HasSurrogates: Boolean;
+var
+  C: Char;
+begin
+  if FPairs = spUnknown then
+  begin
+    FPairs := spNone;
+    for C in Value do
+      if (C >= #$D800) and (C <= #$DBFF) then
+      begin
+        FPairs := spSome;
+        Break;
+      end;
+  end;
+  Result := FPairs = spSome;
 end;
 
 function StringValue(const S: string): TAxValue;

@@ -45,7 +45,8 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Win64)'!=''">
         <PostBuildEvent><![CDATA[xcopy /y /d /q "$(MSBuildProjectDirectory)\lib\win64\*.dll" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\"
-xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.sci" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\"]]></PostBuildEvent>
+xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.sci" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\"
+xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.toml" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\"]]></PostBuildEvent>
         <Manifest_File>(None)</Manifest_File>
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
@@ -84,6 +85,9 @@ xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.sci" "$(MSBuildProjectDir
         <DCCReference Include="src\Axon.Interp.pas"/>
         <DCCReference Include="src\Axon.Repl.pas"/>
         <DCCReference Include="src\Axon.Help.pas"/>
+        <DCCReference Include="src\Axon.NativeModules.pas"/>
+        <DCCReference Include="src\Axon.IoModule.pas"/>
+        <DCCReference Include="src\Axon.Graphics.pas"/>
         <DCCReference Include="src\Axon.Packages.pas"/>
         <DCCReference Include="src\Axon.Ffi.pas"/>
         <DCCReference Include="src\Axon.Linalg.pas"/>

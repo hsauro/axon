@@ -1,0 +1,21 @@
+> import ode
+> help ode.solve
+solve(f, y0, tspan; method = "rk45", rtol = 1e-6, atol = 1e-9, t_eval = nothing, events = nothing, terminal = false, direction = 0, names = nothing, max_step = nothing, first_step = nothing, max_steps = 100000)
+  Solves y' = f(t, y) from tspan[1] to tspan[2] with y(tspan[1]) = y0.
+  method is "rk45" (explicit, the default) or "bdf" (stiff, CVODE). Returns a
+  record with t, y (one column per time), names, status ("success" or
+  "event"), t_events, y_events, nfev, nsteps and at(t) for dense output.
+> import graphics
+> help graphics
+module graphics
+  Renders a scene (a record of drawing items) to PNG, SVG or PDF through Skia.
+  exports: save, text_width
+> help graphics.save
+save(scene, path)
+  Renders a scene to a .png, .svg or .pdf file
+> import plot
+> help plot.line
+line(x, y; label = nothing, color = nothing, width = 1.5, style = "-", marker = nothing, marker_size = 5.0)
+  Adds a line through the points (x[k], y[k]). Keywords: label, color,
+  width (points), style ("-", "--", ":" or "-.") and marker (a marker shape
+  drawn at each point, with marker_size).

@@ -160,8 +160,9 @@ begin
         Inner := ResolveCType(T.Inner, Aliases, Context);
         if T.Kind = ctRef then
         begin
-          if not IsScalarNumeric(Inner) then
-            RaiseFmt(TypeError, '%s: ref needs a number type, got %s', [Context, Inner.Text]);
+          // ref ptr T is a C out-parameter such as void**.
+          if not (IsScalarNumeric(Inner) or (Inner.Kind = ckPtr)) then
+            RaiseFmt(TypeError, '%s: ref needs a number or pointer type, got %s', [Context, Inner.Text]);
           Result := NewDesc(ckRef, 'ref ' + Inner.Text);
         end
         else
@@ -242,7 +243,13 @@ begin
   begin
     C := Manifest.NativePath(F.LibName);
     if C <> '' then
+    begin
       Candidates := [C];
+      // An entry naming no file next to the manifest is a system library,
+      // looked up by its file name (msvcrt.dll, libSystem.B.dylib).
+      if not FileExists(C) then
+        Candidates := Candidates + [ExtractFileName(C)];
+    end;
   end;
   if Candidates = nil then
   begin
@@ -336,6 +343,7 @@ var
   F64: Double;
 begin
   case D.Kind of
+    ckPtr:    Result := PointerValue(Pointer(NativeUInt(Raw)));
     ckInt8, ckChar: Result := IntValue(ShortInt(Byte(Raw)));
     ckInt16:  Result := IntValue(SmallInt(Word(Raw)));
     ckInt32:  Result := IntValue(Integer(Cardinal(Raw)));
@@ -752,6 +760,14 @@ begin
             // A temporary holding the converted value; read back after the call.
             RefStore[K] := 0;
             case D.Inner.Kind of
+              ckPtr:
+                case Args[K].Kind of
+                  vkNothing: ;
+                  vkPointer: RefStore[K] := UInt64(Args[K].I);
+                else
+                  RaiseFmt(TypeError, '%s: %s needs a pointer or nothing, got %s',
+                    [What, D.Text, TypeName(Args[K])]);
+                end;
               ckFloat64:
                 begin
                   F64 := ToCFloat(Args[K], D.Inner, What);
