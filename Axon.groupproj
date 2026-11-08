@@ -1,0 +1,51 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <!-- The interpreter and the IDE. Build All builds axon first: its post-build
+         step puts axon.exe, the DLLs, stdlib, examples and help into
+         Win64\<Config>, where the IDE then builds and runs. -->
+    <PropertyGroup>
+        <ProjectGuid>{1F8A7CDF-7196-498A-80C0-C458C67D2549}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="axon.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="ide\AxonIDE.dproj">
+            <Dependencies>axon.dproj</Dependencies>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="axon">
+        <MSBuild Projects="axon.dproj"/>
+    </Target>
+    <Target Name="axon:Clean">
+        <MSBuild Projects="axon.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="axon:Make">
+        <MSBuild Projects="axon.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AxonIDE">
+        <MSBuild Projects="ide\AxonIDE.dproj"/>
+    </Target>
+    <Target Name="AxonIDE:Clean">
+        <MSBuild Projects="ide\AxonIDE.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AxonIDE:Make">
+        <MSBuild Projects="ide\AxonIDE.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="axon;AxonIDE"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="axon:Clean;AxonIDE:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="axon:Make;AxonIDE:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

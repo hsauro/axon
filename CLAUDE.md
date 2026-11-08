@@ -14,6 +14,7 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 ## Build and test
 
 - `build.cmd` builds Win64 Debug (`build Release` builds Release) with RAD Studio 37.0. Output goes to `Win64\<Config>\axon.exe`.
+- In RAD Studio, open `Axon.groupproj` and use Build All: it builds `axon.dproj` (whose post-build step puts the DLLs, stdlib, examples and help into `Win64\<Config>`), then `ide\AxonIDE.dproj` into the same folder.
 - `test.cmd` runs every test; `test.cmd -v tests\m03` runs one milestone and lists passes as well.
 - From PowerShell, give the scripts by full path, because `cmd /c` does not search the PowerShell location: `cmd /c "$PWD\build.cmd"`, then `cmd /c "$PWD\test.cmd"`.
 - macOS builds go through PAServer from the IDE. The POSIX code in `Axon.Platform` can be syntax-checked locally with `dccosxarm64` / `dccosx64`.
