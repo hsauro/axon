@@ -27,3 +27,16 @@ plot.save("_tmp_bar.svg")
 t = io.read_file("_tmp_bar.svg")
 println(contains(t, "apples"), contains(t, "plums"), contains(t, "sold"))
 println(io.delete_file("_tmp_bar.svg"))
+
+# xticks: labels at chosen positions, replacing round numbers and categories;
+# ticks outside the axis range are left out when drawing.
+plot.figure()
+plot.bar([1.0; 2.0] - 0.2, [3.0; 4.0], width = 0.4)
+plot.bar([1.0; 2.0] + 0.2, [1.0; 2.0], width = 0.4)
+plot.xticks([1.0; 2.0; 99.0], {"first", "second", "far"})
+f = plot.gcf()
+println(f.xticks.positions', f.xticks.labels)
+plot.save("_tmp_ticks.svg")
+t = io.read_file("_tmp_ticks.svg")
+println(contains(t, "second"), contains(t, "far"))
+println(io.delete_file("_tmp_ticks.svg"))

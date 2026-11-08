@@ -56,7 +56,7 @@ function new_figure(width, height, title)
   return {width: width + 0.0, height: height + 0.0, title: title, xlabel: nothing,
           ylabel: nothing, zlabel: nothing, xlim: nothing, ylim: nothing, grid: true,
           legend: true, series: {}, three_d: false, elev: 30.0, azim: -60.0,
-          xcategories: nothing}
+          xcategories: nothing, xticks: nothing}
 end
 
 function figure_now()
@@ -336,6 +336,27 @@ export function zlabel(text)
   current.zlabel = text
 end
 
+## Puts the x-axis ticks at the given positions, labelled with the given
+## strings, in place of round numbers (and of bar categories).
+export function xticks(positions, labels)
+  global current
+  ps = real_vector(positions, "plot.xticks: positions")
+  if typeof(labels) != "list"
+    fail("TypeError", "plot.xticks: labels must be a list of strings, got " + typeof(labels))
+  end
+  for t in labels
+    if typeof(t) != "string"
+      fail("TypeError", "plot.xticks: labels must be strings, got " + typeof(t))
+    end
+  end
+  if length(ps) != length(labels)
+    fail("DimensionError", "plot.xticks: " + string(length(ps)) + " positions but " +
+      string(length(labels)) + " labels")
+  end
+  figure_now()
+  current.xticks = {positions: ps, labels: labels}
+end
+
 ## Fixes the x-axis range to [lo, hi].
 export function xlim(lo, hi)
   global current
@@ -508,8 +529,19 @@ function render_2d(fig)
     if max(all_y(fig.series)) <= 0 y1 = 0.0 end
   end
   [yt, ystep] = nice_ticks(y0, y1, 6)
-  # Category names label their positions 1, 2, ...; otherwise round numbers.
-  if typeof(fig.xcategories) != "nothing"
+  # Ticks set by xticks (those inside the range), category names at 1, 2, ...,
+  # or round numbers.
+  if typeof(fig.xticks) != "nothing"
+    xt = zeros(0)
+    xlabels = {}
+    for k in 1:length(fig.xticks.positions)
+      v = fig.xticks.positions[k]
+      if v >= x0 and v <= x1
+        xt = [xt; v]
+        xlabels = append(xlabels, fig.xticks.labels[k])
+      end
+    end
+  elseif typeof(fig.xcategories) != "nothing"
     xt = zeros(length(fig.xcategories))
     for k in 1:length(xt) xt[k] = k end
     xlabels = fig.xcategories
