@@ -34,6 +34,7 @@ begin
   Writeln('  axon --ast file.sci     print the syntax tree');
   Writeln('  axon --transcript file  replay the input lines of a REPL transcript');
   Writeln('  axon --repl-protocol    the REPL for front ends such as the IDE');
+  Writeln('  axon --check file|-     check the syntax without running (- reads stdin)');
   Writeln('  axon test [-v] [path]   run the conformance tests (default path: tests)');
   Writeln('  axon --version          print the version');
 end;
@@ -82,6 +83,43 @@ begin
   finally
     Prog.Free;
   end;
+  Result := ExitOk;
+end;
+
+{ axon --check file (or - for standard input): parses without running.
+  Prints nothing and exits 0 when the syntax is valid; otherwise the error
+  propagates to RunCli, which prints the report and exits 1. }
+function CheckSyntax(const FileName: string): Integer;
+var
+  Source, Line, Name: string;
+  SB: TStringBuilder;
+  Prog: TProgram;
+begin
+  if FileName = '-' then
+  begin
+    Name := '<stdin>';
+    SB := TStringBuilder.Create;
+    try
+      while not Eof(Input) do
+      begin
+        Readln(Line);
+        SB.Append(Line).Append(#10);
+      end;
+      Source := SB.ToString;
+    finally
+      SB.Free;
+    end;
+    if Source.StartsWith(#$FEFF) then
+      Delete(Source, 1, 1);
+  end
+  else
+  begin
+    Name := FileName;
+    if not LoadProgram(FileName, Source) then
+      Exit(ExitUsage);
+  end;
+  Prog := ParseSource(Source, Name);
+  Prog.Free;
   Result := ExitOk;
 end;
 
@@ -142,6 +180,15 @@ begin
     Result := FrontEndDump(Cmd, Arg1)
   else if Cmd = '--repl-protocol' then
     Result := RunReplProtocol
+  else if Cmd = '--check' then
+  begin
+    if Arg1 = '' then
+    begin
+      Writeln(ErrOutput, 'axon: --check needs a source file, or - for standard input');
+      Exit(ExitUsage);
+    end;
+    Result := CheckSyntax(Arg1);
+  end
   else if Cmd = '--transcript' then
   begin
     if Arg1 = '' then

@@ -15,6 +15,8 @@ unit uMainForm;
      starts on first use in the current file's directory and keeps its
      variables until it is restarted. Send to REPL (Ctrl+Enter) sends the
      editor's selection, or the current line.
+   - Syntax is checked as you type: 0.6 s after the last edit, the text is
+     piped to "axon --check -", and a syntax error gets a wavy underline.
    - Help (F1) shows the documentation of the name under the caret in the
      Help tab: from the editor text for a function or record defined in the
      file, otherwise from "help name" in a short-lived axon session that
@@ -90,6 +92,13 @@ type
     FHelpSkip: Integer;        // ready markers to pass before the help output
     FHelpPartial: string;
     FHelpLines: TStringList;
+    // Syntax check as you type
+    FCheckTimer: TTimer;
+    FCheckRunner: TProcessRunner;
+    FCheckDoc: TDocument;
+    FCheckText: string;
+    FCheckOutput: string;
+    FCheckAgain: Boolean;
     procedure BuildUI;
     procedure BuildReplPane(Parent: TFmxObject);
     function ReplWorkDir: string;
@@ -107,6 +116,10 @@ type
     procedure ShowHelp(const Text: string);
     procedure HelpOutput(Kind: TOutputKind; const Text: string);
     procedure HelpExit(ExitCode: Integer);
+    procedure CheckTimerFired(Sender: TObject);
+    procedure StartCheck(Doc: TDocument);
+    procedure CheckOutput(Kind: TOutputKind; const Text: string);
+    procedure CheckExit(ExitCode: Integer);
     procedure BuildMenu;
     function AddMenuItem(Parent: TFmxObject; const Text, ShortCut: string;
       Handler: TNotifyEvent): TMenuItem;
@@ -217,6 +230,13 @@ begin
   FHelpRunner.OnOutput := HelpOutput;
   FHelpRunner.OnExit := HelpExit;
   FHelpLines := TStringList.Create;
+  FCheckRunner := TProcessRunner.Create;
+  FCheckRunner.OnOutput := CheckOutput;
+  FCheckRunner.OnExit := CheckExit;
+  FCheckTimer := TTimer.Create(Self);
+  FCheckTimer.Enabled := False;
+  FCheckTimer.Interval := 600;
+  FCheckTimer.OnTimer := CheckTimerFired;
   BuildUI;
   BuildMenu;
   LoadSettings;
@@ -241,6 +261,8 @@ begin
   FReplHistory.Free;
   FHelpRunner.Free;
   FHelpLines.Free;
+  FCheckTimer.Enabled := False;
+  FCheckRunner.Free;
   SaveSettings;
   FRecent.Free;
   FFrames.Free;
@@ -515,6 +537,7 @@ begin
     end;
     Result := NewDocument(Path, TFile.ReadAllText(Path, TEncoding.UTF8));
     AddRecent(Path);
+    StartCheck(Result);
   except
     on E: Exception do
     begin
@@ -591,6 +614,8 @@ begin
     Exit;
   if FRunDoc = Doc then
     FRunDoc := nil;
+  if FCheckDoc = Doc then
+    FCheckDoc := nil;
   FDocs.Extract(Doc);
   Doc.Tab.Free;
   Doc.Free;
@@ -628,6 +653,9 @@ begin
   for Doc in FDocs do
     if Doc.Editor = Sender then
       UpdateTabCaption(Doc);
+  // Restart the pause timer: the check runs once typing stops.
+  FCheckTimer.Enabled := False;
+  FCheckTimer.Enabled := True;
 end;
 
 procedure TfrmMain.EditorCaretChange(Sender: TObject);
@@ -1523,6 +1551,86 @@ begin
     Text := 'No help for ' + FHelpName + ': it is not a built-in, an imported name, or ' +
       'a function or record defined at the top of this file.';
   ShowHelp(Text);
+end;
+
+{ ---------------- syntax check as you type ---------------- }
+
+procedure TfrmMain.CheckTimerFired(Sender: TObject);
+begin
+  FCheckTimer.Enabled := False;
+  StartCheck(CurrentDoc);
+end;
+
+procedure TfrmMain.StartCheck(Doc: TDocument);
+var
+  Exe, Dir: string;
+begin
+  if Doc = nil then
+    Exit;
+  if FCheckRunner.Running then
+  begin
+    FCheckAgain := True;     // check again when this one finishes
+    Exit;
+  end;
+  Exe := AxonExecutable;
+  if Exe = '' then
+    Exit;
+  FCheckDoc := Doc;
+  FCheckText := Doc.Editor.GetText;
+  FCheckOutput := '';
+  if Doc.FilePath <> '' then
+    Dir := ExtractFileDir(Doc.FilePath)
+  else
+    Dir := TPath.GetDocumentsPath;
+  try
+    FCheckRunner.Start(Exe, ['--check', '-'], Dir, True);
+  except
+    Exit;                    // checking is a convenience; never an error
+  end;
+  FCheckRunner.WriteInput(FCheckText);
+  FCheckRunner.CloseInput;
+end;
+
+procedure TfrmMain.CheckOutput(Kind: TOutputKind; const Text: string);
+begin
+  FCheckOutput := FCheckOutput + Text;
+end;
+
+procedure TfrmMain.CheckExit(ExitCode: Integer);
+var
+  Doc: TDocument;
+  Lines: TArray<string>;
+  Kind, Msg: string;
+  Frame: TFrame;
+begin
+  Doc := FCheckDoc;
+  FCheckDoc := nil;
+  if FCheckAgain then
+  begin
+    FCheckAgain := False;
+    StartCheck(CurrentDoc);
+    Exit;
+  end;
+  if (Doc = nil) or not FDocs.Contains(Doc) then
+    Exit;
+  // Text changed while checking: this result is stale.
+  if Doc.Editor.GetText <> FCheckText then
+  begin
+    StartCheck(Doc);
+    Exit;
+  end;
+  if FStatus.Text.StartsWith('Syntax error') then
+    FStatus.Text := 'Ready';
+  if ExitCode <> 1 then
+    Exit;
+  Lines := FCheckOutput.Replace(#13#10, #10).Split([#10]);
+  if (Length(Lines) < 2) or not ParseErrorHead(Lines[0], Kind, Msg) or
+    not ParseFrame(Lines[1], Frame) then
+    Exit;
+  Doc.Editor.MarkWordAt(Frame.Line, Frame.Col, TMarkerKind.mkSquiggle, ColorError,
+    Kind + ': ' + Msg);
+  if Doc = CurrentDoc then
+    FStatus.Text := Format('Syntax error at line %d: %s', [Frame.Line, Msg]);
 end;
 
 { ---------------- commands ---------------- }
