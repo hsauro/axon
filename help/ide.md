@@ -89,6 +89,12 @@ function from an imported module (`ode.solve`, or `solve` after
 `from linalg import solve`), or a function or record defined in the file with a
 `##` comment above it.
 
+Below the short description, the Help pane shows the section of the Language
+Reference that documents the name, when there is one: the whole module's
+section for a module function such as `ode.solve` (keywords, result, events,
+errors), and for built-ins such as `println` or `zeros` the section that covers
+them. Its last link opens that section in the Documentation tab.
+
 ## Shortcuts
 
 | Key | Action |

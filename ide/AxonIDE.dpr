@@ -19,7 +19,8 @@ uses
   uAxonHighlighter in 'uAxonHighlighter.pas',
   uRunReport in 'uRunReport.pas',
   uAxonMarkdown in 'uAxonMarkdown.pas',
-  uPreferences in 'uPreferences.pas';
+  uPreferences in 'uPreferences.pas',
+  uRefSections in 'uRefSections.pas';
 
 {$R 'AxonIDEStyles.res' 'AxonIDEStyles.rc'}
 

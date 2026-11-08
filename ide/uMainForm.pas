@@ -55,7 +55,7 @@ uses
   FMX.Layouts, FMX.ListBox, FMX.TabControl, FMX.Menus, FMX.Objects,
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
   uSkiaCodeEditor, uCodeEditorTypes, uFindBar, uProcessRunner, uRunReport,
-  uRhoMarkdownViewer, uPreferences;
+  uRhoMarkdownViewer, uPreferences, uRefSections;
 
 type
   { Text colours of the output panes, per theme. }
@@ -114,7 +114,8 @@ type
     FReplSince: TDateTime;
     // Help
     FHelpTab: TTabItem;
-    FHelpMemo: TMemo;
+    FHelpViewer: TRhoMarkdownViewer;  // help on a name, as markdown
+    FHelpRefName: string;   // F1 name for the reference lookup, alias resolved
     FHelpRunner: TProcessRunner;
     FHelpName: string;
     FHelpSkip: Integer;        // ready markers to pass before the help output
@@ -194,6 +195,8 @@ type
     procedure NavigateDocs(const Path, Anchor: string; AddToHistory: Boolean;
       ScrollTo: Single = -1);
     procedure DocsLinkClick(Sender: TObject; const AUrl: string);
+    procedure HelpLinkClick(Sender: TObject; const AUrl: string);
+    procedure ShowHelpFor(const RefName, Text: string);
     procedure OpenExternal(const Target: string);
     procedure CmdDocs(Sender: TObject);
     procedure CmdReference(Sender: TObject);
@@ -603,14 +606,11 @@ begin
   FReplTab.Text := 'REPL';
   FHelpTab := FBottomTabs.Add;
   FHelpTab.Text := 'Help';
-  FHelpMemo := TMemo.Create(Self);
-  FHelpMemo.Parent := FHelpTab;
-  FHelpMemo.Align := TAlignLayout.Client;
-  FHelpMemo.ReadOnly := True;
-  FHelpMemo.WordWrap := True;   // long headers, such as ode.solve's
-  FHelpMemo.StyledSettings := FHelpMemo.StyledSettings - [TStyledSetting.Family];
-  FHelpMemo.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
-  FHelpMemo.Text := 'Put the caret on a name in the editor and press F1.';
+  FHelpViewer := TRhoMarkdownViewer.Create(Self);
+  FHelpViewer.Parent := FHelpTab;
+  FHelpViewer.Align := TAlignLayout.Client;
+  FHelpViewer.OnLinkClick := HelpLinkClick;
+  FHelpViewer.MarkdownText := 'Put the caret on a name in the editor and press F1.';
   FOutput := TListBox.Create(Self);
   FOutput.Parent := FOutputTab;
   FOutput.Align := TAlignLayout.Client;
@@ -1829,12 +1829,77 @@ begin
   end;
 end;
 
+{ Markdown for plain text: punctuation that markdown would read is escaped. }
+function MdEscape(const S: string): string;
+var
+  C: Char;
+  SB: TStringBuilder;
+begin
+  SB := TStringBuilder.Create;
+  try
+    for C in S do
+    begin
+      if CharInSet(C, ['\', '`', '*', '_', '[', ']', '<', '>', '#', '|']) then
+        SB.Append('\');
+      SB.Append(C);
+    end;
+    Result := SB.ToString;
+  finally
+    SB.Free;
+  end;
+end;
+
+{ The text of "help name" as markdown: unindented lines (headers such as
+  "solve(f, y0, ...)" or "module ode") become an axon code block, indented
+  lines (the description) a paragraph. }
+function HelpMarkdown(const Text: string): string;
+var
+  Lines: TStringList;
+  L: string;
+  InCode: Boolean;
+  SB: TStringBuilder;
+begin
+  Lines := TStringList.Create;
+  SB := TStringBuilder.Create;
+  try
+    Lines.Text := Text;
+    InCode := False;
+    for L in Lines do
+    begin
+      if (L <> '') and not L.StartsWith(' ') then
+      begin
+        if not InCode then
+          SB.Append(#10'```axon'#10);
+        InCode := True;
+        SB.Append(L).Append(#10);
+      end
+      else
+      begin
+        if InCode then
+          SB.Append('```'#10#10);
+        InCode := False;
+        if L.Trim.StartsWith('exports:') then
+          SB.Append(#10);   // its own paragraph
+        SB.Append(MdEscape(L.Trim)).Append(#10);
+      end;
+    end;
+    if InCode then
+      SB.Append('```'#10);
+    Result := SB.ToString;
+  finally
+    SB.Free;
+    Lines.Free;
+  end;
+end;
+
+{ A message in the Help pane (no lookup result). }
 procedure TfrmMain.ShowHelp(const Text: string);
 var
   First: string;
   P: Integer;
 begin
-  FHelpMemo.Text := Text;
+  FHelpViewer.MarkdownText := MdEscape(Text);
+  FHelpViewer.SetScrollPos(0);
   FBottomTabs.ActiveTab := FHelpTab;
   First := Text;
   P := First.IndexOf(#10);
@@ -1843,10 +1908,62 @@ begin
   FStatus.Text := First.Trim;
 end;
 
+{ Help on a name: the text of "help name", then the Language Reference
+  section that documents RefName, if there is one ('' for none). }
+procedure TfrmMain.ShowHelpFor(const RefName, Text: string);
+var
+  Md, RefPath, RefText, Anchor, Section, First: string;
+  P: Integer;
+begin
+  Md := HelpMarkdown(Text);
+  if RefName <> '' then
+  begin
+    RefPath := TPath.Combine(HelpDir, 'Axon-Language-Reference.md');
+    if TFile.Exists(RefPath) then
+    begin
+      RefText := TFile.ReadAllText(RefPath, TEncoding.UTF8);
+      Anchor := SectionAnchorFor(RefText, RefName);
+      Section := SectionMarkdown(RefText, Anchor);
+      if Section <> '' then
+        Md := Md + #10'---'#10#10 + Section + #10#10 +
+          '[Open this section in the Language Reference](#' + Anchor + ')'#10;
+    end;
+  end;
+  FHelpViewer.MarkdownText := Md;
+  FHelpViewer.SetScrollPos(0);
+  // Again after the new text is laid out, which may restore the old position.
+  TThread.ForceQueue(nil,
+    procedure
+    begin
+      FHelpViewer.SetScrollPos(0);
+    end);
+  FBottomTabs.ActiveTab := FHelpTab;
+  First := Text;
+  P := First.IndexOf(#10);
+  if P >= 0 then
+    First := First.Substring(0, P);
+  FStatus.Text := First.Trim;
+end;
+
+{ Links in the Help pane open in the Documentation tab; an #anchor is a
+  section of the Language Reference, where the section shown came from. }
+procedure TfrmMain.HelpLinkClick(Sender: TObject; const AUrl: string);
+var
+  Url: string;
+begin
+  Url := AUrl.Trim;
+  if Url.Contains('://') or Url.StartsWith('mailto:') or Url.StartsWith('www.') then
+    OpenExternal(Url)
+  else if Url.StartsWith('#') then
+    ShowDocs('Axon-Language-Reference.md' + Url)
+  else
+    ShowDocs(Url);
+end;
+
 procedure TfrmMain.CmdHelpWord(Sender: TObject);
 var
   Doc: TDocument;
-  Name, Text, Exe, Dir, T: string;
+  Name, Text, Exe, Dir, T, Alias, ModName: string;
   K: Integer;
   Imports: TStringList;
 begin
@@ -1861,7 +1978,7 @@ begin
   end;
   if LocalHelp(Doc, Name, Text) then
   begin
-    ShowHelp(Text);
+    ShowHelpFor('', Text);   // defined in this file: no reference section
     Exit;
   end;
   Exe := AxonExecutable;
@@ -1881,6 +1998,17 @@ begin
       if T.StartsWith('import ') or (T.StartsWith('from ') and T.Contains(' import ')) then
         Imports.Add(T);
     end;
+    // The reference names modules by their real name: undo "import m as a".
+    FHelpRefName := Name;
+    for T in Imports do
+      if T.StartsWith('import ') and T.Contains(' as ') then
+      begin
+        K := T.IndexOf(' as ');
+        Alias := T.Substring(K + 4).Trim;
+        ModName := T.Substring(7, K - 7).Trim;
+        if (Name = Alias) or Name.StartsWith(Alias + '.') then
+          FHelpRefName := ModName + Name.Substring(Alias.Length);
+      end;
     if Doc.FilePath <> '' then
       Dir := ExtractFileDir(Doc.FilePath)
     else
@@ -1889,7 +2017,7 @@ begin
     FHelpSkip := Imports.Count + 1;
     FHelpPartial := '';
     FHelpLines.Clear;
-    FHelpMemo.Text := 'Looking up ' + Name + '...';
+    FHelpViewer.MarkdownText := MdEscape('Looking up ' + Name + '...');
     FBottomTabs.ActiveTab := FHelpTab;
     if FHelpRunner.Running then
       Exit;   // the previous lookup is still being stopped; F1 again
@@ -1945,7 +2073,12 @@ begin
   // An undefined name answers with a NameError report.
   if (Text = '') or Text.StartsWith('NameError') then
     Text := 'No help for ' + FHelpName + ': it is not a built-in, an imported name, or ' +
-      'a function or record defined at the top of this file.';
+      'a function or record defined at the top of this file.'
+  else
+  begin
+    ShowHelpFor(FHelpRefName, Text);
+    Exit;
+  end;
   ShowHelp(Text);
 end;
 
@@ -2655,8 +2788,7 @@ begin
   FReplEdit.TextSettings.Font.Size := FPrefs.OutputFontSize;
   FReplPrompt.StyledSettings := FReplPrompt.StyledSettings - [TStyledSetting.Size];
   FReplPrompt.TextSettings.Font.Size := FPrefs.OutputFontSize;
-  FHelpMemo.StyledSettings := FHelpMemo.StyledSettings - [TStyledSetting.Size];
-  FHelpMemo.TextSettings.Font.Size := FPrefs.OutputFontSize;
+  FHelpViewer.FontSize := FPrefs.OutputFontSize;
 end;
 
 procedure TfrmMain.CmdPreferences(Sender: TObject);
@@ -2848,6 +2980,7 @@ begin
     if Dark then FDocsViewer.ApplyTheme(rtDark) else FDocsViewer.ApplyTheme(rtLight);
     ThemeDocsFindBar;
   end;
+  if Dark then FHelpViewer.ApplyTheme(rtDark) else FHelpViewer.ApplyTheme(rtLight);
   RecolorList(FOutput, Old);
   RecolorList(FReplList, Old);
   FDarkItem.IsChecked := Dark;

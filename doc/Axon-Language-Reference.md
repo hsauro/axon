@@ -25,6 +25,7 @@ Nov 7, 2026 · Herbert Sauro
   - [Strings](#strings-1)
   - [Truth values](#truth-values)
   - [Display](#display)
+  - [Printing](#printing)
 - [Arithmetic, broadcasting and comparison](#arithmetic-broadcasting-and-comparison)
   - [Linear-algebra operators](#linear-algebra-operators)
   - [Broadcasting](#broadcasting)
@@ -318,7 +319,7 @@ Output tests compare text exactly, so every value has one display form.
 | record type | `record type` and its name | `record type LVParams` |
 | `module` | `module` and its name | `module linalg` |
 
-Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `println(a, b, …)` writes its arguments separated by one space and ends the line. `print(a, b, …)` writes them the same way but leaves the line open, so the next output continues it; `println()` ends a line without writing anything. Neither takes keyword arguments. At the REPL, and before an error report, a line that `print` left open is ended first. Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. A dictionary displays as the call that builds it, `dict("Km" => 0.5, "Vm" => 10.0)`, with entries in insertion order; an empty one is `dict()`.
+Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print` and `println` write values in these forms; see [Printing](#printing). Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. A dictionary displays as the call that builds it, `dict("Km" => 0.5, "Vm" => 10.0)`, with entries in insertion order; an empty one is `dict()`.
 
 Arrays display as a header line, then one line per row with each entry right-aligned in its column and preceded by two spaces. The header is `R×C matrix{T}` or `N-vector{T}`. Elements show up to 6 significant digits, following the same rules as scalars, and complex elements show both parts that way. Above 10 rows, only the first and last 5 are shown, with a `  ⋮` line between; above 8 columns, only the first and last 4, with a `…` column between. An empty array shows only its header. At the REPL an assignment shows `A = ` before the header:
 
@@ -329,6 +330,29 @@ A = 2×2 matrix{int}
 ```
 
 Inside a list or record, an array is shown inline in literal form, as in `{[1, 2; 3, 4], [1; 2]}`.
+
+### Printing
+
+Two prelude functions write to standard output:
+
+| Call | Effect |
+| --- | --- |
+| `println(a, b, …)` | Writes the arguments separated by one space, then ends the line |
+| `print(a, b, …)` | Writes the arguments separated by one space and leaves the line open |
+| `println()` | Ends the current line without writing anything |
+
+Each argument is written in its display form (see Display), with strings unquoted; any number of arguments of any type may be given, and both functions return `nothing`. Neither takes keyword arguments: the choice between ending the line or not is the choice of function. Output from `print` is continued by the next `print` or `println`, so a line can be built up in a loop:
+
+```axon
+println("x =", 3, 2.5, true)          # x = 3 2.5 true
+for k in 1:3
+  print(string(k) + " ")
+end
+println()                             # 1 2 3
+println("Total: " + string(42))       # Total: 42
+```
+
+To control spacing exactly, build one string with `+` and `string(x)` and print that. An array argument is written in its full display form, header and rows, starting where the line is; inside a list or record it is written inline. At the REPL, and before an error report, a line that `print` left open is ended first, so prompts and messages always start on a new line. Error reports go to standard error, not standard output.
 
 ## Arithmetic, broadcasting and comparison
 

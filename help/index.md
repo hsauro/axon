@@ -17,6 +17,7 @@ description of Axon. Some sections you may want often:
 | Topic | Section |
 | --- | --- |
 | How values are displayed | [Display](Axon-Language-Reference.md#display) |
+| Printing: `print` and `println` | [Printing](Axon-Language-Reference.md#printing) |
 | Matrix product, solving `A \ b`, powers, broadcasting | [Linear-algebra operators](Axon-Language-Reference.md#linear-algebra-operators) |
 | Indexing and ranges | [Indexing and ranges](Axon-Language-Reference.md#indexing-and-ranges) |
 | Scopes and closures | [Scopes](Axon-Language-Reference.md#scopes) |
