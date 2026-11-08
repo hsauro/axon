@@ -30,8 +30,9 @@ Dylibs in `lib/macos/` are deployed next to `axon` in the IDE's app bundle (`too
 | --- | --- | --- | --- |
 | `libopenblas.dylib` | OpenBLAS 0.3.28 (BLAS, LAPACK, LAPACKE), `TARGET=VORTEX`, built without Fortran (`NOFORTRAN=1 C_LAPACK=1`) | `*` and `linalg` | Built on the Mac by `tools/build_openblas_mac.sh` |
 | `libsundials_core.dylib`, `libsundials_cvode.dylib` | SUNDIALS CVODE 7.5.0, arm64 (the vector, dense matrix and dense solver are inside `libsundials_cvode`) | `ode.solve(..., method = "bdf")` | `libsundials_core.7.dylib` and `libsundials_cvode.7.dylib` from `RoadRunner_Delphi_JIT/OSXARM64/Debug`, renamed |
+| `libmir.dylib` | MIR v1.0.0 (`mir.c`, `mir-gen.c`) plus Axon's shim `src/native/axmir.c`, clang `-O2` | The JIT | Built on the Mac by `tools/build_mir_mac.sh` (with `axmir.c` copied next to it) |
 
 - **No Fortran runtime.** OpenBLAS's C translation of LAPACK means the dylib depends only on system libraries (`otool -L` shows `libSystem`), unlike Homebrew's build, which needs gfortran's runtime dylibs.
 - **Why not Accelerate.** Apple's framework has BLAS and Fortran-style LAPACK but no LAPACKE, which both `Axon.Native.Lapack` and `stdlib/linalg.sci` call.
 - **CVODE install names.** These builds name themselves, and `libsundials_cvode` names its dependency, by absolute paths from the machine that built them (`/Users/hsauro/sundials-install/lib/libsundials_core.7.dylib`). `Axon.Native.Cvode` loads `libsundials_core` from the bundle before `libsundials_cvode`, so that dependency resolves to the copy already loaded: checked on the Mac with `~/sundials-install` renamed away, the bundle's copies are used. Rewriting the names to `@loader_path/…` (`install_name_tool`, then signing again) would make that independent of the load order.
-- **Still to come.** MIR (`tools/mir/CMakeLists.txt`, built on the Mac).
+- **MIR.** Rebuild `libmir.dylib` with `tools/build_mir_mac.sh` after changing `axmir.c`, as `mir.dll` with `tools/build_mir.cmd` on Windows.
