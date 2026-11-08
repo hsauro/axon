@@ -9,7 +9,7 @@ unit Axon.Cli;
     axon --jir file.sci     print the JIT's typed IR of each top-level function (L2)
     axon test [-v] [path]   run the conformance tests
     axon --jit-selftest     check that the MIR JIT works here (L2, J0)
-    axon --jit=MODE ...     run with the JIT off, on or force (also AXON_JIT)
+    axon --jit=MODE ...     run with the JIT off, on (default) or force (also AXON_JIT)
     axon --version | --help
 
   Exit codes are defined in Axon.Errors. }
@@ -42,7 +42,7 @@ begin
   Writeln('  axon --check file|-     check the syntax without running (- reads stdin)');
   Writeln('  axon test [-v] [path]   run the conformance tests (default path: tests)');
   Writeln('  axon --jit-selftest     check that the MIR JIT library works');
-  Writeln('  axon --jit=MODE ...     run with the JIT off (default), on or force; also AXON_JIT');
+  Writeln('  axon --jit=MODE ...     run with the JIT off, on (default) or force; also AXON_JIT');
   Writeln('  axon --version          print the version');
 end;
 

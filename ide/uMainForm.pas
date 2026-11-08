@@ -29,6 +29,11 @@ unit uMainForm;
      (browser) and examples (a copy opens in the editor), with Back.
    - On Windows the menu is an FMX TMenuBar, so it is styled with the rest;
      on macOS it is the native menu bar.
+   - Run > Use JIT Compiler (and the JIT button) runs programs and the REPL
+     with axon's JIT on or off (AXON_JIT), so the same program can be timed
+     both ways; saved in settings.ini. With AXON_JIT_REPORT, axon reports each
+     compile decision as a #3"jit ..." line on stderr, and the Output pane
+     ends a run with the functions compiled and those left interpreted.
    - Edit > Preferences sets the font size of the editors and of the output
      panes (Output, REPL, Help); saved in settings.ini.
    - View > Dark Theme switches the whole window live: the embedded FMX
@@ -141,6 +146,11 @@ type
     FDark: Boolean;
     FPal: TPanePalette;
     FDarkItem: TMenuItem;
+    // JIT
+    FJit: Boolean;
+    FJitItem: TMenuItem;
+    FJitButton: TSpeedButton;
+    FJitCompiled, FJitRejected: TStringList;
     // Preferences
     FPrefs: TIdePreferences;
     FFigureShown: Boolean;     // since the current run or REPL command started
@@ -192,6 +202,10 @@ type
     procedure ApplyEditorTheme(Editor: TSkiaCodeEditor);
     procedure RecolorList(List: TListBox; const Old: TPanePalette);
     procedure CmdDarkTheme(Sender: TObject);
+    procedure CmdToggleJit(Sender: TObject);
+    procedure ApplyJit(On: Boolean);
+    function TryJitReport(const Line: string): Boolean;
+    procedure ReportJit;
     procedure CmdPreferences(Sender: TObject);
     procedure ApplyPreferences;
     procedure SizePaneItem(Item: TListBoxItem);
@@ -424,8 +438,11 @@ begin
   FPal := PanePalette(False);
   FPrefs := TIdePreferences.Defaults;
   SetupShowDir;
+  FJitCompiled := TStringList.Create;
+  FJitRejected := TStringList.Create;
   BuildUI;
   BuildMenu;
+  ApplyJit(True);
   FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
   LoadSettings;
   RebuildRecentMenu;
@@ -452,6 +469,8 @@ begin
   FCheckTimer.Enabled := False;
   FCheckRunner.Free;
   FDocsHistory.Free;
+  FJitCompiled.Free;
+  FJitRejected.Free;
   // The figures of this session are temporary.
   if (FShowDir <> '') and TDirectory.Exists(FShowDir) then
     try
@@ -515,6 +534,11 @@ begin
   FRunButton := AddButton(Bar, #$25B6' Run', 'Run the current file (F9)', CmdRun);
   FRunButton.Margins.Left := 16;
   FStopButton := AddButton(Bar, #$25A0' Stop', 'Stop the running program (Ctrl+F2)', CmdStop);
+  FJitButton := AddButton(Bar, 'JIT on', 'Compile functions to native code (Run > Use JIT Compiler); ' +
+    'click to switch, then run again to compare', CmdToggleJit);
+  FJitButton.Width := 72;
+  FJitButton.Margins.Left := 16;
+  FJitButton.StaysPressed := True;
 
   Status := TStatusBar.Create(Self);
   Status.Parent := Self;
@@ -676,6 +700,7 @@ begin
   M := AddMenuItem(Menu, '&Run', '', nil);
   FRunItem := AddMenuItem(M, '&Run', 'F9', CmdRun);
   FStopItem := AddMenuItem(M, '&Stop', 'Ctrl+F2', CmdStop);
+  FJitItem := AddMenuItem(M, 'Use &JIT Compiler', '', CmdToggleJit);
   AddMenuItem(M, '-', '', nil);
   AddMenuItem(M, 'Send to RE&PL', 'Ctrl+Enter', CmdSendToRepl);
   AddMenuItem(M, 'Restart R&EPL', '', CmdReplRestart);
@@ -991,6 +1016,7 @@ begin
     FPrefs.OutputFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'OutputFontSize',
       Round(FPrefs.OutputFontSize)), MinFontSize, MaxFontSize);
     ApplyPreferences;
+    ApplyJit(Ini.ReadBool('Preferences', 'Jit', True));
     Exit;
   end;
   W := Ini.ReadInteger('Window', 'Width', Width);
@@ -1031,6 +1057,7 @@ begin
   FPrefs.OutputFontSize := EnsureRange(Ini.ReadInteger('Preferences', 'OutputFontSize',
     Round(FPrefs.OutputFontSize)), MinFontSize, MaxFontSize);
   ApplyPreferences;
+  ApplyJit(Ini.ReadBool('Preferences', 'Jit', True));
   K := Ini.ReadInteger('Window', 'BottomTab', 0);
   if (K >= 0) and (K < FBottomTabs.TabCount) then
     FBottomTabs.TabIndex := K;
@@ -1052,6 +1079,7 @@ begin
     Ini.WriteString('Window', 'Theme', 'light');
   Ini.WriteInteger('Preferences', 'EditorFontSize', Round(FPrefs.EditorFontSize));
   Ini.WriteInteger('Preferences', 'OutputFontSize', Round(FPrefs.OutputFontSize));
+  Ini.WriteBool('Preferences', 'Jit', FJit);
 end;
 
 procedure TfrmMain.AddRecent(const Path: string);
@@ -1160,7 +1188,12 @@ begin
   FFirstStdErr := True;
   FFigureShown := False;
   FBottomTabs.ActiveTab := FOutputTab;
-  AddNote(Format('Running %s', [Doc.FilePath]), FPal.Note);
+  FJitCompiled.Clear;
+  FJitRejected.Clear;
+  if FJit then
+    AddNote(Format('Running %s (JIT on)', [Doc.FilePath]), FPal.Note)
+  else
+    AddNote(Format('Running %s (JIT off: interpreted)', [Doc.FilePath]), FPal.Note);
   try
     FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir);
   except
@@ -1215,6 +1248,7 @@ begin
     end;
   Secs := (TThread.GetTickCount64 - FRunTicks) / 1000;
   SetRunning(False);
+  ReportJit;
   if FRunner.Killed then
   begin
     AddNote(Format('Stopped after %.2f s', [Secs]), FPal.Error);
@@ -1246,7 +1280,7 @@ var
   Frame: TFrame;
   Head, Msg: string;
 begin
-  if (Kind = okStdErr) and TryShowFigure(Line) then
+  if (Kind = okStdErr) and (TryShowFigure(Line) or TryJitReport(Line)) then
     Exit;
   while FOutput.Count >= MaxOutputLines do
     FOutput.ListItems[0].Free;
@@ -1533,6 +1567,8 @@ begin
         ReplAddLine(L.Substring(1), FPal.Error)
       else if TryShowFigure(L) then
         // shown in the plot pane
+      else if L.StartsWith(#3'jit ') then
+        // a JIT report line: not shown in the REPL
       else if Kind = okStdErr then
         ReplAddLine(L, FPal.Error)
       else
@@ -2582,6 +2618,91 @@ begin
   begin
     ApplyPreferences;
     SaveSettings;
+  end;
+end;
+
+{ ---------------- JIT ---------------- }
+
+procedure SetProcessEnv(const Name, Value: string);
+begin
+{$IFDEF MSWINDOWS}
+  SetEnvironmentVariable(PChar(Name), PChar(Value));
+{$ELSE}
+  setenv(PAnsiChar(UTF8String(Name)), PAnsiChar(UTF8String(Value)), 1);
+{$ENDIF}
+end;
+
+{ The programs and REPLs the IDE starts inherit AXON_JIT; AXON_JIT_REPORT
+  makes axon report its compile decisions. }
+procedure TfrmMain.ApplyJit(On: Boolean);
+begin
+  FJit := On;
+  if On then
+    SetProcessEnv('AXON_JIT', 'on')
+  else
+    SetProcessEnv('AXON_JIT', 'off');
+  SetProcessEnv('AXON_JIT_REPORT', '1');
+  if FJitItem <> nil then
+    FJitItem.IsChecked := On;
+  if FJitButton <> nil then
+  begin
+    FJitButton.IsPressed := On;
+    if On then FJitButton.Text := 'JIT on' else FJitButton.Text := 'JIT off';
+  end;
+end;
+
+procedure TfrmMain.CmdToggleJit(Sender: TObject);
+begin
+  ApplyJit(not FJit);
+  SaveSettings;
+  if FJit then
+    AddNote('JIT compiler on: the next run compiles functions to native code.', FPal.Note)
+  else
+    AddNote('JIT compiler off: the next run is interpreted.', FPal.Note);
+  if FRepl.Running then
+    AddNote('Restart the REPL (Run > Restart REPL) for it to use this too.', FPal.Note);
+  ScrollToEnd(FOutput);
+end;
+
+{ A line #3"jit compiled name" or #3"jit rejected name: reason". }
+function TfrmMain.TryJitReport(const Line: string): Boolean;
+const
+  Marker = #3'jit ';
+var
+  Rest: string;
+begin
+  Result := Line.StartsWith(Marker);
+  if not Result then
+    Exit;
+  Rest := Line.Substring(Length(Marker));
+  if Rest.StartsWith('compiled ') then
+  begin
+    Rest := Rest.Substring(Length('compiled '));
+    if FJitCompiled.IndexOf(Rest) < 0 then
+      FJitCompiled.Add(Rest);
+  end
+  else if Rest.StartsWith('rejected ') then
+    FJitRejected.Add(Rest.Substring(Length('rejected ')));
+end;
+
+{ After a run: the functions compiled, and why others ran interpreted. }
+procedure TfrmMain.ReportJit;
+const
+  MaxShown = 8;
+var
+  K: Integer;
+begin
+  if not FJit or ((FJitCompiled.Count = 0) and (FJitRejected.Count = 0)) then
+    Exit;
+  if FJitCompiled.Count > 0 then
+    AddNote('JIT compiled: ' + string.Join(', ', FJitCompiled.ToStringArray), FPal.Note);
+  if FJitRejected.Count > 0 then
+  begin
+    AddNote('Interpreted:', FPal.Note);
+    for K := 0 to Min(FJitRejected.Count, MaxShown) - 1 do
+      AddNote('  ' + FJitRejected[K], FPal.Note);
+    if FJitRejected.Count > MaxShown then
+      AddNote(Format('  ... and %d more', [FJitRejected.Count - MaxShown]), FPal.Note);
   end;
 end;
 

@@ -69,7 +69,7 @@ type
   end;
 
 var
-  JitMode: TJitMode = jmOff;
+  JitMode: TJitMode = jmOn;    // J5: on by default; --jit=off or AXON_JIT=off turns it off
   JitDepth: PInteger;           // the interpreter's call depth
   JitMaxDepth: Integer = 10000;
 
@@ -461,12 +461,19 @@ end;
 
 { With AXON_JIT_LOG set to a file, each decision is appended to it:
   "compiled name" or "rejected name: reason". It shows which functions a
-  program or test run actually compiled. }
+  program or test run actually compiled. With AXON_JIT_REPORT set, each
+  decision is also written to stderr as a line #3"jit compiled name" or
+  #3"jit rejected name: reason", which the IDE turns into a report. }
 procedure LogDecision(const Line: string);
 var
   Path: string;
   F: TextFile;
 begin
+  if GetEnvironmentVariable('AXON_JIT_REPORT') <> '' then
+  begin
+    Writeln(ErrOutput, #3'jit ' + Line);
+    Flush(ErrOutput);
+  end;
   Path := GetEnvironmentVariable('AXON_JIT_LOG');
   if Path = '' then
     Exit;

@@ -638,6 +638,25 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 - **Element widths.** `ptr float64`, `ptr complex` and `ptr int64` pass a `real`, `complex` or `int` array's own buffer. `ptr int32`, `ptr int16`, `ptr int8`, the unsigned widths and `ptr float32` take an `int` or `real` array through a temporary buffer of that width: values are converted in before the call, checked to fit, and converted back into the (unique) array after it.
 - **Results.** Integer results become `int` (a `uint64` above the `int` range raises `OverflowError`), floating-point results `real`, `cstring` results a copied `string` (or `nothing` for null), and a function with no result type returns `nothing`. `char` is an 8-bit integer; a one-character ASCII string is also accepted for it.
 
+## Compilation
+
+The interpreter compiles functions to native code at their first call (a just-in-time compiler built on MIR). Compilation changes only speed: a compiled function gives the same results, prints the same output, raises the same errors with the same traces, and makes the same array copies (`__copies()`) as when it is interpreted. A function that cannot be compiled with these guarantees runs interpreted, silently.
+
+- **What compiles.**
+  - **Functions.** Named top-level functions whose parameters are annotated `bool`, `int`, `real`, `vector{real}`, `vector{int}` or `matrix{real}`. The element type of an array must be given; a plain `vector` or `matrix` could hold any element type.
+  - **Bodies.** Arithmetic and comparisons, `and`/`or`/`not`, `if`, `while`, `for` over ranges and arrays, `break`, `continue` and `return` (with several values).
+  - **Variables.** Local and typed variables.
+  - **Arrays.** Element reads and writes with int indices and `end`, and operators on real arrays.
+  - **Calls.** Calls to other functions, recursion included, and the scalar built-ins: the elementary functions, `abs`, `floor`, `ceil`, `round`, `int`, `real`, `min`, `max`, `div`, `mod`, `length`, `size`, `zeros`, `ones`, `sum`, `print` and `error`.
+- **What stays interpreted.**
+  - **Types.** A function whose variable changes type, or whose result type depends on a value: `n ^ k` with `int` operands and a variable exponent is an `int` for `k >= 0` and a `real` otherwise.
+  - **Names.** A function that reads a module variable, or reads a variable that may be unassigned on some path.
+  - **Constructs.** Closures, `try`, `global`, strings beyond `print` and `error` arguments, complex numbers, lists, records, dictionaries, and indexing with ranges, colons or masks.
+
+  A compiled function may still call one that runs interpreted, as long as the callee's result type is declared or its result is unused.
+- **Control.** `axon --jit=off file.sci`, or the environment variable `AXON_JIT=off`, turns compilation off; `on` is the default. `axon --jir file.sci` prints the compiled form of each function, or the reason it is not compiled.
+- **Rebinding.** A compiled call checks that the name still refers to the function it was compiled against, so rebinding a module-level function name takes effect. A built-in that is later shadowed by a new module variable of the same name is still called by code compiled before the shadowing.
+
 ## The REPL
 
 `axon` with no arguments starts an interactive session. The prompt is `> `. Input that ends inside an open block or bracket continues on further lines, each with the prompt `... `, until the construct closes. Statements run in the session's top-level scope, as in a script, and imports resolve from the working directory.

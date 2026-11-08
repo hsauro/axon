@@ -74,7 +74,7 @@ Delphi exceptions cannot unwind through MIR-generated frames on Win64, because t
 
 ### D6. When a function is compiled
 
-- **Mode.** `--jit=off|on|force` on the command line, or the environment variable `AXON_JIT`. The default is `off` until J5 is done, then `on`.
+- **Mode.** `--jit=off|on|force` on the command line, or the environment variable `AXON_JIT`. The default was `off` until J5 and is now `on`.
 - **`on`.** A function is compiled at its first call when every parameter is annotated with a supported type, and when inference accepts the body. Compiling is cheap: MIR's author measures about 0.25 ms for a sieve. So there is no call-count threshold, at least at first.
 - **Cache.** The compiled code is kept per function and per argument-type signature. A call whose argument types do not match the annotations runs interpreted, as now.
 - **`force`.** `force` additionally specialises unannotated functions on the runtime types of their arguments (J6). It also reports how many calls ran compiled, so the test suite proves it exercises the JIT.
@@ -211,10 +211,13 @@ Every kernel in `bench/` now compiles. In the full suite with the JIT forced on,
 
 ### J5 — Turn it on
 
-- [ ] Default mode becomes `on`
-- [ ] The full suite passes in all three modes, and the test runner can run all three (`test.cmd -jit`)
-- [ ] The IDE's Run uses the default. The Output pane can show which functions compiled (an `AXON_JIT_REPORT` line, like `show`)
-- [ ] The reference gains a short "Compilation" section: what compiles, that results are identical, and how to check with `--jir`
+- [x] The default mode is `on`. `--jit=off` or `AXON_JIT=off` turns the JIT off
+- [x] `test.cmd -jit` runs the full suite with the JIT off, on and forced; all three pass
+- [x] IDE:
+  - **Toggle.** **Run > Use JIT Compiler** and a **JIT** toolbar button switch between compiled and interpreted runs, so the same program can be timed both ways. The IDE passes the choice to the programs and the REPL it starts through `AXON_JIT`, and keeps it in `settings.ini`. The Running line says which mode is used.
+  - **Report.** With `AXON_JIT_REPORT` set, `axon` writes each compile decision to stderr as a `#3jit …` line, like `#3show`. After a run, the Output pane lists the functions compiled, and the reason for each that ran interpreted.
+  - **Example.** `examples/09_jit.sci` (on the welcome screen) times four kernels for the comparison. Compiled, they take 1.6–3.4 ms (compile time included); interpreted, 377 ms – 1 s.
+- [x] The reference has a "Compilation" section: what compiles, that results are identical, what stays interpreted, `--jit`, `AXON_JIT`, `--jir`, and how rebinding behaves. The IDE help (`help/ide.md`) explains the toggle
 
 ### J6 — Specialisation of unannotated functions
 

@@ -28,6 +28,20 @@ When a program stops with an error, the error's line is underlined in the
 editor and the caret moves there. In the Output pane, each trace line
 (`at file:line:col`) is a link to that place.
 
+## Compiled and interpreted
+
+Functions are compiled to native code at their first call, which makes
+loops and recursive functions hundreds of times faster. The **JIT** button
+in the toolbar (or **Run > Use JIT Compiler**) switches this off and on, so
+you can run the same program both ways and compare: the results are the
+same, only the time differs. The *JIT: compiled and interpreted* example
+on the welcome screen is made for this.
+
+After a run with the JIT on, the Output pane lists the functions that were
+compiled, and for those that ran interpreted, the reason, such as a
+parameter without a type annotation. The REPL follows the setting when it
+starts: use **Run > Restart REPL** after switching.
+
 ## The REPL pane
 
 Type a statement and press <kbd>Enter</kbd>. A session starts the first time
