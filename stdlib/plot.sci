@@ -130,9 +130,15 @@ export function figure(; width = 640, height = 480, title = nothing)
   global current
   global changed
   global layout
+  for v in {width, height}
+    if typeof(v) != "int" and typeof(v) != "real"
+      fail("TypeError", "plot.figure: width and height must be numbers, got " + typeof(v))
+    end
+  end
   if not (width > 0 and height > 0)
     fail("ArgumentError", "plot.figure: width and height must be positive")
   end
+  label_text(title, "plot.figure: the title")
   show_unshown()
   current = new_figure(width, height, title)
   layout = nothing
@@ -522,30 +528,43 @@ function xyz(x, y, z, where)
   return xs, ys, zs
 end
 
-## Sets the title of the current figure.
+# A title or axis label: a string, or nothing to remove it.
+function label_text(text, what)
+  t = typeof(text)
+  if t != "string" and t != "nothing"
+    fail("TypeError", what + " must be a string, got " + t)
+  end
+  return text
+end
+
+## Sets the title of the current figure; nothing removes it.
 export function title(text)
   global current
+  label_text(text, "plot.title: the title")
   figure_now()
   current.title = text
 end
 
-## Sets the x-axis label.
+## Sets the x-axis label; nothing removes it.
 export function xlabel(text)
   global current
+  label_text(text, "plot.xlabel: the label")
   figure_now()
   current.xlabel = text
 end
 
-## Sets the y-axis label.
+## Sets the y-axis label; nothing removes it.
 export function ylabel(text)
   global current
+  label_text(text, "plot.ylabel: the label")
   figure_now()
   current.ylabel = text
 end
 
-## Sets the z-axis label (surfaces).
+## Sets the z-axis label (surfaces); nothing removes it.
 export function zlabel(text)
   global current
+  label_text(text, "plot.zlabel: the label")
   figure_now()
   current.zlabel = text
 end
