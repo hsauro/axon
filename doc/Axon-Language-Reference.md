@@ -921,10 +921,12 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 
 ### The plot module
 
-`plot` is a standard-library module written in Axon over `graphics`. Plotting calls add to the current figure, which `plot.save` writes and `plot.show` shows. When the program ends, and when `plot.figure` starts a new figure, a figure that has changed since it was last shown or saved is shown as if by `plot.show()` (at the end through `atexit`), so a script that only plots needs no `show` call, and each of its figures is shown in turn; one that calls `plot.save` after each figure, and only writes files, opens nothing.
+`plot` is a standard-library module written in Axon over `graphics`. Plotting calls add to the current figure, which `plot.save` writes and `plot.show` shows. `show` does not clear the figure: plotting after it adds to the same figure. When the program ends, and when `plot.new` or `plot.figure` starts a new figure, a figure that has changed since it was last shown or saved is shown as if by `plot.show()` (at the end through `atexit`), so a script that only plots needs no `show` call, and each of its figures is shown in turn; one that calls `plot.save` after each figure, and only writes files, opens nothing.
 
 | Function | Effect |
 | --- | --- |
+| `new(; width: real = 640, height: real = 480, title: string)` | Starts a new plot: the same as `figure`, under a name that says what it does |
+| `clear()` | Removes everything plotted in the current figure (in a figure with subplots, the current cell) and keeps its frame: size, title, axis labels, limits, ticks, legend placement and 3D view. Unlike `new`, it shows nothing first, so plotting after `clear` and showing draws new data in the same frame, as when redrawing in a loop |
 | `figure(; width: real = 640, height: real = 480, title: string)` | Starts a new current figure, sized in points, with `title` above it (no title when not set). The figure it replaces is shown first if it has changed since it was last shown or saved |
 | `subplot(rows: int, cols: int, k: int)` | Divides the figure into a grid of `rows` by `cols` cells and makes cell `k` current, so the plotting calls that follow (series, titles, labels, limits, legend, view) go to it. Cells are numbered along each row from the top left, as in MATLAB; selecting a cell again returns to what is plotted there |
 | `line(x, y; label: string, color, width: real = 1.5, style: string = "-", marker: string, marker_size: real = 5)` | Adds a line; `style` is `"-"`, `"--"`, `":"` or `"-."`, and `marker` draws a marker of that shape at each point |

@@ -2059,8 +2059,37 @@ figure}; \code{plot.figure} starts a new one with a given size and title, and
 program runs from the IDE, otherwise in the system's image viewer. You rarely
 need to call it, because a figure that has changed since it was last shown or
 saved is shown automatically, when the program ends and when
-\code{plot.figure()} starts the next figure. A program that draws three figures
-therefore shows all three. A program that saves each figure with
+\code{plot.new()} starts the next figure. A program that draws three figures
+therefore shows all three.
+
+\code{plot.show()} does not clear the figure: plotting after it adds to the
+same figure, which is then shown again with everything on it. To start a fresh
+plot, call \code{plot.new()}, which takes the same \code{width},
+\code{height} and \code{title} options as \code{plot.figure()}; the two are
+the same function, \code{figure} being the name MATLAB and matplotlib users
+know.
+
+\code{plot.clear()} is the other way to start again: it removes what has been
+plotted but keeps the frame, that is the size, title, axis labels and limits,
+and shows nothing first. That suits redrawing in a loop:
+
+\begin{axon}
+import plot
+plot.new(title = "Growth", width = 500, height = 300)
+plot.xlabel("t")
+plot.ylim(0, 3)
+t = linspace(0.0, 1.0, 50)
+for rate in {0.5, 1.0}
+  plot.clear()                    # same frame, no data
+  plot.line(t, exp(rate * t), label = "rate " + string(rate))
+  plot.show()                     # one picture per rate
+end
+println(plot.gcf().title, length(plot.gcf().series))
+plot.clear()                      # nothing left to show at the end
+\end{axon}
+\begin{axonout}
+Growth 1
+\end{axonout} A program that saves each figure with
 \code{plot.save}, and only wants files, opens nothing.
 
 \begin{axon}

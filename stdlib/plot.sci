@@ -257,6 +257,25 @@ function scene_of(fig)
   return {width: g.width, height: g.height, background: "white", items: items}
 end
 
+## Starts a new plot: the same as figure, under a name that says so. The
+## figure it replaces is shown first if it has changed since it was last
+## shown or saved; width and height are in points, title goes on top.
+export function new(; width = 640, height = 480, title = nothing)
+  figure(width = width, height = height, title = title)
+end
+
+## Removes everything plotted in the current figure (in a figure with
+## subplots, the current cell) but keeps its frame: size, title, axis labels,
+## limits, ticks, legend placement and 3D view. Nothing is shown, so
+## clear, plot again and show draws the same frame with new data.
+export function clear()
+  global current
+  figure_now()
+  current.series = {}
+  current.three_d = false
+  current.xcategories = nothing
+end
+
 ## Adds a line through the points (x[k], y[k]). Keywords: label, color,
 ## width (points), style ("-", "--", ":" or "-.") and marker (a marker shape
 ## drawn at each point, with marker_size).
