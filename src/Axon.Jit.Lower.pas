@@ -1870,7 +1870,9 @@ end;
   fresh variable of the body's scope. }
 procedure TLowerer.LowerFor(S: TForStmt);
 var
-  R: TRangeExpr;
+  StartE, StepE, StopE: TExpr;
+  C: TCallExpr;
+  Res: TJResolved;
   A, H, B: TJValue;
   T: TJType;
   N, K, Cmp, LHead, LCont, LExit: Integer;
@@ -1878,18 +1880,68 @@ var
   Before: TArray<Boolean>;
   Lp: TLoop;
 begin
-  if not (S.Iter is TRangeExpr) then
+  // a:h:b, or the built-in range(a, b) / range(a, b, h), which is the same.
+  StartE := nil;
+  StepE := nil;
+  StopE := nil;
+  if S.Iter is TRangeExpr then
+  begin
+    StartE := TRangeExpr(S.Iter).Start;
+    StepE := TRangeExpr(S.Iter).Step;
+    StopE := TRangeExpr(S.Iter).Stop;
+  end
+  else if S.Iter is TCallExpr then
+  begin
+    C := TCallExpr(S.Iter);
+    if (C.Callee is TNameExpr) and (TNameExpr(C.Callee).Name = 'range') and
+      (Lookup('range') = nil) and (C.Args.Count in [1, 2, 3]) and
+      (C.Args[0].Kind = akPositional) and
+      ((C.Args.Count < 2) or (C.Args[1].Kind = akPositional)) and
+      ((C.Args.Count < 3) or (C.Args[2].Kind = akPositional)) then
+    begin
+      Res := Session.Resolve(Context, 'range');
+      if (Res.Kind = rkBuiltin) and (Res.Name = 'range') then
+        if C.Args.Count = 1 then
+        begin
+          StartE := nil;                  // 1, set below
+          StopE := C.Args[0].Value;
+        end
+        else
+        begin
+          StartE := C.Args[0].Value;
+          StopE := C.Args[1].Value;
+          if C.Args.Count = 3 then
+            StepE := C.Args[2].Value;
+        end;
+    end;
+  end;
+  if (StartE = nil) and (StopE = nil) then
   begin
     LowerForEach(S);
     Exit;
   end;
-  R := TRangeExpr(S.Iter);
-  A := LowerExpr(R.Start);
-  if R.Step <> nil then
-    H := LowerExpr(R.Step)
+  // Evaluated left to right as written: range(a, b, h) evaluates b before h;
+  // range(n) starts at 1.
+  if StartE = nil then
+    A := MakeValue(jtInt, IntOperand(1))
   else
-    H := MakeValue(jtInt, IntOperand(1));
-  B := LowerExpr(R.Stop);
+    A := LowerExpr(StartE);
+  if S.Iter is TRangeExpr then
+  begin
+    if StepE <> nil then
+      H := LowerExpr(StepE)
+    else
+      H := MakeValue(jtInt, IntOperand(1));
+    B := LowerExpr(StopE);
+  end
+  else
+  begin
+    B := LowerExpr(StopE);
+    if StepE <> nil then
+      H := LowerExpr(StepE)
+    else
+      H := MakeValue(jtInt, IntOperand(1));
+  end;
   if not Numeric(A.Typ) or not Numeric(H.Typ) or not Numeric(B.Typ) then
     Reject('range bounds must be numbers, a TypeError', S);
   if Max(Rank(A.Typ), Max(Rank(H.Typ), Rank(B.Typ))) <= 1 then T := jtInt else T := jtReal;

@@ -343,6 +343,13 @@ uses
   FMX.ActnList, FMX.DialogService.Sync, FMX.Platform,
   uAxonHighlighter;
 
+var
+  // Set first thing in FormDestroy. Work deferred with TThread.ForceQueue(nil,
+  // ...) is not removed when the form goes, and may run after it is freed
+  // (the REPL list's ScrollToEnd did, on quit), so each such job checks this
+  // first; it is a unit variable because the form may no longer exist.
+  GClosing: Boolean = False;
+
 const
   MaxOutputLines = 10000;
   MaxRecent = 8;
@@ -536,12 +543,14 @@ begin
   TThread.ForceQueue(nil,
     procedure
     begin
-      Sender.Free;
+      if not GClosing then
+        Sender.Free;
     end);
 end;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
+  GClosing := True;
   FRunner.Free;          // kills a running program
   FRepl.Free;            // and the REPL session
   FReplHistory.Free;
@@ -1075,7 +1084,8 @@ begin
     TThread.ForceQueue(nil,
       procedure
       begin
-        CloseTab(Tab);
+        if not GClosing then
+          CloseTab(Tab);
       end);
 end;
 
@@ -1244,6 +1254,8 @@ begin
     var
       Full: Boolean;
     begin
+      if GClosing then
+        Exit;
       Full := IsFullScreen;
       if (WindowState = TWindowState.wsNormal) and not Full then
         FNormalBounds := TRect.Create(Left, Top, Left + Width, Top + Height);
@@ -1941,6 +1953,8 @@ begin
   TThread.ForceQueue(nil,
     procedure
     begin
+      if GClosing then
+        Exit;
       if List.Count > 0 then
         List.ScrollToItem(List.ListItems[List.Count - 1]);
     end);
@@ -2531,7 +2545,8 @@ begin
   TThread.ForceQueue(nil,
     procedure
     begin
-      FHelpViewer.SetScrollPos(0);
+      if not GClosing then
+        FHelpViewer.SetScrollPos(0);
     end);
   FBottomTabs.ActiveTab := FHelpTab;
   First := Text;
@@ -3006,14 +3021,20 @@ begin
     TThread.ForceQueue(nil,
       procedure
       begin
-        OpenFile(Path);
+        if not GClosing then
+          OpenFile(Path);
       end)
   else
   begin
     K := FRecent.IndexOf(Path);
     if K >= 0 then
       FRecent.Delete(K);
-    TThread.ForceQueue(nil, RebuildRecentMenu);
+    TThread.ForceQueue(nil,
+      procedure
+      begin
+        if not GClosing then
+          RebuildRecentMenu;
+      end);
   end;
 end;
 
@@ -3151,7 +3172,8 @@ begin
   TThread.ForceQueue(nil,
     procedure
     begin
-      OpenFile(Copy_);
+      if not GClosing then
+        OpenFile(Copy_);
     end);
 end;
 
@@ -3291,7 +3313,7 @@ begin
   TThread.ForceQueue(nil,
     procedure
     begin
-      if FDocsViewer = nil then
+      if GClosing or (FDocsViewer = nil) then
         Exit;
       if Anchor <> '' then
         FDocsViewer.ScrollToAnchor('#' + Anchor)

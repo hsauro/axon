@@ -38,3 +38,14 @@ ide/styles/MineShaft_*.style
 
 # Written on every build by tools/AxonBuildInfo.targets
 src/Axon.BuildInfo.inc
+
+# The user manual: figures drawn by its examples, the PDF and LaTeX by-products.
+doc/manual/figures/
+doc/manual/*.pdf
+doc/manual/*.aux
+doc/manual/*.log
+doc/manual/*.toc
+doc/manual/*.out
+doc/manual/*.fls
+doc/manual/*.fdb_latexmk
+doc/manual/*.synctex.gz

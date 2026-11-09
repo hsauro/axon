@@ -23,6 +23,9 @@ procedure RunAtExit;
 { Forgets the registered functions without running them. }
 procedure ClearAtExit;
 
+{ The range Start:Step:Stop (reference, "Ranges"), for a:h:b and range(). }
+function NewRange(const A, H, B: TAxValue): TAxValue;
+
 { print leaves its line open; println, and anything that writes a whole line
   of its own (the REPL's prompts and results, an error report), ends an open
   line first with EndOpenLine. }
@@ -1341,6 +1344,83 @@ begin
   Result := KeepCallback(Args[0]);
 end;
 
+{ ---- ranges ---- }
+
+function NewRange(const A, H, B: TAxValue): TAxValue;
+var
+  R: TRangeObj;
+  N: Double;
+  Span: Int64;
+
+  procedure CheckBound(const V: TAxValue);
+  begin
+    if (NumRank(V) < 0) or (V.Kind = vkComplex) then
+      RaiseFmt(TypeError, 'range bounds and step must be real numbers, got %s',
+        [TypeName(V)]);
+  end;
+
+  function AsInt(const V: TAxValue): Int64;
+  begin
+    if V.Kind = vkBool then Result := Ord(V.B) else Result := V.I;
+  end;
+
+begin
+  CheckBound(A);
+  CheckBound(H);
+  CheckBound(B);
+
+  R := TRangeObj.Create;
+  Result := NothingValue;
+  Result.Kind := vkRange;
+  Result.Obj := R;
+  R.IsInt := (NumRank(A) <= 1) and (NumRank(H) <= 1) and (NumRank(B) <= 1);
+  if R.IsInt then
+  begin
+    R.IStart := AsInt(A);
+    R.IStep := AsInt(H);
+    R.IStop := AsInt(B);
+    if R.IStep = 0 then
+      RaiseError(ArgumentError, 'the step of a range cannot be zero');
+    if ((R.IStep > 0) and (R.IStop < R.IStart)) or
+       ((R.IStep < 0) and (R.IStop > R.IStart)) then
+      R.Count := 0
+    else
+    begin
+      Span := CheckedSub(R.IStop, R.IStart);
+      R.Count := Span div R.IStep + 1;
+    end;
+  end
+  else
+  begin
+    R.RStart := ToReal(A);
+    R.RStep := ToReal(H);
+    R.RStop := ToReal(B);
+    if R.RStep = 0 then
+      RaiseError(ArgumentError, 'the step of a range cannot be zero');
+    if IsNan(R.RStart) or IsNan(R.RStep) or IsNan(R.RStop) then
+      RaiseError(ArgumentError, 'range bounds and step cannot be NaN');
+    // Reference, "Ranges": the length is floor((b - a)/h + 1e-10) + 1.
+    N := Floor((R.RStop - R.RStart) / R.RStep + 1e-10) + 1;
+    if IsInfinite(N) or (N > 4.0e18) then
+      RaiseError(ArgumentError, 'range has too many elements');
+    if N < 0 then
+      N := 0;
+    R.Count := Trunc(N);
+  end;
+end;
+
+{ range(n), range(start, stop) and range(start, stop, step): 1:n and
+  start:step:stop, with the numbers in the order they are read. }
+function BRange(const Args: TAxValues): TAxValue;
+begin
+  case Length(Args) of
+    1: Result := NewRange(IntValue(1), IntValue(1), Args[0]);
+    3: Result := NewRange(Args[0], Args[2], Args[1]);
+  else
+    Result := NewRange(Args[0], IntValue(1), Args[1]);
+  end;
+end;
+
 { ---- atexit ---- }
 
 var
@@ -1488,6 +1568,7 @@ begin
   Add('max', BMax, 1, 2);
   Add('factorial', BFactorial, 1, 1);
   Add('atexit', BAtExit, 1, 1);
+  Add('range', BRange, 1, 3);
   // Constants: the doubles nearest to pi and e, given by their bits so that
   // no conversion can be off by one unit in the last place.
   Define('pi', RealValue(PDouble(@PiBits)^));

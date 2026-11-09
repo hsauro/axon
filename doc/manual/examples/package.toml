@@ -1,0 +1,9 @@
+# The C runtime library on each platform, for extern_libc.sci.
+[package]
+name = "manual_examples"
+version = "0.1.0"
+
+[native.libc]
+windows = "msvcrt.dll"
+macos = "libSystem.B.dylib"
+linux = "libc.so.6"

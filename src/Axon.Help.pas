@@ -38,12 +38,13 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..94] of TBuiltinDoc = (
+  BuiltinDocs: array[0..95] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
     (Name: 'rand';     Params: '(m, n)';  Text: 'Uniform random numbers in [0, 1): a scalar, an n-vector or an m' + #$00D7 + 'n matrix'),
     (Name: 'linspace'; Params: '(a, b, n)'; Text: 'n equally spaced values from a to b, as a vector'),
+    (Name: 'range';    Params: '(start, stop, step)'; Text: 'The range start:step:stop (step 1 if left out): range(0, 1, 0.1) is 0:0.1:1; range(n) is 1:n'),
     (Name: 'size';     Params: '(A, dim)'; Text: 'The number of rows and columns of A, as two values, or the size along dim'),
     (Name: 'sum';      Params: '(A, dim)'; Text: 'The sum of all elements, or the sums along dim'),
     (Name: 'prod';     Params: '(A, dim)'; Text: 'The product of all elements, or the products along dim'),

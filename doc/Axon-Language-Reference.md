@@ -449,6 +449,7 @@ A result is sparse when both operands are sparse, or when one is a scalar and th
 - `a:h:b` steps by h, which may be negative or non-integer: `0:0.1:1` has 11 elements and `5:-1:1` counts down. A zero step raises `ArgumentError`.
 - For real steps, the length is `floor((b - a)/h + 1e-10) + 1`, so `0:0.1:1` includes 1.0 despite rounding.
 - A range is lazy and stores only its endpoints and step. It converts to a vector wherever a vector is required.
+- `range(n)` is `1:n`, the indices of something of length n. `range(start, stop)` and `range(start, stop, step)` make the same range as `start:stop` and `start:step:stop`, with the numbers in the order they are read; its arguments are evaluated in the order written. In a compiled function, `for k in range(…)` compiles as the colon form does.
 
 ### Index forms
 
@@ -617,6 +618,7 @@ These functions, and the constants `pi` and `e`, are always available, without a
 | `eye(n)`, `eye(m, n)` | The identity matrix |
 | `rand()`, `rand(n)`, `rand(m, n)` | Uniform random reals in [0, 1); `random.seed` makes them repeat |
 | `linspace(a, b, n)` | A `real` vector of n points from a to b inclusive |
+| `range(n)`, `range(start, stop)`, `range(start, stop, step)` | `1:n`, or the range `start:step:stop` (step 1 by default) written in reading order: `range(0, 1, 0.1)` is `0:0.1:1` |
 | `size(A)`, `size(A, d)` | The row and column counts as two values (`[m, n] = size(A)`), or the count along dimension d |
 | `length(x)` | The number of elements of an array, list, string or dictionary |
 | `reshape(A, m, n)`, `reshape(A, n)` | The elements of `A` in column-major order, as an m×n matrix or a vector |

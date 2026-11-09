@@ -1,0 +1,1967 @@
+% The Axon User Manual. Build with tools\build_manual.cmd, which first runs
+% the scripts in examples\ (they write the figures into figures\), then
+% latexmk. Every Axon listing in this file is a complete program that runs.
+\documentclass[11pt,a4paper,openany]{report}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[scaled=0.88]{beramono}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage[shortlabels]{enumitem}
+\usepackage{caption}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+\setlist{itemsep=2pt,topsep=4pt}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{3em}
+\captionsetup{font=small,labelfont=bf}
+
+% Colours of the Axon IDE's light theme.
+\definecolor{axkeyword}{HTML}{0033B3}
+\definecolor{axbuiltin}{HTML}{00796B}
+\definecolor{axstring}{HTML}{A31515}
+\definecolor{axnumber}{HTML}{098658}
+\definecolor{axcomment}{HTML}{6A737D}
+\definecolor{axdoc}{HTML}{8A5A00}
+\definecolor{axback}{HTML}{F6F8FA}
+\definecolor{axframe}{HTML}{D0D7DE}
+\definecolor{outback}{HTML}{FFFFFF}
+
+\lstdefinelanguage{Axon}{
+  morekeywords={function,end,return,if,elseif,else,for,in,while,break,
+    continue,local,global,try,catch,import,from,as,export,extern,record,
+    true,false,nothing,and,or,not},
+  morekeywords=[2]{zeros,ones,eye,rand,linspace,size,sum,prod,mean,all,any,
+    dot,adjoint,isequal,keep,eltype,reshape,sparse,speye,nnz,full,splu,
+    append,get,keys,haskey,dict,print,println,error,string,length,typeof,
+    sqrt,exp,log,sin,cos,tan,asin,acos,atan,sinh,cosh,tanh,asinh,acosh,atanh,
+    abs,int,floor,ceil,round,real,imag,conj,arg,complex,div,mod,min,max,
+    factorial,format,display_size,display_decimals,pi,sort,sortperm,atexit},
+  sensitive=true,
+  morecomment=[l]{\#},
+  morestring=[b]",
+}
+
+\lstdefinestyle{axonstyle}{
+  language=Axon,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{axkeyword}\bfseries,
+  keywordstyle=[2]\color{axbuiltin},
+  stringstyle=\color{axstring},
+  commentstyle=\color{axcomment}\itshape,
+  backgroundcolor=\color{axback},
+  frame=single, rulecolor=\color{axframe}, framesep=4pt,
+  xleftmargin=6pt, xrightmargin=6pt,
+  columns=fullflexible, keepspaces=true,
+  showstringspaces=false, upquote=true,
+  aboveskip=8pt, belowskip=6pt,
+  breaklines=true, breakatwhitespace=true,
+  tabsize=2,
+  literate={*}{{\char42}}1 {-}{{\char45}}1,
+}
+\lstdefinestyle{outstyle}{
+  language={}, keywordstyle={}, stringstyle={}, commentstyle={},
+  literate={*}{{\char42}}1 {-}{{\char45}}1,
+  basicstyle=\ttfamily\small\color{black!75},
+  backgroundcolor=\color{outback},
+  frame=leftline, rulecolor=\color{axframe}, framerule=2pt,
+  xleftmargin=10pt, framesep=6pt,
+  columns=fullflexible, keepspaces=true, upquote=true,
+  aboveskip=0pt, belowskip=8pt,
+  escapeinside={(*@}{@*)},
+}
+\lstdefinestyle{shellstyle}{
+  language={}, keywordstyle={}, stringstyle={}, commentstyle={},
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{axback},
+  frame=single, rulecolor=\color{axframe}, framesep=4pt,
+  xleftmargin=6pt, xrightmargin=6pt,
+  columns=fullflexible, keepspaces=true, upquote=true,
+}
+% axon: a complete program (checked by running it). axonout: what it prints.
+% axonerr: a program that stops with an error; the following axonout is the
+% error report. shell: a command line.
+\lstnewenvironment{axon}{\lstset{style=axonstyle}}{}
+\lstnewenvironment{axonerr}{\lstset{style=axonstyle}}{}
+\lstnewenvironment{axonout}{\lstset{style=outstyle}}{}
+\lstnewenvironment{shell}{\lstset{style=shellstyle}}{}
+% axonrepl: a REPL session, checked with axon --transcript.
+\lstnewenvironment{axonrepl}{\lstset{style=outstyle,aboveskip=8pt}}{}
+\lstset{style=axonstyle}
+\newcommand{\ex}[1]{\lstinputlisting[style=axonstyle,
+  title={\small\ttfamily\detokenize{#1}}]{examples/#1}}
+% Inline code, read verbatim: \code{x + 1}, or \code|{a, b}| with braces inside.
+\newcommand{\code}{\lstinline[basicstyle=\ttfamily,keywordstyle=,
+  keywordstyle={[2]},stringstyle=,commentstyle=,
+  literate={*}{{\char42}}1 {-}{{\char45}}1]}
+\newcommand{\menu}[1]{\textsf{#1}}
+\newcommand{\key}[1]{\fbox{\footnotesize\sffamily #1}}
+\newcommand{\fig}[3]{\begin{figure}[htbp]\centering
+  \includegraphics[width=#2\linewidth]{figures/#1}\caption{#3}\label{fig:#1}
+  \end{figure}}
+
+\title{\Huge\bfseries Axon\\[6pt]\LARGE User Manual\\[18pt]
+  \large The language and the IDE}
+\author{Herbert Sauro\\[4pt]\small developed in collaboration with Claude Code}
+\date{Version 0.1, November 2026}
+
+\begin{document}
+\pagenumbering{roman}
+\maketitle
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+% ===================================================================
+\chapter{Introduction}
+
+Axon is a programming language for scientific computing. Vectors, matrices,
+complex numbers, differential equation solvers and plots are part of the
+language and its standard library rather than add-ons, and the syntax borrows
+what scientists already read fluently: MATLAB-style matrix literals, 1-based
+indexing and \code{end}-delimited blocks. To that it adds what larger programs
+need: modules with explicit exports, records, keyword arguments and optional
+type annotations.
+
+Axon comes with an IDE: an editor with syntax colouring and checks as you type,
+a REPL that keeps its variables, help on any name with \key{F1}, a searchable
+documentation viewer, and a plot pane in which line, bar, histogram, surface and
+3D plots can be zoomed, panned, rotated and edited.
+
+A short program gives the flavour:
+
+\begin{axon}
+import ode
+
+# Linear algebra is built in: \ solves A x = b.
+A = [4.0, 1.0; 1.0, 3.0]
+b = [1.0; 2.0]
+println(A \ b)
+
+# Exponential decay, y' = -0.5 y, solved numerically.
+decay = function(t, y) return -0.5 * y end
+sol = ode.solve(decay, 2.0, [0, 10], rtol = 1e-8)
+println("y(3) =", format(sol.at(3.0)[1], 6), " exact:", format(2 * exp(-1.5), 6))
+\end{axon}
+\begin{axonout}
+2-vector{real}
+  0.0909091
+   0.636364
+y(3) = 0.446260  exact: 0.446260
+\end{axonout}
+
+\section*{About this manual}
+
+This manual teaches Axon and its IDE to someone who knows another numerical
+language, such as MATLAB, Python with NumPy, R or Julia. Chapter~\ref{ch:start}
+gets a first program running; Chapter~\ref{ch:ide} tours the IDE;
+Chapters~\ref{ch:lang} to \ref{ch:c} cover the language, the numerical modules,
+plotting, performance and calling C. Appendix~\ref{app:builtins} lists every
+built-in function, and Appendix~\ref{app:examples} prints the example programs
+that come with Axon.
+
+Every program in a shaded box is complete and runs as printed; what it prints
+follows it, with a bar on the left. The longer examples are files in the
+manual's \texttt{examples} folder, and the figures in Chapter~\ref{ch:plot} are
+drawn by those files when the manual is built.
+
+The \emph{Axon Language Reference}, in the IDE under \menu{Help > Language
+Reference}, is the authority on every rule; this manual explains and
+illustrates, and points to the reference where the details matter.
+
+\section*{Acknowledgement}
+
+Axon, its IDE and this manual were developed by Herbert Sauro in collaboration
+with Claude Code, Anthropic's AI coding assistant.
+
+% ===================================================================
+\chapter{Getting started}\label{ch:start}
+
+\section{What you get}
+
+Axon consists of two programs and some folders that live together:
+
+\begin{itemize}
+\item \texttt{axon} (\texttt{axon.exe} on Windows), the interpreter. It runs
+  programs, starts the REPL and does everything else from a terminal.
+\item \texttt{AxonIDE}, the IDE, which runs \texttt{axon} for you.
+\item \texttt{stdlib}, the standard library (\texttt{linalg}, \texttt{ode},
+  \texttt{plot} and others, written in Axon); \texttt{examples}, the example
+  programs; and \texttt{help}, the documentation the IDE shows.
+\item The native libraries: OpenBLAS for linear algebra, SUNDIALS CVODE for
+  stiff differential equations, Skia for graphics and MIR for the JIT compiler.
+\end{itemize}
+
+Axon runs on Windows (x64) and macOS (Apple Silicon). On macOS everything is
+inside the \texttt{AxonIDE.app} bundle.
+
+\paragraph{Building from source.} Axon is written in Delphi and built with
+Embarcadero RAD Studio 13. Open \texttt{Axon.groupproj} and use
+\menu{Build All}, or from a command prompt:
+
+\begin{shell}
+build.cmd Release
+\end{shell}
+
+The interpreter and the IDE land in \texttt{Win64\textbackslash Release},
+together with the libraries, \texttt{stdlib}, the examples and the help. The
+IDE also needs four editor and chart components from the author's
+repositories; the \texttt{README} in the source tree lists them.
+
+\section{Your first program}
+
+In the IDE, choose \menu{File > New} (\key{Ctrl+N}), type a program and press
+\key{F9} to run it. The IDE asks you to save it first; Axon files end in
+\texttt{.sci}.
+
+\begin{axon}
+println("Hello, world")
+A = [1, 2; 3, 4]
+println(A * A)
+\end{axon}
+\begin{axonout}
+Hello, world
+2(*@\texttimes@*)2 matrix{int}
+   7  10
+  15  22
+\end{axonout}
+
+The output appears in the \textbf{Output} pane. From a terminal, the same file
+runs with
+
+\begin{shell}
+axon hello.sci
+\end{shell}
+
+A program that stops with an error prints the kind of error, a message and a
+\emph{trace}: where it happened, innermost first. In the IDE the line is
+underlined in the editor and each trace line is a link.
+
+\begin{axonerr}
+function lookup(l, k)
+  return l[k]
+end
+names = {"S1", "S2", "S3"}
+println(lookup(names, 5))
+\end{axonerr}
+\begin{axonout}
+IndexError: index 5 is out of bounds for a dimension of length 3
+  at program.sci:2:12 in lookup
+  at program.sci:5:9
+\end{axonout}
+
+\section{Trying things out: the REPL}
+
+The REPL runs one statement at a time and keeps your variables between them.
+In the IDE it is the \textbf{REPL} tab at the bottom; from a terminal, run
+\texttt{axon} with no file. Type an expression and press \key{Enter}; its value
+is shown at once. A statement that continues over several lines, such as a
+function, shows a \texttt{...} prompt until it is complete.
+
+\begin{axonrepl}
+> x = linspace(0.0, 1.0, 3)
+x = 3-vector{real}
+  0.0
+  0.5
+  1.0
+> sum(x .^ 2)
+1.25
+> s = "Axon";
+> length(s)
+4
+\end{axonrepl}
+
+A trailing \code{;} suppresses the display. Two lines are commands of the REPL
+rather than statements:
+
+\begin{itemize}
+\item \code{help name} shows the parameters and description of a function,
+  record or module, for instance \code{help sum} or \code{help linalg.solve}.
+  \code{help} alone lists the commands.
+\item \code{run "file.sci"} runs a whole file in the session, so that its
+  variables stay afterwards for you to inspect.
+\end{itemize}
+
+\section{Finding help}
+
+\begin{itemize}
+\item In the IDE, put the caret on a name, such as \code{sin} or
+  \code{ode.solve}, and press \key{F1}. The \textbf{Help} pane shows the
+  parameters and description, followed by the section of the Language Reference
+  that documents it.
+\item \menu{Help > Documentation} opens the IDE's guides, \menu{Help > Language
+  Reference} the complete description of the language, and \menu{Help >
+  Built-in Functions} the list of every function you can use without an
+  \code{import}.
+\item The examples on the IDE's \textbf{Welcome} tab are complete programs to
+  open, change and run.
+\end{itemize}
+
+Functions you write yourself get help too: a comment that starts with \code{##}
+directly above a function is its documentation, shown by \key{F1} and by
+\code{help} at the REPL.
+
+\begin{axon}
+## The area of a circle of radius r.
+function area(r)
+  return pi * r^2
+end
+println(area(2.0))
+\end{axon}
+\begin{axonout}
+12.5663706143592
+\end{axonout}
+
+% ===================================================================
+\chapter{The IDE}\label{ch:ide}
+
+\section{The window}
+
+The IDE's window has four areas:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Area & What it shows \\
+\midrule
+Editor tabs & Your files, with syntax colouring and line numbers. The
+  \textbf{Welcome} tab lists recent files and the examples. \\
+Plot pane (right) & The figures your programs show, with a history to step
+  back through. \\
+Output (bottom) & What a program prints, and its errors in red. \\
+REPL (bottom) & An interactive session that keeps its variables. \\
+Help (bottom) & Help on the word under the caret (\key{F1}). \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The panes can be resized by dragging their edges. The IDE remembers the
+window's size and position (including full screen on macOS), the pane sizes and
+the recent files between sessions.
+
+\paragraph{Tabs.} Close a tab with the \texttimes{} at its right end, a
+middle-click, or \key{Ctrl+W}. The examples on the Welcome tab open as your own
+copies, in a folder \texttt{Axon Examples} in your documents, so the originals
+stay unchanged.
+
+\paragraph{Copying output.} To copy from the Output or REPL pane, click a line
+(Shift- or Ctrl-click for more) and press \key{Ctrl+C}, or right-click for
+\menu{Copy} and \menu{Copy All}. With no line selected, Copy takes the whole
+pane.
+
+\section{Writing and running programs}
+
+\key{F9} (\menu{Run > Run}) saves the current file and runs it with
+\texttt{axon}, in the file's own folder, so \code{import} finds modules next to
+it and files the program writes land there. \textbf{Stop} (\key{Ctrl+F2}) ends a
+program that runs too long.
+
+While you type, the IDE checks the syntax: about half a second after you stop, a
+syntax error gets a wavy red underline, and hovering over it shows the message.
+When a program stops with an error, the error's line is underlined and the caret
+moves there; in the Output pane each trace line is a link to its place.
+
+The grey lines in the Output pane are the IDE's own notes: \emph{Running \ldots}
+and \emph{Finished in \ldots} around each run, and the JIT report after it
+(Section~\ref{sec:ide-jit}). \menu{Edit > Preferences} can hide them.
+
+The editor has the usual commands under \menu{Edit}: undo and redo, find and
+replace (\key{Ctrl+F}), go to line (\key{Ctrl+G}), and \menu{Toggle Comment}
+(\key{Ctrl+/}), which comments or uncomments the selected lines.
+
+\section{The REPL pane}
+
+Type a statement and press \key{Enter}. A session starts the first time you use
+it, in the current file's folder, and keeps its variables until you press
+\textbf{Restart}, which also stops a statement that does not finish.
+\textbf{Clear} empties the transcript, and \key{Up} and \key{Down} recall
+earlier lines.
+
+\key{F9} runs a program on its own, and its variables are gone when it ends. To
+keep them, use the \textbf{\textrightarrow\ REPL} button next to Run
+(\menu{Run > Run in REPL}, \key{Shift+F9}): it saves the file and runs it in the
+REPL session, so that afterwards you can inspect any of its variables there,
+such as \code{sol.t} or \code{A}. \key{Ctrl+Enter} sends the current line, or
+the selection, to the REPL, which is a quick way to try part of a program.
+
+\section{Help and documentation}
+
+\key{F1} shows help on the name under the caret: a built-in function, a
+function from an imported module (\code{ode.solve}, or \code{solve} after
+\code{from linalg import solve}), or a function or record in the file with a
+\code{##} comment above it. Below the short description, the Help pane shows
+the section of the Language Reference that documents the name; its last link
+opens that section in the \textbf{Documentation} tab.
+
+The Documentation tab (\menu{Help > Documentation}, \key{Ctrl+F1}) shows the
+guides, the Language Reference and the white paper, with links between them,
+\textbf{Back} and \textbf{Home} buttons, and syntax-coloured code.
+\key{Ctrl+F} there opens a find bar: type to highlight every match, and use
+\key{Enter} and \key{Shift+Enter} for the next and previous one.
+
+\section{Preferences and appearance}
+
+\menu{Edit > Preferences} (\key{Ctrl+,}) sets:
+
+\begin{itemize}
+\item the editor's font size;
+\item the font size of the Output, REPL and Help panes;
+\item the font size of the Documentation tab;
+\item whether a run writes its notes (\emph{Running \ldots}, \emph{Finished in
+  \ldots}) and the JIT report to the Output pane.
+\end{itemize}
+
+\menu{View > Dark Theme} switches the whole IDE, editor and documentation
+included, to a dark theme, and back. The choices are kept between sessions.
+
+\section{The plot pane}\label{sec:plotpane}
+
+\code{plot.show()} displays the current figure in the plot pane, even while
+the program is still running, and a program that ends without calling it shows
+its figure anyway (Chapter~\ref{ch:plot}). The pane keeps every figure shown
+since the IDE started, the newest 50:
+
+\begin{itemize}
+\item \textbf{\textleftarrow} and \textbf{\textrightarrow} in its header step
+  through the figures, and the count between them shows which one you are
+  looking at.
+\item \textbf{Copy} puts the figure on the clipboard as an image, and
+  \textbf{Save\ldots} writes it as PNG, PDF or SVG (PDF and SVG as vector
+  graphics). Both take the figure as it looks now, with your zooming, panning,
+  rotating and edits, and both take the whole figure, every cell of a grid.
+\item \textbf{Clear} forgets them all.
+\end{itemize}
+
+\paragraph{Interactive charts.} Line, scatter, bar and histogram plots are drawn
+in an interactive chart:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Action & Effect \\
+\midrule
+Mouse wheel & Zoom in or out around the pointer \\
+Drag & Pan \\
+\key{Shift}+drag & Zoom to the box you draw \\
+\key{Ctrl}+double-click & Back to the whole plot \\
+Double-click & Edit titles, axes, series styles and the legend \\
+Click a legend entry & Hide or show that series \\
+Right-click & Copy the image, or export it as PNG or PDF \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+3D plots (surfaces, \code{line3} and \code{scatter3}) are drawn in an interactive
+3D chart:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Action & Effect \\
+\midrule
+Drag & Rotate \\
+Right-drag, or \key{Shift}+drag & Pan \\
+Mouse wheel & Zoom \\
+Hover & Show the coordinates of the nearest point \\
+Double-click & Edit titles, axes, series styles, lighting and the legend \\
+\key{Ctrl}+double-click & Back to the starting view \\
+Arrow keys, \key{+}, \key{-}, \key{R}, \key{1}--\key{4} & Rotate, zoom, reset,
+  preset views \\
+Right-click & Copy the image, export PNG or PDF, and more \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A figure divided with \code{plot.subplot} is shown as a grid of such charts, one
+per cell, each of which can be zoomed, panned or rotated and edited on its own.
+Widen the plot pane by dragging its left edge to give the cells more room. A
+chart's own right-click menu copies or exports just that cell; \textbf{Copy}
+and \textbf{Save\ldots} in the pane's header take the whole grid. Changes made
+in a chart are not kept when you step to another figure.
+
+\section{Compiled and interpreted}\label{sec:ide-jit}
+
+Functions are compiled to native code at their first call
+(Chapter~\ref{ch:perf}). The \textbf{JIT} button in the toolbar, or
+\menu{Run > Use JIT Compiler}, switches this off and on, so you can run the
+same program both ways and compare: the results are the same, only the time
+differs. After a run with the JIT on, the Output pane lists the functions that
+were compiled and, for those that ran interpreted, the reason. The REPL follows
+the setting when it starts; use \menu{Run > Restart REPL} after switching.
+
+\section{Keyboard shortcuts}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Key & Action \\
+\midrule
+\key{F9} & Run the current file \\
+\key{Shift+F9} & Run the current file in the REPL, keeping its variables \\
+\key{Ctrl+F2} & Stop the running program \\
+\key{Ctrl+Enter} & Send the current line or selection to the REPL \\
+\key{F1} & Help on the word under the caret \\
+\key{Ctrl+F1} & The Documentation tab \\
+\key{Ctrl+N}, \key{Ctrl+O}, \key{Ctrl+S} & New, open, save \\
+\key{Shift+Ctrl+S} & Save as \\
+\key{Ctrl+W} & Close the current tab \\
+\key{Ctrl+F} & Find and replace; in the Documentation tab, find in the page \\
+\key{Ctrl+G} & Go to line \\
+\key{Ctrl+/} & Comment or uncomment the selected lines \\
+\key{Ctrl+Z}, \key{Ctrl+Y} & Undo, redo \\
+\key{Ctrl+,} & Preferences \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+On macOS, use \key{Cmd} in place of \key{Ctrl}.
+
+% ===================================================================
+\chapter{The language}\label{ch:lang}
+
+This chapter goes through the language from values to modules. Each section
+explains the common case with examples and mentions the rules that most often
+matter; the Language Reference has the rest.
+
+\section{Programs, statements and comments}
+
+A program is a sequence of statements, one per line. A \code{;} also ends a
+statement, so several can share a line. An expression continues onto the next
+line after a binary operator or a comma, and inside brackets line ends are
+ignored altogether.
+
+\begin{axon}
+# A comment runs to the end of the line.
+x = 1; y = 2          # two statements on one line
+total = x +
+        y             # continues after the operator
+#= A block comment
+   can span lines, and #= nest =#. =#
+println(total)
+\end{axon}
+\begin{axonout}
+3
+\end{axonout}
+
+Blocks (\code{if}, \code{for}, \code{while}, \code{try}, \code{function},
+\code{record}) all close with \code{end}. Names are case-sensitive, and the
+words of Table~\ref{tab:keywords} are reserved.
+
+\begin{table}[htbp]
+\centering
+\caption{The reserved words.}\label{tab:keywords}
+\begin{tabular}{@{}*{7}{l}@{}}
+\toprule
+\texttt{function} & \texttt{end} & \texttt{return} & \texttt{if} & \texttt{elseif}
+  & \texttt{else} & \texttt{for} \\
+\texttt{in} & \texttt{while} & \texttt{break} & \texttt{continue} & \texttt{local}
+  & \texttt{global} & \texttt{try} \\
+\texttt{catch} & \texttt{import} & \texttt{from} & \texttt{as} & \texttt{export}
+  & \texttt{extern} & \texttt{record} \\
+\texttt{true} & \texttt{false} & \texttt{nothing} & \texttt{and} & \texttt{or}
+  & \texttt{not} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Values and types}
+
+Every value has a type, which \code{typeof} names:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Type & Examples & Notes \\
+\midrule
+\texttt{int} & \code|42|, \code|-7|, \code|1_000_000| & 64-bit integers \\
+\texttt{real} & \code|2.5|, \code|1.0e-3|, \code|6.02e23| & double precision \\
+\texttt{complex} & \code|3 + 4i|, \code|2.5i| & \\
+\texttt{bool} & \code|true|, \code|false| & \\
+\texttt{string} & \code|"text"| & \\
+\texttt{nothing} & \code|nothing| & no value \\
+\texttt{vector}, \texttt{matrix} & \code|[1; 2; 3]|, \code|[1, 2; 3, 4]| &
+  dense arrays \\
+\texttt{range} & \code|1:10|, \code|0:0.1:1| & lazy sequences \\
+\texttt{list} & \code|{1, "two", 3.0}| & any mix of values \\
+\texttt{record} & \code|{a: 1.0, b: "x"}| & named fields \\
+\texttt{dict} & \code|dict("Km" => 0.5)| & keys to values \\
+\texttt{sparse} & \code|sparse(i, j, v, m, n)| & sparse matrices \\
+\texttt{function} & \code|function(x) return 2*x end| & functions are values \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{axon}
+println(typeof(3), typeof(3.0), typeof(3i), typeof("3"), typeof([3; 4]),
+        typeof({3}), typeof({x: 3}), typeof(1:3), typeof(nothing))
+\end{axon}
+\begin{axonout}
+int real complex string vector list record range nothing
+\end{axonout}
+
+A real literal needs a digit on both sides of the point: \code{0.5} and
+\code{1.0}, not \code{.5} or \code{1.}. That keeps \code{A.*B} and \code{1.+x}
+unambiguous.
+
+\paragraph{Value semantics.} Every value behaves as if it were copied when it is
+assigned or passed to a function: after \code{B = A}, changing \code{B} never
+changes \code{A}. The copy is made lazily, only when one of the two is changed,
+so passing a large matrix to a function costs nothing.
+
+\begin{axon}
+A = [1.0, 2.0; 3.0, 4.0]
+B = A
+B[1, 1] = 100.0
+println(A[1, 1], B[1, 1])
+\end{axon}
+\begin{axonout}
+1.0 100.0
+\end{axonout}
+
+\paragraph{Type annotations.} A variable, a parameter or a function's result may
+carry a type, which is then checked. A value of a narrower numeric type is
+widened to fit, so \code{x: real = 0} stores \code{0.0}; a real where an
+\code{int} is declared is an error.
+
+\begin{axonerr}
+n: int = 10
+x: real = 0        # widened to 0.0
+println(n, x)
+n = 2.5            # a real is not an int
+\end{axonerr}
+\begin{axonout}
+10 0.0
+TypeError: variable "n" must be int, got real
+  at program.sci:4:1
+\end{axonout}
+
+\section{Numbers}
+
+Integers and reals are distinct. Arithmetic between them gives a real, and
+\code{/} always does; \code{div} and \code{mod} are integer division and
+remainder. Integer overflow is an error, never a silent wrap-around.
+
+\begin{axon}
+a = 7
+b = 2
+println(a / b, div(a, b), mod(a, b), div(-7, 2), mod(-7, 2))
+println(2^10, 2^-1, 1.5e3, 0.1 + 0.2)
+println(int(2.7), round(2.5), floor(-2.5), ceil(2.1))
+\end{axon}
+\begin{axonout}
+3.5 3 1 -4 1
+1024 0.5 1500.0 0.3
+2 3 -3 3
+\end{axonout}
+
+Arithmetic promotes along \texttt{bool} \textrightarrow{} \texttt{int}
+\textrightarrow{} \texttt{real} \textrightarrow{} \texttt{complex} and never the
+other way. Real arithmetic follows IEEE 754: \code{1.0/0.0} is \code{Inf} and
+\code{0.0/0.0} is NaN, and real functions stay real outside their domain, so
+\code{sqrt(-4.0)} is NaN while \code{sqrt(-4 + 0i)} is \code{2i}.
+
+\begin{axon}
+z = 3 + 4i
+println(abs(z), conj(z), real(z), imag(z), arg(1i))
+println(sqrt(-4.0), sqrt(-4 + 0i), 1.0 / 0.0)
+println(pi, e, exp(1.0) == e)
+\end{axon}
+\begin{axonout}
+5.0 3.0 - 4.0i 3.0 4.0 1.5707963267949
+NaN 0.0 + 2.0i Inf
+3.14159265358979 2.71828182845905 true
+\end{axonout}
+
+Reals display with up to 15 significant digits, which is why \code{0.1 + 0.2}
+shows as \code{0.3}; Section~\ref{sec:printing} shows how to choose the digits.
+
+\section{Vectors and matrices}\label{sec:arrays}
+
+Square brackets build arrays. Entries in a row are separated by commas, rows by
+semicolons. A literal with one entry per row is a \emph{vector}, a column;
+anything else is a \emph{matrix}. So \code{[1; 2; 3]} is a vector of length 3
+and \code{[1, 2, 3]} is a $1\times3$ matrix, a row.
+
+\begin{axon}
+v = [1.0; 2.0; 3.0]
+A = [2.0, 1.0, 0.0;
+     1.0, 3.0, 1.0;
+     0.0, 1.0, 4.0]
+println(A * v)          # matrix times vector
+println(v' * v)         # ' transposes: a row times a column is a scalar
+println(v .* v)         # elementwise product
+\end{axon}
+\begin{axonout}
+3-vector{real}
+   4.0
+  10.0
+  14.0
+14.0
+3-vector{real}
+  1.0
+  4.0
+  9.0
+\end{axonout}
+
+The plain operators \code{*}, \code{/}, \code{\} and \code{^} are the matrix
+operations; the dotted ones, \code{.*}, \code{./}, \code{.\} and \code{.^}, work
+element by element. \code{+} and \code{-} are always elementwise.
+
+\paragraph{Making arrays.} \code{zeros(m, n)}, \code{ones(m, n)} and
+\code{eye(n)} make matrices, and \code{zeros(n)} and \code{ones(n)} vectors;
+\code{linspace(a, b, n)} gives n equally spaced points and \code{rand(m, n)}
+uniform random numbers. Arrays can be joined as blocks inside a literal.
+
+\begin{axon}
+x = linspace(0.0, 1.0, 5)
+println(x')
+I = eye(2)
+M = [I, 2 * I; zeros(1, 4)]      # blocks: a 3 by 4 matrix
+[m, n] = size(M)
+println(m, n, length(M))
+w = [x; 2.0]                     # append to a vector
+println(length(w), w[end])
+\end{axon}
+\begin{axonout}
+1(*@\texttimes@*)5 matrix{real}
+  0.0  0.25  0.5  0.75  1.0
+3 4 12
+6 2.0
+\end{axonout}
+
+\paragraph{Functions of arrays.} Elementary functions such as \code{sin},
+\code{exp} and \code{sqrt} apply to each element. \code{sum}, \code{prod},
+\code{mean}, \code{min} and \code{max} reduce a whole array to a number;
+\code{sum(A, 1)} sums each column and \code{sum(A, 2)} each row.
+
+\begin{axon}
+t = linspace(0.0, 1.0, 5)
+println(sum(t), mean(t), max(exp(t)))
+B = [1, 2, 3; 4, 5, 6]
+println(sum(B, 1))
+println(sum(B, 2))
+println(sort([3; 1; 2])')
+println(sortperm([30; 10; 20])')
+\end{axon}
+\begin{axonout}
+2.5 0.5 2.71828182845905
+1(*@\texttimes@*)3 matrix{int}
+  5  7  9
+2(*@\texttimes@*)1 matrix{int}
+   6
+  15
+1(*@\texttimes@*)3 matrix{int}
+  1  2  3
+1(*@\texttimes@*)3 matrix{int}
+  2  3  1
+\end{axonout}
+
+\paragraph{Broadcasting.} When the two operands of an elementwise operation
+differ in shape, a dimension of size 1 is stretched to match the other: a
+scalar combines with every element, and a row combines with every row. So
+subtracting the column means from a matrix is one line:
+
+\begin{axon}
+X = [1.0, 10.0; 3.0, 30.0]
+println(X - mean(X, 1))
+\end{axon}
+\begin{axonout}
+2(*@\texttimes@*)2 matrix{real}
+  -1.0  -10.0
+   1.0   10.0
+\end{axonout}
+
+\paragraph{Solving.} \code{A \ b} solves $Ax=b$, by LU factorisation for a
+square matrix and by least squares otherwise; it reports a singular matrix
+as an error, \code{SingularMatrix}. \code{A ^ k} is a matrix power. Chapter~\ref{ch:num}
+has the rest of linear algebra.
+
+\section{Indexing and ranges}
+
+Indices start at 1. Inside the brackets, \code{end} is the last index, \code{:}
+selects a whole row or column, and a range or a vector of indices selects
+several elements. A \code{bool} array of the same size selects where it is
+\code{true}.
+
+\begin{axon}
+w = [10, 20, 30, 40, 50]
+println(w[2], w[end], w[end-1])
+println(w[2:4])
+A = [1, 2, 3; 4, 5, 6; 7, 8, 9]
+println(A[2, :])        # a row, as a vector
+println(A[:, end]')     # the last column
+println(A[A > 5]')      # a mask: the elements above 5
+\end{axon}
+\begin{axonout}
+20 50 40
+3-vector{int}
+  20
+  30
+  40
+3-vector{int}
+  4
+  5
+  6
+1(*@\texttimes@*)3 matrix{int}
+  3  6  9
+1(*@\texttimes@*)4 matrix{int}
+  7  8  6  9
+\end{axonout}
+
+A mask selects in column-major order, the order in which a matrix is stored:
+down the first column, then the second, and so on.
+
+\paragraph{Ranges.} \code{a:b} counts from a to b in steps of 1 and
+\code{a:h:b} in steps of h, which may be negative or fractional. A range is lazy:
+it stores only its ends and step, and becomes a vector where one is needed.
+
+\begin{axon}
+for k in 1:2:7
+  print(k, "")
+end
+println()
+println(length(0:0.1:1), sum(5:-1:1))
+\end{axon}
+\begin{axonout}
+1 3 5 7
+11 15
+\end{axonout}
+
+Note the order: start, step, stop, as in MATLAB and Julia. The built-in
+\code{range} takes the same numbers in reading order, start, stop, step, and
+makes the same range; the step is 1 when left out, and \code{range(n)} is
+\code{1:n}, the indices of something of length n. Put a range in brackets to
+see its elements.
+
+\begin{axon}
+r = range(0, 1, 0.25)
+println(r)
+println([r]')
+println(isequal([range(1, 9, 2)], [1:2:9]))
+\end{axon}
+\begin{axonout}
+0.0:0.25:1.0
+1(*@\texttimes@*)5 matrix{real}
+  0.0  0.25  0.5  0.75  1.0
+true
+\end{axonout}
+
+\paragraph{Assignment.} Assigning to an element or a slice changes only that
+variable. A scalar on the right is copied into every selected element.
+
+\begin{axon}
+A = zeros(3, 3)
+A[2, :] = [1.0, 2.0, 3.0]
+A[:, 1] = 9.0
+println(A)
+\end{axon}
+\begin{axonout}
+3(*@\texttimes@*)3 matrix{real}
+  9.0  0.0  0.0
+  9.0  2.0  3.0
+  9.0  0.0  0.0
+\end{axonout}
+
+An index outside the array is an \code{IndexError}: reading never wraps around
+and assigning never grows an array. To add elements, use \code{append(v, x)} or
+a literal such as \code{[v; x]}, which return a new array.
+
+\section{Strings}
+
+Strings are written in double quotes, joined with \code{+}, and indexed by
+character. \code{string(x)} gives any value's display form as a string.
+
+\begin{axon}
+name = "Axon"
+println("Hello, " + name + "! " + string(length(name)) + " letters")
+println(name[1], name[2:3], "tab\there", "quote: \"q\"")
+for c in "abc"
+  print(c, "")
+end
+println()
+\end{axon}
+\begin{axonout}
+Hello, Axon! 4 letters
+A xo tab	here quote: "q"
+a b c
+\end{axonout}
+
+Strings compare with \code{==} and order with \code{<}. They cannot be changed
+in place: build a new one instead.
+
+\section{Printing and display}\label{sec:printing}
+
+\code{println(a, b, ...)} writes its arguments separated by spaces and ends the
+line; \code{print} does the same without ending it, so a line can be built up in
+a loop. \code{println()} on its own ends the line.
+
+\begin{axon}
+println("x =", 3, 2.5, true)
+for k in 1:3
+  print(string(k) + " ")
+end
+println()
+println("Total: " + string(42))
+\end{axon}
+\begin{axonout}
+x = 3 2.5 true
+1 2 3
+Total: 42
+\end{axonout}
+
+\paragraph{Choosing the digits.} Three functions control how numbers appear:
+
+\begin{itemize}
+\item \code{format(x, d)} gives \code{x} as a string with exactly \code{d}
+  digits after the point, for building text.
+\item \code{display_decimals(n)} makes every displayed real show \code{n}
+  decimals from then on; \code{display_decimals()} goes back to significant
+  digits.
+\item \code{display_size(rows, cols)} sets how large an array is shown in full.
+  By default, arrays above 10 rows or 8 columns show their first and last rows
+  and columns only; \code{display_size()} restores that.
+\end{itemize}
+
+\begin{axon}
+println("pi is about " + format(pi, 2))
+display_decimals(3)
+println(1 / 3, [1.0, 22.5])
+display_decimals()
+println(1 / 3)
+\end{axon}
+\begin{axonout}
+pi is about 3.14
+0.333 1(*@\texttimes@*)2 matrix{real}
+  1.000  22.500
+0.333333333333333
+\end{axonout}
+
+\section{Control flow}
+
+\code{if}, \code{for} and \code{while} close with \code{end}. Conditions must be
+\code{true} or \code{false}: there is no \emph{truthiness} for numbers, strings or
+empty collections, and a \code{bool} array is an error (use \code{all} or
+\code{any}). \code{and}, \code{or} and \code{not} are words.
+
+\begin{axon}
+total = 0
+n = 1
+while total < 20
+  total = total + n
+  n = n + 1
+end
+if total > 30
+  println("big")
+elseif total > 15 and n < 10
+  println("medium", total)
+else
+  println("small")
+end
+for x in [3, 1, 4, 1, 5]
+  if x == 1
+    continue        # skip to the next element
+  end
+  if x > 4
+    break           # leave the loop
+  end
+  print(x, "")
+end
+println()
+\end{axon}
+\begin{axonout}
+medium 21
+3 4
+\end{axonout}
+
+\code{for} walks through a range, the elements of an array (in column-major
+order), a list, the characters of a string or the keys of a dictionary. A short
+\code{if} fits on one line: \code{if x > 0 return 1 end}.
+
+\section{Functions}
+
+A named function is defined with \code{function} and closes with \code{end}. It
+can be called before its definition in the file, because named functions are
+bound before the program runs.
+
+\begin{axon}
+println(norm2([3.0; 4.0]))
+
+## The Euclidean norm of a vector.
+function norm2(v)
+  return sqrt(sum(v .^ 2))
+end
+\end{axon}
+\begin{axonout}
+5.0
+\end{axonout}
+
+\paragraph{Keyword parameters.} Parameters after a \code{;} are keyword
+parameters: they have defaults and are passed by name.
+
+\begin{axon}
+function damped(t; rate = 0.5, amplitude = 1.0)
+  return amplitude * exp(-rate * t)
+end
+println(damped(2.0), damped(2.0, rate = 0.1), damped(2.0, amplitude = 3.0, rate = 0.0))
+\end{axon}
+\begin{axonout}
+0.367879441171442 0.818730753077982 3.0
+\end{axonout}
+
+\paragraph{Optional positional parameters.} A positional parameter with a
+default may be left out. Every positional parameter after it needs a default
+too. A default of \code{nothing}, tested in the body, gives one function two
+ways to be called, as \code{plot.bar(y)} and \code{plot.bar(x, y)} do.
+
+\begin{axon}
+function area(w, h = w)          # a square unless h is given
+  return w * h
+end
+function span(a, b = nothing)
+  if typeof(b) == "nothing"
+    return a
+  end
+  return b - a
+end
+println(area(3), area(3, 2), span(4), span(4, 9))
+\end{axon}
+\begin{axonout}
+9 6 4 5
+\end{axonout}
+
+\paragraph{Several results.} \code{return a, b} returns two values, which the
+caller unpacks with brackets on the left of \code{=}.
+
+\begin{axon}
+function minmax(v)
+  return min(v), max(v)
+end
+[lo, hi] = minmax([3, 1, 4, 1, 5])
+println(lo, hi)
+\end{axon}
+\begin{axonout}
+1 5
+\end{axonout}
+
+\paragraph{Functions as values.} \code{function(x) ... end} without a name is an
+anonymous function (a \emph{lambda}), a value like any other. It captures the
+variables around it by reference, so it sees later changes to them and can
+change them.
+
+\begin{axon}
+k = 3.0
+scale = function(x) return k * x end
+println(scale(2.0))
+k = 10.0
+println(scale(2.0))
+
+count = 0
+tick = function() count = count + 1 end
+tick(); tick()
+println(count)
+
+apply_twice = function(f, x) return f(f(x)) end
+println(apply_twice(scale, 1.0))
+\end{axon}
+\begin{axonout}
+6.0
+20.0
+2
+100.0
+\end{axonout}
+
+\paragraph{Scope.} Variables first assigned in a function are local to it. A
+named top-level function can read the program's variables but needs
+\code{global x} to assign one. \code{local x} makes a fresh variable in the
+current block. A function may call itself, up to 10\,000 calls deep.
+
+\begin{axon}
+counter = 0
+function bump()
+  global counter
+  counter = counter + 1
+end
+bump(); bump()
+println(counter)
+
+function fact(n)
+  if n <= 1 return 1 end
+  return n * fact(n - 1)
+end
+println(fact(20), factorial(20))
+\end{axon}
+\begin{axonout}
+2
+2432902008176640000 2432902008176640000
+\end{axonout}
+
+\section{Lists, records and dictionaries}
+
+Three kinds of collection hold values of any type.
+
+\paragraph{Lists} are written in braces and index like vectors.
+\code{append(l, x)} returns a new list with \code{x} added.
+
+\paragraph{Records} have named fields, read and set with a dot. Assigning a new
+field adds it.
+
+\paragraph{Dictionaries} map keys (strings or numbers) to values. \code{d[key]}
+reads and sets an entry; a missing key is a \code{KeyError}, which
+\code{get(d, key, default)} avoids. Entries keep the order they were added in.
+
+\begin{axon}
+items = {1, "two", 3.0}
+items = append(items, [4; 5])
+println(length(items), items[2])
+
+p = {a: 1.0, b: 0.1}
+p.c = 0.075
+println(p, p.b)
+
+d = dict("Km" => 0.5, "Vm" => 10.0)
+d["kcat"] = 2.0
+println(d["Km"], keys(d), haskey(d, "Vm"), get(d, "Ki", 0.0))
+for k in d
+  print(k, "")
+end
+println()
+\end{axon}
+\begin{axonout}
+4 two
+{a: 1.0, b: 0.1, c: 0.075} 0.1
+0.5 {"Km", "Vm", "kcat"} true 0.0
+Km Vm kcat
+\end{axonout}
+
+\paragraph{Declared records.} A \code{record} definition fixes a record's fields
+and their types. A value is made by calling the type with every field, by
+position or by name, and each field is checked.
+
+\begin{axon}
+record Species
+  name: string
+  init: real
+end
+s = Species("glucose", 10)        # 10 is widened to 10.0
+t = Species(name = "ATP", init = 2.5)
+println(s, typeof(t), t.init)
+\end{axon}
+\begin{axonout}
+{name: "glucose", init: 10.0} Species 2.5
+\end{axonout}
+
+\section{Errors}
+
+An error has a \code{kind}, such as \code{"IndexError"}, a \code{message} and a
+\code{trace}. \code{try ... catch err ... end} catches errors raised in the
+\code{try} block, including those raised in functions it calls.
+\code{error(kind, message)} raises one, \code{error(message)} raises a
+\code{UserError}, and \code{error(err)} passes on an error you caught but do not
+handle.
+
+\begin{axon}
+function checked_sqrt(x)
+  if x < 0 error("DomainError", "negative input: " + string(x)) end
+  return sqrt(x)
+end
+try
+  checked_sqrt(-1.0)
+catch err
+  println(err.kind, "-", err.message)
+end
+
+# Handle one kind, pass on the rest.
+try
+  x = [1.0, 2.0; 2.0, 4.0] \ [1.0; 1.0]
+catch err
+  if err.kind != "SingularMatrix"
+    error(err)
+  end
+  println("singular, as expected")
+end
+\end{axon}
+\begin{axonout}
+DomainError - negative input: -1.0
+singular, as expected
+\end{axonout}
+
+The kinds an Axon program can meet are listed in Table~\ref{tab:errors}.
+
+\begin{longtable}{@{}lp{0.68\linewidth}@{}}
+\caption{Kinds of error.}\label{tab:errors}\\
+\toprule
+Kind & Raised when \\
+\midrule
+\endfirsthead
+\toprule
+Kind & Raised when \\
+\midrule
+\endhead
+\texttt{ArgumentError} & Wrong number of arguments, unknown keyword, invalid
+  argument value \\
+\texttt{DimensionError} & Incompatible shapes in an operation, literal or
+  assignment \\
+\texttt{DomainError} & An argument outside a function's domain with no NaN
+  result, such as \code{factorial(-1)} \\
+\texttt{FieldError} & A missing field of a record \\
+\texttt{ForeignError} & A native library or symbol cannot be found, or a native
+  call fails \\
+\texttt{ImportError} & A module cannot be found, or imports form a cycle \\
+\texttt{IndexError} & An index is out of bounds or not an integer \\
+\texttt{IOError} & A file cannot be read, written or deleted \\
+\texttt{KeyError} & A dictionary key is missing \\
+\texttt{NameError} & A name is read before it is bound \\
+\texttt{OverflowError} & Integer arithmetic exceeds 64 bits \\
+\texttt{RecursionError} & Calls nest more than 10\,000 deep \\
+\texttt{SingularMatrix} & A solve or inverse meets a singular matrix \\
+\texttt{SolverError} & A numerical solver fails, such as an ODE whose step
+  becomes too small \\
+\texttt{SyntaxError} & The program text cannot be read; nothing runs \\
+\texttt{TypeError} & A value of the wrong type for an operation, annotation or
+  condition \\
+\texttt{UserError} & Raised by \code{error("text")} \\
+\bottomrule
+\end{longtable}
+
+\section{Modules}
+
+\code{import m} loads a module and binds it as \code{m}, so its functions are
+\code{m.name}; \code{import m as x} binds it under another name, and
+\code{from m import f, g} binds chosen functions directly. A module is loaded
+once, however many times it is imported.
+
+\begin{axon}
+import linalg
+from linalg import eig, det
+import random as rnd
+println(linalg.det([2.0, 1.0; 1.0, 2.0]), det(eye(3)))
+println(eig([2.0, 0.0; 0.0, 3.0])')
+rnd.seed(1)
+\end{axon}
+\begin{axonout}
+3.0 1.0
+1(*@\texttimes@*)2 matrix{real}
+  2.0  3.0
+\end{axonout}
+
+\paragraph{Writing a module.} Any \code{.sci} file is a module named after the
+file; a folder of files is a namespace, so \texttt{mymodels/kinetics.sci} is
+\code{mymodels.kinetics}. Only definitions marked \code{export} are visible to
+programs that import it. A \code{##} block at the top of the file is the
+module's documentation.
+
+\ex{mymodels/kinetics.sci}
+\ex{use_module.sci}
+\begin{axonout}
+0.5 8.0
+0.5
+\end{axonout}
+
+\paragraph{Where modules are found.} \code{import m} looks in the importing
+file's own folder first, then in the packages listed in the nearest
+\texttt{package.toml} file, then in the standard library. The standard library
+modules are listed in Table~\ref{tab:modules}.
+
+\begin{table}[htbp]
+\centering
+\caption{The standard modules.}\label{tab:modules}
+\begin{tabular}{@{}lp{0.7\linewidth}@{}}
+\toprule
+Module & Contents \\
+\midrule
+\texttt{linalg} & Solving, determinants, inverses, eigenvalues, SVD, QR, LU,
+  Cholesky, rank, null space, norms, matrix exponential \\
+\texttt{ode} & \code{ode.solve}: ordinary differential equations, explicit
+  (RK45) and stiff (BDF), with events and dense output \\
+\texttt{plot} & Line, scatter, bar, histogram, surface and 3D plots, subplots;
+  PNG, SVG and PDF \\
+\texttt{random} & Seeded uniform, normal and integer random numbers \\
+\texttt{time} & Clocks and timing code \\
+\texttt{io} & Reading and writing files, and JSON \\
+\texttt{graphics} & The drawing layer under \texttt{plot} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Files.} The \code{io} module reads and writes whole files, and turns
+Axon values into JSON and back.
+
+\begin{axon}
+import io
+io.write_file("_notes.txt", "line one\nline two\n")
+println(length(io.read_file("_notes.txt")))
+io.write_json("_params.json", {rate: 0.3, names: {"S1", "S2"}, x: [1.0; 2.0]})
+p = io.read_json("_params.json")
+println(p.rate, p.names, p.x')
+io.delete_file("_notes.txt")
+io.delete_file("_params.json")
+\end{axon}
+\begin{axonout}
+18
+0.3 {"S1", "S2"} 1(*@\texttimes@*)2 matrix{real}
+  1.0  2.0
+\end{axonout}
+
+% ===================================================================
+\chapter{Numerical computing}\label{ch:num}
+
+\section{Linear algebra}
+
+The core operators handle the everyday cases: \code{A * B} multiplies through
+an optimised BLAS library, \code{A \ b} solves a square system by LU
+factorisation and an over- or under-determined one by least squares,
+\code{A / B} solves from the right, and \code{A ^ k} is a matrix power. A
+singular system raises \code{SingularMatrix}. \code{A'} is the transpose;
+\code{adjoint(A)} is the conjugate transpose and \code{dot(u, v)} the inner
+product with \code{u} conjugated, for complex data.
+
+The \code{linalg} module adds the decompositions:
+
+\begin{longtable}{@{}p{0.3\linewidth}p{0.64\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{solve(A, b)} & \code{A \ b} for square \code{A} \\
+\code{lstsq(A, b)} & The minimum-norm least-squares solution, for any shape \\
+\code{det(A)} & The determinant \\
+\code{inv(A)} & The inverse \\
+\code{eig(A)} & The eigenvalues; \code{eig(A, vectors = true)} also returns the
+  eigenvectors \\
+\code{svd(A)} & \code{U, s, V} with \code{A = U*diag(s)*V'}, \code{s} in
+  decreasing order \\
+\code{qr(A)} & \code{Q, R}, the thin QR factorisation \\
+\code{lu(A)} & \code{L, U} with \code{A = L*U} (\code{L} row-permuted); works
+  on sparse matrices too \\
+\code{chol(A)} & Upper-triangular \code{R} with \code{A = R'*R} \\
+\code{rank(A; tol)} & The numerical rank \\
+\code{null(A; tol)} & An orthonormal basis of the null space \\
+\code{norm(x; p = 2)} & Vector p-norms; for a matrix the 2-norm, \code{p = 1},
+  \code{"inf"} or \code{"fro"} \\
+\code{expm(A)} & The matrix exponential \\
+\bottomrule
+\end{longtable}
+
+\ex{linear_algebra.sci}
+\begin{axonout}
+x = 1(*@\texttimes@*)3 matrix{real}
+  -0.302326  0.767442  0.72093
+residual: 0.0
+det: 43.0
+eigenvalues: 1(*@\texttimes@*)3 matrix{real}
+  1.8549  3.47602  6.66908
+R'R matches A: true
+singular values: 1(*@\texttimes@*)3 matrix{real}
+  6.66908  3.47602  1.8549
+least squares: 1(*@\texttimes@*)2 matrix{real}
+  3.5  1.4
+\end{axonout}
+
+Array entries are shown with 6 significant digits; \code{format} or
+\code{display_decimals} give more.
+
+\section{Sparse matrices}
+
+A sparse matrix stores only its nonzero entries, which makes systems with
+thousands of unknowns cheap when each equation involves only a few of them.
+\code{sparse(i, j, v, m, n)} builds one from index vectors and values (summing
+repeated entries); \code{speye(n)} is the sparse identity, \code{nnz(S)} counts
+the stored entries and \code{full(S)} converts to a dense matrix. Sums, products
+and products with scalars stay sparse, and \code{S \ b} solves with a sparse LU
+factorisation built into the interpreter.
+
+\ex{sparse_poisson.sci}
+\begin{axonout}
+stored entries: 5998 of 4000000
+u(0.5) about 0.125000  exact 0.125000
+\end{axonout}
+
+\section{Differential equations}\label{sec:ode}
+
+\code{ode.solve(f, y0, tspan)} solves the system $y' = f(t, y)$ from
+\code{tspan[1]} to \code{tspan[2]}, starting from \code{y0}. The function
+\code{f(t, y)} receives a real time and a real vector and returns the
+derivative as a vector of the same length (or a number, for one equation).
+
+\ex{lotka.sci}
+\begin{axonout}
+status: success  steps: 343
+prey at t = 30: 40.164
+state at t = 12.5: 2-vector{real}
+  26.9341
+  3.44952
+\end{axonout}
+
+\fig{lotka.pdf}{0.8}{The Lotka--Volterra populations, from \texttt{lotka.sci}.}
+
+\paragraph{The result.} \code{ode.solve} returns a record:
+
+\begin{longtable}{@{}lp{0.68\linewidth}@{}}
+\toprule
+Field & Contents \\
+\midrule
+\endhead
+\code{t} & The times reported: every step, or the times asked for with
+  \code{t_eval} \\
+\code{y} & A matrix with one column per reported time, so \code{sol.y[1, :]}
+  is the first component over time \\
+\code{at} & A function giving the state at any time in the solved range:
+  \code{sol.at(2.5)}, or a matrix for a vector of times \\
+\code{status} & \code{"success"}, or \code{"event"} when an event stopped the
+  integration \\
+\code{t_events}, \code{y_events} & For each event function, the times and states
+  at which it occurred \\
+\code{names} & The component names \\
+\code{nsteps}, \code{nfev} & Accepted steps and evaluations of \code{f} \\
+\code{method} & The method used \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Options.} Keyword arguments control the solution:
+
+\begin{longtable}{@{}p{0.3\linewidth}p{0.64\linewidth}@{}}
+\toprule
+Keyword & Meaning (default) \\
+\midrule
+\endhead
+\code{method} & \code{"rk45"}, explicit Dormand--Prince (default), or
+  \code{"bdf"} for stiff problems \\
+\code{rtol}, \code{atol} & Relative and absolute tolerances (\code{1e-6},
+  \code{1e-9}) \\
+\code{t_eval} & The times at which to report the solution \\
+\code{events} & An event function \code{g(t, y)}, or a list of them \\
+\code{terminal} & Whether an event stops the integration (\code{false}) \\
+\code{direction} & Which crossings count: \code{0} both, \code{1} rising,
+  \code{-1} falling \\
+\code{names} & Names for the components, a list of strings \\
+\code{max_step}, \code{first_step}, \code{max_steps} & Step-size limits, and
+  the most steps before giving up (100\,000) \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Stiff problems and events.} A problem is \emph{stiff} when it mixes
+very fast and very slow processes; an explicit method then needs tiny steps
+throughout. \code{method = "bdf"} uses the variable-order BDF method of SUNDIALS
+CVODE, which takes large steps on such problems. An \emph{event} is a function
+of \code{t} and \code{y} whose zero crossing matters, such as a ball reaching
+the ground; with \code{terminal = true} the integration stops there.
+
+\ex{stiff_events.sci}
+\begin{axonout}
+BDF steps: 409
+at t = 40: 0.715827 0.0000091855 0.284164
+status: event
+landed at t = 2.446483  exact: 2.446483
+\end{axonout}
+
+\fig{ball.pdf}{0.75}{The ball's height until it lands, from
+\texttt{stiff\_events.sci}.}
+
+The stepping loops of both methods run as native code, and so does a
+right-hand side that the JIT compiles (Chapter~\ref{ch:perf}).
+
+\section{Random numbers}
+
+The prelude's \code{rand} and the \code{random} module draw from one generator.
+A program starts from a seed taken from the clock; \code{random.seed(n)} makes
+every later draw the same on every run and every platform. Each distribution
+takes its parameters, then an optional shape: nothing for a number, \code{n} for
+a vector, \code{m, n} for a matrix.
+
+\begin{center}
+\begin{tabular}{@{}lp{0.55\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\code{seed(n)} & Seeds the generator \\
+\code{rand(...)} & Uniform reals in $[0, 1)$ \\
+\code{randn(...)} & Standard normal reals \\
+\code{uniform(a, b, ...)} & Uniform reals in $[a, b)$ \\
+\code{normal(mu, sigma, ...)} & Normal reals with mean \code{mu} and
+  standard deviation \code{sigma} \\
+\code{randint(lo, hi, ...)} & Integers from \code{lo} to \code{hi} inclusive \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\ex{random_numbers.sci}
+\begin{axonout}
+dice: 1(*@\texttimes@*)8 matrix{int}
+  1  1  6  6  5  1  5  4
+mean: 10.014  sd: 1.986
+pi is about 3.1350
+\end{axonout}
+
+\section{Timing}
+
+The \code{time} module reads clocks and times code. \code{time.clock()} is a
+high-resolution clock for differences; \code{time.elapsed(f, args...)} times
+one call; \code{time.bench(f, args...)} repeats the call until the timing is
+reliable and returns a record whose \code{best} field is the seconds per call;
+\code{time.format(seconds)} writes a time in a fitting unit. An anonymous
+function times any expression: \code{time.bench(function() return A * A end)}.
+Section~\ref{sec:bench} shows them at work.
+
+% ===================================================================
+\chapter{Plotting}\label{ch:plot}
+
+The \code{plot} module draws figures. Plotting calls add to the \emph{current
+figure}; \code{plot.figure} starts a new one with a given size and title, and
+\code{plot.save} writes it to a PNG, SVG or PDF file.
+
+\section{Showing and saving}
+
+\code{plot.show()} displays the current figure: in the IDE's plot pane when the
+program runs from the IDE, otherwise in the system's image viewer. You rarely
+need to call it, because a figure that has changed since it was last shown or
+saved is shown automatically, when the program ends and when
+\code{plot.figure()} starts the next figure. A program that draws three figures
+therefore shows all three. A program that saves each figure with
+\code{plot.save}, and only wants files, opens nothing.
+
+\begin{axon}
+import plot
+x = linspace(0.0, 2 * pi, 100)
+plot.figure(title = "Two waves")
+plot.line(x, sin(x), label = "sin")
+plot.line(x, cos(x), label = "cos", style = "--")
+plot.save("_waves.png")            # .png, .svg or .pdf
+plot.save("_waves.pdf")
+import io
+io.delete_file("_waves.png")
+io.delete_file("_waves.pdf")
+\end{axon}
+
+Sizes are in points (1/72 inch); the default figure is 640 by 480.
+\code{plot.save(path, scale = 3)} sets the pixels per point of a PNG.
+
+\section{Line plots}
+
+\code{plot.line(x, y)} draws a line through the points. Its keywords set the
+\code{label} shown in the legend, the \code{color}, the \code{width} in points,
+the \code{style} (\code{"-"}, \code{"--"}, \code{":"} or \code{"-."}) and a
+\code{marker} at each point (\code{"circle"}, \code{"square"},
+\code{"diamond"}, \code{"triangle"}, \code{"plus"} or \code{"cross"}). Series
+without a colour take the next of ten colours in turn.
+
+\ex{lines.sci}
+\fig{lines.pdf}{0.8}{Line styles and a legend outside the plot, from
+\texttt{lines.sci}.}
+
+\code{plot.title}, \code{plot.xlabel} and \code{plot.ylabel} label the figure;
+\code{plot.xlim} and \code{plot.ylim} fix the axis ranges (otherwise each is
+the data range padded by 5\%); \code{plot.grid(false)} and
+\code{plot.legend(false)} hide the grid and the legend. The legend lists the
+series that have a label. \code{plot.legend_position} places it:
+\code{"best"} (the default, the corner that hides the least data),
+\code{"top right"}, \code{"top left"}, \code{"bottom right"},
+\code{"bottom left"}, or \code{"outside"}, to the right of the plot.
+
+Colours are names (\code{"red"}, \code{"blue"}, \code{"gray"} and others),
+\code{"#rrggbb"} hex codes, or vectors \code{[r, g, b]} with components from 0
+to 1.
+
+\section{Scatter plots}
+
+\code{plot.scatter(x, y)} draws a marker at each point, with keywords
+\code{label}, \code{color}, \code{size} and \code{marker}.
+
+\ex{scatter_fit.sci}
+\begin{axonout}
+intercept: 2.198  slope: 1.452
+\end{axonout}
+\fig{scatter.pdf}{0.72}{Data and a least-squares line, from
+\texttt{scatter\_fit.sci}.}
+
+\section{Bar charts}
+
+\code{plot.bar(x, heights)} draws a bar of each height centred on each
+position, \code{width} wide (0.8 by default). With the heights alone,
+\code{plot.bar(y)}, the bars go at 1, 2, 3, \ldots{} When \code{x} is a list of
+strings, the bars go at 1, 2, 3, \ldots{} and the axis is labelled with the
+names. To place groups side by side, shift \code{x}, narrow the bars, and name
+the groups with \code{plot.xticks(positions, labels)}.
+
+\ex{bars.sci}
+\fig{bars.pdf}{1.0}{Three kinds of bar chart in one figure, from
+\texttt{bars.sci}.}
+
+\section{Histograms}
+
+\code{plot.hist(x, bins = 10)} counts the values in equal-width bins and draws
+one bar per bin; \code{bins} may also be a vector of bin edges.
+\code{plot.hist_density} scales the bars so that their total area is 1, for
+comparison with a probability density. Both return a record with the
+\code{counts}, the bin \code{edges} and the bar \code{heights}.
+
+\ex{histogram.sci}
+\begin{axonout}
+bins: 30  largest count: 218
+sample mean: 4.950
+\end{axonout}
+\fig{histogram.pdf}{0.75}{A histogram against the normal density, from
+\texttt{histogram.sci}.}
+
+\section{Surfaces and 3D plots}
+
+\code{plot.surface(x, y, Z)} draws the surface with height \code{Z[i, j]} above
+the point \code{(x[j], y[i])}, coloured by height (\code{colormap = "viridis"} or \code{"gray"}). \code{plot.line3(x, y, z)} draws a curve through
+points in space, such as a trajectory, and \code{plot.scatter3(x, y, z)}
+markers. They can share a figure, but a figure cannot mix 3D series with 2D
+ones. \code{plot.view(azim, elev)} sets the direction you look from, in
+degrees, as MATLAB's \texttt{view} does, and \code{plot.zlabel} labels the
+vertical axis.
+
+\ex{surface.sci}
+\fig{surface.pdf}{0.65}{A surface, from \texttt{surface.sci}.}
+
+\ex{lorenz.sci}
+\fig{lorenz.pdf}{0.65}{The Lorenz attractor as a 3D curve, from
+\texttt{lorenz.sci}.}
+
+In the IDE, 3D figures appear in an interactive chart that you rotate by
+dragging (Section~\ref{sec:plotpane}).
+
+\section{Subplots}
+
+\code{plot.subplot(rows, cols, k)} divides the figure into a grid and makes cell
+\code{k} current, so the plotting calls that follow go to it. Cells are
+numbered along each row from the top left, as in MATLAB: in a 2 by 2 grid,
+cells 1 and 2 are on top. Each cell has its own axes, labels, legend and limits,
+2D and 3D cells can be mixed, and the title given to \code{plot.figure} goes
+above the whole grid. Selecting a cell again returns to what is plotted there.
+
+\ex{subplots.sci}
+\fig{subplots.pdf}{0.95}{Four views of a damped oscillator, from
+\texttt{subplots.sci}.}
+
+A grid is saved and shown as one figure. In the IDE each cell is an interactive
+chart of its own, and the plot pane's \textbf{Copy} and \textbf{Save\ldots} take
+the whole grid.
+
+\section{The figure as a record}
+
+\code{plot.gcf()} returns the current figure as a record: its size, title,
+labels and a list of series, each a record of its data and style. A figure kept
+this way can be saved later with \code{plot.save(path, figure = f)}, after
+other figures have been drawn.
+
+\begin{axon}
+import plot
+plot.figure(title = "Kept")
+plot.line([1; 2; 3], [3; 1; 2], label = "data")
+kept = plot.gcf()
+println(kept.title, length(kept.series), kept.series[1].type, kept.series[1].label)
+plot.figure(title = "Another")
+plot.bar([1; 2])
+plot.save("_kept.svg", figure = kept)
+import io
+println(io.delete_file("_kept.svg"))
+\end{axon}
+\begin{axonout}
+Kept 1 line data
+true
+\end{axonout}
+
+The plot module is written in Axon (\texttt{stdlib/plot.sci}) over the
+\code{graphics} module, which draws lists of lines, polygons, rectangles,
+markers and text to PNG, SVG or PDF. \code{graphics} can be used directly for
+drawings that are not charts; the Language Reference describes its scenes.
+
+% ===================================================================
+\chapter{Performance}\label{ch:perf}
+
+\section{The JIT compiler}
+
+Axon compiles functions to native code at their first call, with a
+just-in-time compiler built on the MIR library. Compilation changes only speed:
+a compiled function gives the same results, prints the same output and raises
+the same errors as when it is interpreted. A function that cannot be compiled
+with that guarantee simply runs interpreted.
+
+Loops and recursive functions typically run hundreds of times faster compiled.
+These are Axon's own benchmarks, the best of five runs on a desktop PC, with
+identical results both ways:
+
+\begin{center}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Program & Interpreted & Compiled & Faster \\
+\midrule
+Recursive \texttt{fib(22)} & 132 ms & 222 \textmu s & 595\texttimes \\
+A sum loop, 100\,000 terms & 89 ms & 106 \textmu s & 841\texttimes \\
+Sieve of Eratosthenes to 100\,000 & 375 ms & 724 \textmu s & 517\texttimes \\
+Mandelbrot set, 60 \texttimes{} 60 points & 190 ms & 212 \textmu s &
+  896\texttimes \\
+60 \texttimes{} 60 matrix product, as loops & 462 ms & 411 \textmu s &
+  1123\texttimes \\
+\texttt{ode.solve}, RK45, Lotka--Volterra & 22.6 ms & 5.63 ms & 4\texttimes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{What compiles.} Functions (named, anonymous and nested) whose bodies
+use numbers, \code{bool}s and real or integer arrays: arithmetic and comparisons,
+\code{if}, \code{while} and \code{for} loops, element reads and writes with
+integer indices, calls to other functions, and the scalar built-ins (the
+elementary functions, \code{abs}, \code{floor}, \code{min}, \code{max},
+\code{mod}, \code{length}, \code{size}, \code{zeros}, \code{sum},
+\code{println} and others). A parameter annotated \code{int}, \code{real},
+\code{bool}, \code|vector{real}|, \code|vector{int}| or \code|matrix{real}| has
+that type; an unannotated one takes the type of the argument it is called with,
+and the function is compiled for each combination of argument types it meets.
+
+\paragraph{What stays interpreted.} Functions that use strings (other than in
+\code{print} and \code{println}), lists, records, dictionaries, complex numbers,
+\code{try}, \code{global}, or indexing with ranges, colons or masks, and
+functions whose variables change type. They still run correctly, at the
+interpreter's speed.
+
+\paragraph{Seeing what happened.} In the IDE, the Output pane lists after each
+run the functions that were compiled and, for the others, why they were not.
+The \textbf{JIT} button switches compilation off and on, to compare. From a
+terminal, \texttt{axon --jit=off file.sci} runs without compiling.
+
+\paragraph{Writing fast code.} Built-in array operations (\code{A * B},
+\code{A \ b}, \code{sum}, elementwise arithmetic) are already native and fast.
+Write loops where an algorithm needs them, keep each variable to one type, and
+put the work in functions, since the JIT compiles functions, not top-level
+code.
+
+\section{Timing code}\label{sec:bench}
+
+\ex{timing.sci}
+
+\code{time.bench} reports the best time per call over several runs, which is
+the measurement least disturbed by other activity on the machine. The program
+prints, for example, \texttt{basel(1e5): 104 \textmu s per call} on the PC
+used for the benchmarks above; run it with the JIT off and the loop takes
+several hundred times longer.
+
+% ===================================================================
+\chapter{Calling C}\label{ch:c}
+
+An \code{extern} block declares functions of a native library, which can then be
+called like Axon functions. Arguments are converted to the declared C types
+(\code{int32}, \code{float64}, \code{cstring} and so on) before the call, and a
+value that does not fit is a \code{TypeError}. \code{name "cos"} calls a C
+function under another Axon name.
+
+\ex{extern_libc.sci}
+\begin{axonout}
+0.877582561890373 0.877582561890373
+4
+42
+\end{axonout}
+
+The library name is looked up in the nearest \texttt{package.toml}, which maps it
+to a file on each platform, and otherwise on the system's library path:
+
+\lstinputlisting[style=shellstyle,title={\small\ttfamily package.toml}]
+  {examples/package.toml}
+
+\paragraph{Arrays and pointers.} \code{ptr float64} passes a real array's buffer
+directly, so C code can read and write it, and \code{ref T} passes a variable
+by reference. \code{callback(...)} parameters accept Axon functions, which C
+code can call back during the call. The standard library's \code{linalg} module
+is written this way over OpenBLAS's LAPACKE interface; its source
+(\texttt{stdlib/linalg.sci}) is a good model. The Language Reference's section
+on foreign functions has the full rules.
+
+% ===================================================================
+\appendix
+\chapter{Built-in functions}\label{app:builtins}
+
+These functions and constants are available in every program without an
+\code{import}. At the REPL, \code{help name} describes any of them, and in the
+IDE \key{F1} does.
+
+\section*{Arrays}
+\begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{zeros(m, n)}, \code{zeros(n)} & An m\texttimes n real matrix, or a vector,
+  of zeros \\
+\code{ones(m, n)}, \code{ones(n)} & The same, filled with ones \\
+\code{eye(n)}, \code{eye(m, n)} & The identity matrix \\
+\code{rand()}, \code{rand(n)}, \code{rand(m, n)} & Uniform random reals in
+  $[0, 1)$ \\
+\code{linspace(a, b, n)} & n equally spaced points from a to b \\
+\code{range(n)}, \code{range(a, b)}, \code{range(a, b, h)} & \code{1:n}, or the
+  range \code{a:h:b} in reading order (step 1 if left out) \\
+\code{size(A)}, \code{size(A, d)} & The row and column counts as two values,
+  or the count along dimension d \\
+\code{length(x)} & The number of elements of an array, list, string or
+  dictionary \\
+\code{reshape(A, m, n)}, \code{reshape(A, n)} & The elements in column-major
+  order, as an m\texttimes n matrix or a vector \\
+\code{eltype(A)} & The element type: \code{"bool"}, \code{"int"},
+  \code{"real"} or \code{"complex"} \\
+\code{sum(A)}, \code{sum(A, d)} & The sum of all elements, or along dimension
+  d \\
+\code{prod(A)}, \code{prod(A, d)} & The product \\
+\code{mean(A)}, \code{mean(A, d)} & The mean \\
+\code{min(A)}, \code{max(A)} & The smallest or largest element \\
+\code{min(a, b)}, \code{max(a, b)} & Elementwise, with broadcasting \\
+\code{all(A)}, \code{any(A)} & Whether every, or some, element of a
+  \code{bool} array is \code{true} \\
+\code{dot(u, v)} & The inner product, with \code{u} conjugated \\
+\code{adjoint(A)} & The conjugate transpose \\
+\code{sort(x)}, \code{sort(x, "descend")} & The elements in order, as a new
+  vector, row or list \\
+\code{sortperm(x)}, \code{sortperm(x, "descend")} & The positions \code{p}
+  with \code{x[p]} sorted \\
+\bottomrule
+\end{longtable}
+
+\section*{Sparse matrices}
+\begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{sparse(i, j, v, m, n)} & An m\texttimes n sparse matrix with entries
+  \code{v[k]} at \code{(i[k], j[k])} \\
+\code{sparse(A)} & A dense matrix as a sparse one \\
+\code{speye(n)}, \code{speye(m, n)} & The sparse identity \\
+\code{nnz(S)} & The number of stored entries \\
+\code{full(S)} & A sparse matrix as a dense one \\
+\code{splu(S)} & \code{L, U} with \code{S = L*U} \\
+\bottomrule
+\end{longtable}
+
+\section*{Elementary functions}
+
+\code{sqrt}, \code{exp}, \code{log} (natural), \code{sin}, \code{cos},
+\code{tan}, \code{asin}, \code{acos}, \code{atan}, \code{sinh}, \code{cosh},
+\code{tanh}, \code{asinh}, \code{acosh} and \code{atanh} take a number or an
+array and apply elementwise. A real argument outside the domain gives NaN; a
+complex one gives the principal value. \code{abs(x)} is the absolute value, or
+the modulus of a complex number, and \code{factorial(n)} is $n!$ for an
+\code{int} $n \ge 0$.
+
+\section*{Rounding and integers}
+\begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{int(x)} & Converts to \code{int}, truncating toward zero \\
+\code{floor(x)}, \code{ceil(x)} & The integer below or above, as an \code{int} \\
+\code{round(x)} & The nearest integer, halves away from zero \\
+\code{div(a, b)} & Floored division \\
+\code{mod(a, b)} & The remainder of \code{div}, with the sign of \code{b} \\
+\bottomrule
+\end{longtable}
+
+\section*{Complex numbers}
+\begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{complex(re, im)}, \code{complex(x)} & A complex number \\
+\code{real(z)}, \code{imag(z)} & The real or imaginary part \\
+\code{conj(z)} & The complex conjugate \\
+\code{arg(z)} & The phase angle in radians \\
+\bottomrule
+\end{longtable}
+
+\section*{Output and text}
+\begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{print(a, b, ...)} & Writes the values separated by spaces \\
+\code{println(a, b, ...)} & The same, then ends the line \\
+\code{format(x, d)} & \code{x} as text with exactly \code{d} decimals \\
+\code{string(x)} & The display form of any value, as a string \\
+\code{display_size(rows, cols)} & Arrays up to that size are shown in full \\
+\code{display_decimals(n)} & Displayed reals show \code{n} decimals \\
+\bottomrule
+\end{longtable}
+
+\section*{Lists and dictionaries}
+\begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{append(l, x)} & A new list or vector with \code{x} added \\
+\code{dict(key => value, ...)} & A dictionary \\
+\code{get(d, key, default)} & \code{d[key]}, or \code{default} when missing \\
+\code{haskey(d, key)} & Whether the key is present \\
+\code{keys(d)} & The keys, as a list in insertion order \\
+\bottomrule
+\end{longtable}
+
+\section*{Other functions}
+\begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{typeof(x)} & The type of a value, as a string \\
+\code{isequal(a, b)} & Whether two values are equal as whole values \\
+\code{error(message)}, \code{error(kind, message)} & Raises an error \\
+\code{keep(f)} & Keeps a callback valid after the \code{extern} call that
+  received it \\
+\code{atexit(f)} & Calls \code{f()} when the program ends normally, the last
+  registered first \\
+\bottomrule
+\end{longtable}
+
+\section*{Constants}
+\begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
+\toprule
+Name & Value \\
+\midrule
+\endhead
+\code{pi} & $\pi$, 3.141592653589793 \\
+\code{e} & The base of the natural logarithm, 2.718281828459045 \\
+\bottomrule
+\end{longtable}
+
+Like the functions, these are ordinary names: a program may assign \code{e} a
+value of its own, which hides the constant from then on.
+
+% ===================================================================
+\chapter{The example programs}\label{app:examples}
+
+These programs come with Axon and are listed on the IDE's Welcome tab, where each
+opens as your own copy to change and run.
+
+\newcommand{\shipped}[1]{\lstinputlisting[style=axonstyle,
+  title={\small\ttfamily\detokenize{#1}}]{../../examples/#1}}
+
+\shipped{01_basics.sci}
+\shipped{02_collections.sci}
+\shipped{03_linear_algebra.sci}
+\shipped{04_lotka_volterra.sci}
+\shipped{05_stiff_and_events.sci}
+\shipped{06_sparse.sci}
+\shipped{07_surface.sci}
+\shipped{08_timing.sci}
+\shipped{09_jit.sci}
+\shipped{10_random.sci}
+\shipped{11_bar_charts.sci}
+\shipped{12_scatter.sci}
+\shipped{13_line_plots.sci}
+\shipped{14_lorenz.sci}
+\shipped{15_subplots.sci}
+\shipped{16_four_views.sci}
+
+\end{document}

@@ -1535,22 +1535,6 @@ end;
 function TInterpreter.MakeRange(E: TRangeExpr; Scope: TScope): TAxValue;
 var
   A, H, B: TAxValue;
-  R: TRangeObj;
-  N: Double;
-  Span: Int64;
-
-  procedure CheckBound(const V: TAxValue);
-  begin
-    if (NumRank(V) < 0) or (V.Kind = vkComplex) then
-      RaiseFmt(TypeError, 'range bounds and step must be real numbers, got %s',
-        [TypeName(V)]);
-  end;
-
-  function AsInt(const V: TAxValue): Int64;
-  begin
-    if V.Kind = vkBool then Result := Ord(V.B) else Result := V.I;
-  end;
-
 begin
   A := Eval(E.Start, Scope);
   if E.Step <> nil then
@@ -1558,48 +1542,7 @@ begin
   else
     H := IntValue(1);
   B := Eval(E.Stop, Scope);
-  CheckBound(A);
-  CheckBound(H);
-  CheckBound(B);
-
-  R := TRangeObj.Create;
-  Result := NothingValue;
-  Result.Kind := vkRange;
-  Result.Obj := R;
-  R.IsInt := (NumRank(A) <= 1) and (NumRank(H) <= 1) and (NumRank(B) <= 1);
-  if R.IsInt then
-  begin
-    R.IStart := AsInt(A);
-    R.IStep := AsInt(H);
-    R.IStop := AsInt(B);
-    if R.IStep = 0 then
-      RaiseError(ArgumentError, 'the step of a range cannot be zero');
-    if ((R.IStep > 0) and (R.IStop < R.IStart)) or
-       ((R.IStep < 0) and (R.IStop > R.IStart)) then
-      R.Count := 0
-    else
-    begin
-      Span := CheckedSub(R.IStop, R.IStart);
-      R.Count := Span div R.IStep + 1;
-    end;
-  end
-  else
-  begin
-    R.RStart := ToReal(A);
-    R.RStep := ToReal(H);
-    R.RStop := ToReal(B);
-    if R.RStep = 0 then
-      RaiseError(ArgumentError, 'the step of a range cannot be zero');
-    if IsNan(R.RStart) or IsNan(R.RStep) or IsNan(R.RStop) then
-      RaiseError(ArgumentError, 'range bounds and step cannot be NaN');
-    // Reference, "Ranges": the length is floor((b - a)/h + 1e-10) + 1.
-    N := Floor((R.RStop - R.RStart) / R.RStep + 1e-10) + 1;
-    if IsInfinite(N) or (N > 4.0e18) then
-      RaiseError(ArgumentError, 'range has too many elements');
-    if N < 0 then
-      N := 0;
-    R.Count := Trunc(N);
-  end;
+  Result := NewRange(A, H, B);
 end;
 
 function TInterpreter.EvalLogical(E: TBinaryExpr; Scope: TScope): TAxValue;
