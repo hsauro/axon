@@ -856,11 +856,11 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 
 ### The plot module
 
-`plot` is a standard-library module written in Axon over `graphics`. Plotting calls add to the current figure, which `plot.save` writes and `plot.show` shows. When the program ends, a figure that has changed since it was last shown or saved is shown as if by `plot.show()` (through `atexit`), so a script that only plots needs no `show` call; one that calls `plot.save` last, and only writes files, opens nothing.
+`plot` is a standard-library module written in Axon over `graphics`. Plotting calls add to the current figure, which `plot.save` writes and `plot.show` shows. When the program ends, and when `plot.figure` starts a new figure, a figure that has changed since it was last shown or saved is shown as if by `plot.show()` (at the end through `atexit`), so a script that only plots needs no `show` call, and each of its figures is shown in turn; one that calls `plot.save` after each figure, and only writes files, opens nothing.
 
 | Function | Effect |
 | --- | --- |
-| `figure(; width = 640, height = 480, title)` | Starts a new current figure, sized in points |
+| `figure(; width = 640, height = 480, title)` | Starts a new current figure, sized in points. The figure it replaces is shown first if it has changed since it was last shown or saved |
 | `line(x, y; label, color, width = 1.5, style = "-", marker, marker_size = 5)` | Adds a line; `style` is `"-"`, `"--"`, `":"` or `"-."`, and `marker` draws a marker of that shape at each point |
 | `scatter(x, y; label, color, size = 6, marker = "circle")` | Adds markers at the points |
 | `bar(x, heights; width = 0.8, label, color)`, `bar(heights; …)` | Adds a bar of height `heights[k]` centred on `x[k]`, `width` wide in x units, rising from 0 (falling for a negative height). `x` may instead be a list of strings: the bars go at 1, 2, … and the x axis is labelled with those names. With the heights alone, the bars go at 1, 2, … |

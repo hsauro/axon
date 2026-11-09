@@ -73,8 +73,9 @@ function figure_now()
   return current
 end
 
-# When the program ends, a figure with something in it that has changed since
-# it was last shown or saved is shown, so plot.show() can be left out.
+# A figure with something in it that has changed since it was last shown or
+# saved is shown when the program ends, and when plot.figure replaces it, so
+# plot.show() can be left out.
 function show_unshown()
   if changed and typeof(current) != "nothing"
     if length(current.series) > 0
@@ -100,13 +101,16 @@ end
 
 # ---------------------------------------------------------------- public API
 
-## Starts a new current figure of the given size in points (1/72 inch).
+## Starts a new current figure of the given size in points (1/72 inch). The
+## figure it replaces is shown first, if it has changed since it was last
+## shown or saved, so each figure of a script is shown.
 export function figure(; width = 640, height = 480, title = nothing)
   global current
   global changed
   if not (width > 0 and height > 0)
     fail("ArgumentError", "plot.figure: width and height must be positive")
   end
+  show_unshown()
   current = new_figure(width, height, title)
   changed = true
 end

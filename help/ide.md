@@ -7,7 +7,7 @@
 | Area | What it shows |
 | --- | --- |
 | Editor tabs | Your files, with syntax colouring and line numbers. The **Welcome** tab lists recent files and the examples. Close a tab with the × at its right end, a middle-click, or <kbd>Ctrl+W</kbd> (<kbd>Cmd+W</kbd> on a Mac). |
-| Plot pane (right) | The latest figure from `plot.show()`, or the newest PNG a run saved. |
+| Plot pane (right) | The figures your programs show, newest first, with ◀ and ▶ to step back through earlier ones. |
 | Output | What a program prints, and its errors in red. |
 | REPL | An interactive session that keeps its variables. |
 | Help | Help on the word under the caret (<kbd>F1</kbd>). |
@@ -88,8 +88,14 @@ At the prompt, `run "file.sci"` does the same for any file.
 
 `plot.show()` displays the current figure in the plot pane at once, even while
 the program is still running. Without it, the figure is shown when the program
-ends. Figures saved with `plot.save("name.png")` are
-shown too, when the program ends.
+ends, or when `plot.figure()` starts the next one, so a program that draws
+three figures shows all three. A PNG saved with `plot.save("name.png")` is
+shown too, when the program ends, if the run showed no figure.
+
+The plot pane keeps every figure shown since the IDE started (the newest 50).
+**◀** and **▶** in its header step through them, the count shows which one you
+are looking at, and **Clear** forgets them all. Changes made in a chart (zoom,
+edits) are not kept when you step to another figure.
 
 Line, scatter, bar and histogram plots are shown in an interactive chart:
 

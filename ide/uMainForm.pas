@@ -87,6 +87,12 @@ type
     FPlotChart: TSkPlotPaintBox;   // 2-D figures, interactive
     FPlot3D: TRho3DPlot;           // 3-D figures, interactive
     FPlotCaption: TLabel;
+    // Figure history: every figure shown or picked up, oldest first; the
+    // pane shows FFigureIndex, which the arrow buttons move.
+    FFigures: TStringList;
+    FFigureIndex: Integer;
+    FFigurePrev, FFigureNext, FFigureClear: TSpeedButton;
+    FFigurePos: TLabel;
     FStatus: TLabel;
     FCaretInfo: TLabel;
     FRunButton, FStopButton: TSpeedButton;
@@ -166,7 +172,6 @@ type
     // Preferences
     FPrefs: TIdePreferences;
     FFigureShown: Boolean;     // since the current run or REPL command started
-    FFigureCount: Integer;
     procedure BuildUI;
     procedure BuildReplPane(Parent: TFmxObject);
     function ReplWorkDir: string;
@@ -178,6 +183,12 @@ type
     procedure ReplEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
       Shift: TShiftState);
     procedure ShowNewestPlotIn(const Dir: string; Since: TDateTime);
+    procedure AddFigure(const Path: string);
+    procedure DisplayFigure(Index: Integer);
+    procedure UpdateFigureBar;
+    procedure FigurePrevClick(Sender: TObject);
+    procedure FigureNextClick(Sender: TObject);
+    procedure FigureClearClick(Sender: TObject);
     procedure ScrollToEnd(List: TListBox);
     function WordAtCaret(Doc: TDocument): string;
     function LocalHelp(Doc: TDocument; const Name: string; out Text: string): Boolean;
@@ -441,6 +452,8 @@ begin
   FDocs := TObjectList<TDocument>.Create(True);
   FFrames := TList<TFrame>.Create;
   FRecent := TStringList.Create;
+  FFigures := TStringList.Create;
+  FFigureIndex := -1;
   FRunner := TProcessRunner.Create;
   FRunner.OnOutput := RunOutput;
   FRunner.OnExit := RunExit;
@@ -537,6 +550,7 @@ begin
   if not FSettingsSaved then
     SaveSettings;
   FRecent.Free;
+  FFigures.Free;
   FFrames.Free;
   FDocs.Free;
 end;
@@ -580,7 +594,7 @@ procedure TfrmMain.BuildUI;
 var
   Bar: TToolBar;
   Status: TStatusBar;
-  Body, Right: TLayout;
+  Body, Right, FigBar: TLayout;
   Split: TSplitter;
   Header: TLabel;
 begin
@@ -629,10 +643,46 @@ begin
   Right.Parent := Body;
   Right.Align := TAlignLayout.Right;
   Right.Width := 380;
+  // The header: "Plot", then the figure history's arrows, position and Clear.
+  FigBar := TLayout.Create(Self);
+  FigBar.Parent := Right;
+  FigBar.Align := TAlignLayout.Top;
+  FigBar.Height := 24;
+  FFigureClear := TSpeedButton.Create(Self);
+  FFigureClear.Parent := FigBar;
+  FFigureClear.Align := TAlignLayout.Right;
+  FFigureClear.Width := 44;
+  FFigureClear.Text := 'Clear';
+  FFigureClear.Hint := 'Forget all figures';
+  FFigureClear.ShowHint := True;
+  FFigureClear.OnClick := FigureClearClick;
+  FFigureNext := TSpeedButton.Create(Self);
+  FFigureNext.Parent := FigBar;
+  FFigureNext.Align := TAlignLayout.Right;
+  FFigureNext.Position.X := 0;          // left of Clear
+  FFigureNext.Width := 26;
+  FFigureNext.Text := #$25B6;
+  FFigureNext.Hint := 'Next figure';
+  FFigureNext.ShowHint := True;
+  FFigureNext.OnClick := FigureNextClick;
+  FFigurePos := TLabel.Create(Self);
+  FFigurePos.Parent := FigBar;
+  FFigurePos.Align := TAlignLayout.Right;
+  FFigurePos.Position.X := 0;           // left of the next button
+  FFigurePos.Width := 56;
+  FFigurePos.TextSettings.HorzAlign := TTextAlign.Center;
+  FFigurePrev := TSpeedButton.Create(Self);
+  FFigurePrev.Parent := FigBar;
+  FFigurePrev.Align := TAlignLayout.Right;
+  FFigurePrev.Position.X := 0;          // left of the position
+  FFigurePrev.Width := 26;
+  FFigurePrev.Text := #$25C0;
+  FFigurePrev.Hint := 'Previous figure';
+  FFigurePrev.ShowHint := True;
+  FFigurePrev.OnClick := FigurePrevClick;
   Header := TLabel.Create(Self);
-  Header.Parent := Right;
-  Header.Align := TAlignLayout.Top;
-  Header.Height := 22;
+  Header.Parent := FigBar;
+  Header.Align := TAlignLayout.Client;
   Header.Margins.Left := 6;
   Header.Text := 'Plot';
   Header.StyledSettings := Header.StyledSettings - [TStyledSetting.Style];
@@ -642,7 +692,7 @@ begin
   FPlotCaption.Align := TAlignLayout.Bottom;
   FPlotCaption.Height := 20;
   FPlotCaption.Margins.Left := 6;
-  FPlotCaption.Text := 'Plots saved with plot.save(".png") appear here.';
+  FPlotCaption.Text := 'Figures from plot.show, and PNGs a run saves, appear here.';
   FPlotImage := TImage.Create(Self);
   FPlotImage.Parent := Right;
   FPlotImage.Align := TAlignLayout.Client;
@@ -664,6 +714,7 @@ begin
   FPlot3D.Align := TAlignLayout.Client;
   FPlot3D.Margins.Rect := TRectF.Create(4, 4, 4, 4);
   FPlot3D.Visible := False;
+  UpdateFigureBar;
   Split := TSplitter.Create(Self);
   Split.Parent := Body;
   Split.Align := TAlignLayout.Right;
@@ -1630,17 +1681,100 @@ begin
       NewestTime := T;
     end;
   end;
-  if Newest = '' then
+  if Newest <> '' then
+    AddFigure(Newest);
+end;
+
+const
+  MaxFigures = 50;    // the history keeps the newest ones
+
+{ Adds a figure (a PNG, with its data next to it as .json when plot.show
+  wrote it) to the history and shows it. }
+procedure TfrmMain.AddFigure(const Path: string);
+begin
+  FFigures.Add(Path);
+  while FFigures.Count > MaxFigures do
+    FFigures.Delete(0);
+  DisplayFigure(FFigures.Count - 1);
+end;
+
+{ Shows figure Index of the history. A figure with its data goes to the
+  interactive 3-D or 2-D chart (reloaded, so edits made in the chart are not
+  kept when moving away); any other is shown as the image. }
+procedure TfrmMain.DisplayFigure(Index: Integer);
+var
+  Path, Json, What: string;
+begin
+  FFigureIndex := Index;
+  UpdateFigureBar;
+  if (Index < 0) or (Index >= FFigures.Count) then
     Exit;
-  try
-    FPlotImage.Bitmap.LoadFromFile(Newest);
+  Path := FFigures[Index];
+  Json := TPath.ChangeExtension(Path, '.json');
+  if TFile.Exists(Json) and LoadFigure3D(FPlot3D, Json) then
+  begin
+    FPlotImage.Visible := False;
     FPlotChart.Visible := False;
+    FPlot3D.Visible := True;
+    What := 'drag rotates, wheel zooms, double-click edits';
+  end
+  else if TFile.Exists(Json) and LoadFigure(FPlotChart, Json) then
+  begin
+    FPlotImage.Visible := False;
     FPlot3D.Visible := False;
-    FPlotImage.Visible := True;
-    FPlotCaption.Text := ExtractFileName(Newest);
-  except
-    FPlotCaption.Text := 'Cannot show ' + ExtractFileName(Newest);
-  end;
+    FPlotChart.Visible := True;
+    What := 'wheel zooms, drag pans, double-click edits';
+  end
+  else
+    try
+      FPlotImage.Bitmap.LoadFromFile(Path);
+      FPlotChart.Visible := False;
+      FPlot3D.Visible := False;
+      FPlotImage.Visible := True;
+      if SameFileName(ExtractFileDir(Path), FShowDir) then
+        What := 'plot.show'
+      else
+        What := ExtractFileName(Path);
+    except
+      FPlotCaption.Text := 'Cannot show ' + ExtractFileName(Path);
+      Exit;
+    end;
+  FPlotCaption.Text := Format('Figure %d: %s', [Index + 1, What]);
+end;
+
+procedure TfrmMain.UpdateFigureBar;
+begin
+  if FFigures.Count = 0 then
+    FFigurePos.Text := ''
+  else
+    FFigurePos.Text := Format('%d / %d', [FFigureIndex + 1, FFigures.Count]);
+  FFigurePrev.Enabled := FFigureIndex > 0;
+  FFigureNext.Enabled := FFigureIndex < FFigures.Count - 1;
+  FFigureClear.Enabled := FFigures.Count > 0;
+end;
+
+procedure TfrmMain.FigurePrevClick(Sender: TObject);
+begin
+  if FFigureIndex > 0 then
+    DisplayFigure(FFigureIndex - 1);
+end;
+
+procedure TfrmMain.FigureNextClick(Sender: TObject);
+begin
+  if FFigureIndex < FFigures.Count - 1 then
+    DisplayFigure(FFigureIndex + 1);
+end;
+
+procedure TfrmMain.FigureClearClick(Sender: TObject);
+begin
+  FFigures.Clear;
+  FFigureIndex := -1;
+  UpdateFigureBar;
+  FPlotChart.Visible := False;
+  FPlot3D.Visible := False;
+  FPlotImage.Bitmap.SetSize(0, 0);
+  FPlotImage.Visible := True;
+  FPlotCaption.Text := 'Figures from plot.show, and PNGs a run saves, appear here.';
 end;
 
 { Scrolls a list to its last item once FMX has laid out new items (scrolling
@@ -2348,50 +2482,12 @@ end;
 function TfrmMain.TryShowFigure(const Line: string): Boolean;
 const
   Marker = #3'show ';
-var
-  Path: string;
 begin
   Result := Line.StartsWith(Marker);
   if not Result then
     Exit;
-  Path := Line.Substring(Length(Marker)).Trim;
-  // A figure with its data next to the PNG (line and scatter plots) goes to
-  // the interactive chart; any other figure is shown as the image.
-  if TFile.Exists(TPath.ChangeExtension(Path, '.json')) and
-    LoadFigure3D(FPlot3D, TPath.ChangeExtension(Path, '.json')) then
-  begin
-    FPlotImage.Visible := False;
-    FPlotChart.Visible := False;
-    FPlot3D.Visible := True;
-    Inc(FFigureCount);
-    FPlotCaption.Text := Format('Figure %d: drag rotates, wheel zooms, double-click edits',
-      [FFigureCount]);
-    FFigureShown := True;
-    Exit;
-  end;
-  if TFile.Exists(TPath.ChangeExtension(Path, '.json')) and
-    LoadFigure(FPlotChart, TPath.ChangeExtension(Path, '.json')) then
-  begin
-    FPlotImage.Visible := False;
-    FPlot3D.Visible := False;
-    FPlotChart.Visible := True;
-    Inc(FFigureCount);
-    FPlotCaption.Text := Format('Figure %d: wheel zooms, drag pans, double-click edits',
-      [FFigureCount]);
-    FFigureShown := True;
-    Exit;
-  end;
-  try
-    FPlotImage.Bitmap.LoadFromFile(Path);
-    FPlotChart.Visible := False;
-    FPlot3D.Visible := False;
-    FPlotImage.Visible := True;
-    Inc(FFigureCount);
-    FPlotCaption.Text := Format('Figure %d (plot.show)', [FFigureCount]);
-    FFigureShown := True;
-  except
-    FPlotCaption.Text := 'Cannot show ' + ExtractFileName(Path);
-  end;
+  AddFigure(Line.Substring(Length(Marker)).Trim);
+  FFigureShown := True;
 end;
 
 { ---------------- syntax check as you type ---------------- }
