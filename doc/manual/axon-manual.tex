@@ -166,7 +166,7 @@ This manual teaches Axon and its IDE to someone who knows another numerical
 language, such as MATLAB, Python with NumPy, R or Julia. Chapter~\ref{ch:start}
 gets a first program running; Chapter~\ref{ch:ide} tours the IDE;
 Chapters~\ref{ch:lang} to \ref{ch:c} cover the language, the numerical modules,
-plotting, performance and calling C. Appendix~\ref{app:builtins} lists every
+plotting, writing modules of your own, performance and calling C. Appendix~\ref{app:builtins} lists every
 built-in function, and Appendix~\ref{app:examples} prints the example programs
 that come with Axon.
 
@@ -1233,7 +1233,7 @@ Kind & Raised when \\
 \bottomrule
 \end{longtable}
 
-\section{Modules}
+\section{Modules}\label{sec:modules}
 
 \code{import m} loads a module and binds it as \code{m}, so its functions are
 \code{m.name}; \code{import m as x} binds it under another name, and
@@ -1679,6 +1679,137 @@ markers and text to PNG, SVG or PDF. \code{graphics} can be used directly for
 drawings that are not charts; the Language Reference describes its scenes.
 
 % ===================================================================
+\chapter{Writing a module}\label{ch:module}
+
+A module is an ordinary \code{.sci} file whose functions other programs can
+import. This chapter builds a small statistics module: the mean, variance and
+standard deviation of a sample, and a least-squares straight line. The same
+steps apply to any module of your own.
+
+\section{The module file}
+
+A module is named after its file, so the file \texttt{stats.sci} is the module
+\code{stats}. Put it in the same folder as the programs that use it;
+\code{import stats} looks there first (Section~\ref{sec:modules} gives the
+other places).
+
+\ex{stats.sci}
+
+The file shows the parts every module has:
+
+\begin{itemize}
+\item \textbf{Documentation.} The \code{##} block that opens the file describes
+  the module, and the \code{##} lines above each function describe that
+  function. They are what \code{help} shows, so write them for the person
+  calling the function.
+\item \textbf{Exports.} Only functions marked \code{export} can be used by
+  programs that import the module: \code{mean}, \code{variance}, \code{std},
+  \code{linfit} and \code{predict}. The helper \code{sample} is private, and
+  reading \code{stats.sample} from outside raises \code{ImportError}. Keeping
+  helpers private lets you change them later without breaking anyone's code.
+\item \textbf{Checking arguments.} \code{sample} rejects anything that is not a
+  vector or range, and data that is too short, with
+  \code{error(kind, message)}. The message starts with the function's full name, so an error
+  says where it came from. Use the standard kinds (\code{TypeError},
+  \code{ArgumentError}, \code{DimensionError}, \ldots) so that callers can
+  catch them by kind.
+\item \textbf{Keyword parameters} give options with sensible defaults:
+  \code{variance(x)} is the sample variance, and
+  \code{variance(x, population = true)} the population variance.
+\item \textbf{Records as results.} \code{linfit} returns several values in one
+  record, \code|{slope, intercept, r2}|, which reads clearly at the call site
+  (\code{fit.slope}) and can be passed on whole, as \code{predict} shows.
+\end{itemize}
+
+A module may define names that also exist as built-in functions. Inside
+\texttt{stats.sci}, \code{mean} is the module's own function; programs reach it
+as \code{stats.mean}, and the built-in \code{mean} is unaffected.
+
+\section{Using the module}
+
+\ex{use_stats.sci}
+\begin{axonout}
+mean: 1.713
+variance: 0.00412 population: 0.00353
+std: 0.0642
+slope: 1.9976 intercept: 0.0357 r2: 0.99884
+\end{axonout}
+
+\code{import stats} makes the module available as \code{stats}, so its
+functions are called as \code{stats.mean} and so on.
+\code{from stats import linfit, predict} binds chosen functions directly,
+without the prefix. The
+figure the program saves is Figure~\ref{fig:stats_fit.pdf}.
+
+\fig{stats_fit.pdf}{0.6}{A least-squares line from \code{stats.linfit}, drawn
+by \texttt{use\_stats.sci}.}
+
+\section{Documentation and help}
+
+Because the module has \code{##} comments, \code{help} works for it as for the
+standard library, in the REPL and with \key{F1} in the IDE:
+
+\begin{axonrepl}
+> import stats
+> help stats
+module stats
+  Basic statistics: the mean, variance and standard deviation of a sample,
+  and a least-squares straight line through data points.
+  exports: mean, variance, std, linfit, predict
+> help stats.linfit
+linfit(x, y)
+  The least-squares straight line y = slope * x + intercept through the
+  points (x[k], y[k]). Returns a record with slope, intercept and r2, the
+  fraction of the variance of y that the line explains.
+\end{axonrepl}
+
+\section{Testing a module}
+
+Check a new module against values you know. Here the built-in \code{mean}, a
+variance worked by hand and an exact line give the answers to compare with;
+\code{==} and a tolerance do the comparing.
+
+\begin{axon}
+import stats
+
+x = [2.0; 4.0; 4.0; 4.0; 5.0; 5.0; 7.0; 9.0]
+println(stats.mean(x) == mean(x))
+println(stats.variance(x, population = true), stats.std(x, population = true))
+
+# Points exactly on y = 3x - 1 give that line, with r2 = 1.
+fit = stats.linfit(1:5, 3 * [1:5] - 1)
+println(abs(fit.slope - 3) < 1e-12, abs(fit.intercept + 1) < 1e-12, fit.r2)
+
+# Bad input raises errors you can catch.
+try
+  stats.variance({1, 2})
+catch err
+  println(err.kind, "-", err.message)
+end
+\end{axon}
+\begin{axonout}
+true
+4.0 2.0
+true true 1.0
+TypeError - stats.variance: data must be a vector, got list
+\end{axonout}
+
+\section{Growing a module}
+
+\begin{itemize}
+\item \textbf{More files.} A folder of modules is a namespace:
+  \texttt{mystats/stats.sci} and \texttt{mystats/tests.sci} are imported as
+  \code{mystats.stats} and \code{mystats.tests}
+  (\code{import mystats.stats as stats} keeps calls short).
+\item \textbf{Sharing between projects.} Instead of copying the file, keep it
+  in one folder and list that folder in a \texttt{package.toml} file next to
+  your programs, under \texttt{[dependencies]}; the Language Reference describes
+  the format.
+\item \textbf{Speed.} Module functions are compiled by the JIT like any other
+  (Chapter~\ref{ch:perf}).
+\end{itemize}
+
+% ===================================================================
 \chapter{Performance}\label{ch:perf}
 
 \section{The JIT compiler}
@@ -1730,7 +1861,7 @@ interpreter's speed.
 \paragraph{Seeing what happened.} In the IDE, the Output pane lists after each
 run the functions that were compiled and, for the others, why they were not.
 The \textbf{JIT} button switches compilation off and on, to compare. From a
-terminal, \texttt{axon --jit=off file.sci} runs without compiling.
+terminal, \code{axon --jit=off file.sci} runs without compiling.
 
 \paragraph{Writing fast code.} Built-in array operations (\code{A * B},
 \code{A \ b}, \code{sum}, elementwise arithmetic) are already native and fast.
