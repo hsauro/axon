@@ -89,6 +89,27 @@ begin
   Result := NothingValue;
 end;
 
+{ io.current_dir(): the working directory, as a full path; relative paths
+  given to io are read from it. }
+function BCurrentDir(const Args: TAxValues): TAxValue;
+begin
+  Result := StringValue(GetCurrentDir);
+end;
+
+{ io.set_current_dir(path): makes path (full, or relative to the current
+  directory) the working directory. }
+function BSetCurrentDir(const Args: TAxValues): TAxValue;
+var
+  Path: string;
+begin
+  Path := PathArg('set_current_dir', Args[0]);
+  if not TDirectory.Exists(Path) then
+    RaiseFmt(IOError, 'set_current_dir: no folder "%s"', [Path]);
+  if not SetCurrentDir(Path) then
+    RaiseFmt(IOError, 'set_current_dir: cannot change to "%s"', [Path]);
+  Result := NothingValue;
+end;
+
 function BFileExists(const Args: TAxValues): TAxValue;
 begin
   Result := BoolValue(TFile.Exists(PathArg('file_exists', Args[0])));
@@ -461,6 +482,8 @@ begin
   Define('read_bytes', BuiltinValue('read_bytes', BReadBytes, 1, 1));
   Define('write_file', BuiltinValue('write_file', BWriteFile, 2, 2));
   Define('file_exists', BuiltinValue('file_exists', BFileExists, 1, 1));
+  Define('current_dir', BuiltinValue('current_dir', BCurrentDir, 0, 0));
+  Define('set_current_dir', BuiltinValue('set_current_dir', BSetCurrentDir, 1, 1));
   Define('delete_file', BuiltinValue('delete_file', BDeleteFile, 1, 1));
   Define('write_json', BuiltinValue('write_json', BWriteJson, 2, 2));
   Define('read_json', BuiltinValue('read_json', BReadJson, 1, 1));

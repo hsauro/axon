@@ -811,7 +811,7 @@ println(fmt.number(pi, digits = 4), fmt.number(12345.678, sci = true, decimals =
 
 ### The io module
 
-`io` is a core module, written in the interpreter, for reading and writing files: whole text files, lines, bytes, CSV tables of numbers and JSON. Relative paths are relative to the working directory, and a failure raises `IOError`.
+`io` is a core module, written in the interpreter, for reading and writing files: whole text files, lines, bytes, CSV tables of numbers and JSON. Relative paths (a bare file name such as `"data.csv"`, or `"results/run1.json"`) are relative to the working directory, and a failure raises `IOError`. A program run from the IDE starts in the folder of its own file, as does the IDE's REPL, which uses the current file's folder; one run from a terminal starts in the terminal's current folder. `current_dir` and `set_current_dir` read and change it; module imports do not depend on it, since they search from the importing file's folder.
 
 | Function | Result |
 | --- | --- |
@@ -820,6 +820,8 @@ println(fmt.number(pi, digits = 4), fmt.number(12345.678, sci = true, decimals =
 | `read_bytes(path: string)` | The bytes of a file, as an `int` vector of values 0 to 255 |
 | `write_file(path: string, text: string)` | Writes the string as UTF-8, replacing the file; returns `nothing` |
 | `file_exists(path: string)` | `true` when the file exists |
+| `current_dir()` | The working directory, as a full path |
+| `set_current_dir(path: string)` | Makes `path`, full or relative to the working directory (such as `"data"` or `".."`), the working directory; returns `nothing`. A folder that does not exist raises `IOError` |
 | `delete_file(path: string)` | Deletes the file and returns `true`, or returns `false` when there was no such file |
 | `write_json(path: string, value)` | Writes the value as JSON text (UTF-8), replacing the file; returns `nothing` |
 | `read_json(path: string)` | The value described by the JSON text in the file |

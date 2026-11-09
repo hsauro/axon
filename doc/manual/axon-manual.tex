@@ -1886,8 +1886,11 @@ adds no spaces of its own.
 Data comes in files and results go out to them. The \code{io} module reads
 and writes whole text files, lists of lines, tables of numbers in CSV form, and
 any Axon value as JSON. A handful of built-in string functions turn text into
-numbers. File names are relative to the folder the program runs in (in the
-IDE, the folder of the program's file); a file that cannot be read or written
+numbers. A file name without a folder, or any relative path, is read from
+the \emph{working directory}: in the IDE, the folder of the program's file; from
+a terminal, the folder \code{axon} was started in. \code{io.current_dir()}
+gives it and \code{io.set_current_dir(path)} changes it, as in
+\code{io.set_current_dir("data")}. A file that cannot be read or written
 raises \code{IOError}.
 
 \begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
@@ -1906,6 +1909,8 @@ Function & Result \\
   records, vectors, matrices) as JSON \\
 \code{io.read_json(path: string)} & The value a JSON file describes \\
 \code{io.file_exists(path: string)} & Whether the file exists \\
+\code{io.current_dir()} & The working directory, as a full path \\
+\code{io.set_current_dir(path: string)} & Changes the working directory \\
 \code{io.delete_file(path: string)} & Deletes the file; \code{false} if there was none \\
 \code{io.read_bytes(path: string)} & The bytes of any file, as an \code{int} vector \\
 \bottomrule
