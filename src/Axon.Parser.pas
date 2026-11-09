@@ -10,7 +10,8 @@ unit Axon.Parser;
   - Every block body (function, lambda, if, for, while, try, record, extern)
     sets FSkipNL to False, even when it sits inside brackets, so NEWLINE ends
     statements again. The caller's mode is restored after the closing `end`.
-  - After a binary operator or a comma, SkipLayout drops any NEWLINEs.
+  - After a binary operator, a comma or the "=" of an assignment,
+    declaration or default value, SkipLayout drops any NEWLINEs.
   - The terminator before end, elseif, else and catch is optional.
 
   `end` is an expression only inside index brackets (FInIndex). Block bodies
@@ -421,7 +422,10 @@ begin
     if Accept(tkColon) then
       D.TypeRef := ParseType;
     if Accept(tkAssign) then
+    begin
+      SkipLayout;   // the value may start on the next line
       D.Value := ParseExpression;
+    end;
   except
     D.Free;
     raise;
@@ -659,6 +663,7 @@ var
     P := NewParam(False);
     if Accept(tkAssign) then
     begin
+      SkipLayout;
       P.Default := ParseExpression;
       Optional := True;
     end
@@ -687,6 +692,7 @@ begin
       repeat
         P := NewParam(True);
         Expect(tkAssign, 'a default value ("=") for keyword parameter "' + P.Name + '"');
+        SkipLayout;
         P.Default := ParseExpression;
       until not Accept(tkComma);
     end;
@@ -985,6 +991,7 @@ begin
     T.SetPos(Advance);
     T.Name := ExpectIdent('a type name').Text;
     Expect(tkAssign, '"="');
+    SkipLayout;
     T.CType := ParseCType;
   except
     T.Free;
@@ -1034,6 +1041,7 @@ begin
       FSkipNL := SavedSkip;
     end;
     Expect(tkAssign);
+    SkipLayout;
     S.Value := ParseExpression;
   except
     S.Free;
@@ -1064,6 +1072,7 @@ begin
     Exit;
   end;
   Advance;  // =
+  SkipLayout;
   S := TAssignStmt.Create;
   try
     S.SetPos(NameTok);
@@ -1112,6 +1121,7 @@ begin
     begin
       CheckTarget(E);
       Advance;
+      SkipLayout;   // the value may start on the next line
       A := TAssignStmt.Create;
       A.Line := E.Line;
       A.Col := E.Col;

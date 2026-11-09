@@ -146,7 +146,7 @@ The lexer emits a `NEWLINE` token at every line end and makes no decisions about
 
 1. Inside `( )`, `[ ]` or `{ }`, the parser skips `NEWLINE` tokens, so matrix rows must be separated with `;`.
 2. Inside the body of any block (`function`, `if`, `for`, `while`, `try`, `record`, `extern`), `NEWLINE` terminates statements again, even when the block itself sits inside brackets, as with an anonymous function passed as an argument.
-3. After a binary operator or a comma, the parser skips `NEWLINE` tokens, so the expression continues on the next line.
+3. After a binary operator, a comma, or the `=` of an assignment (`x =`, `A[i, j] =`, `[a, b] =`), a declaration (`local x: real =`), a default value (`function f(x, y =`) or an `extern` type alias, the parser skips `NEWLINE` tokens, so the expression continues on the next line.
 4. The terminator before `end`, `elseif`, `else` and `catch` is optional, so `function(x) return x^2 end` is valid on one line.
 
 A `;` outside brackets also terminates a statement. At the REPL, an expression statement ending in `;` does not display its value.
