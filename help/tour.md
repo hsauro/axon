@@ -42,7 +42,8 @@ println("Hello, " + name + "! " + string(length(name)) + " letters")
 
 `[1; 2; 3]` is a vector (a column); `[1, 2, 3]` is a 1×3 matrix (a row); rows of
 a matrix are separated by `;`. `*` is the matrix product and `.*` the
-elementwise one; `'` transposes.
+elementwise one; `'` transposes (so does `tr(A)`), and `trace(A)` sums the
+diagonal.
 
 ```axon
 v = [1.0; 2.0; 3.0]
@@ -52,6 +53,7 @@ A = [2.0, 1.0, 0.0;
 println(A * v)          # matrix times vector
 println(v .* v)         # elementwise
 println(v' * v)         # inner product: a scalar
+println(trace(A))       # sum of the diagonal: 9.0
 x = A \ v             # solve A x = v
 println(x)
 ```

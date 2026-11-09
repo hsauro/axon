@@ -1,0 +1,8 @@
+{"a", "b", "c"}
+{"a", "", "b"} {"x"} {""} {"a", "b"}
+a, b, c xy 
+[hi there]
+42 -7 3
+2.5 0.001 -Inf 0.5 7.0
+true false real
+8.0

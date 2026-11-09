@@ -24,8 +24,9 @@ uses
 const
   // Anchor, then the built-ins it documents. Keep in step with the
   // reference's headings: a stale anchor only means no section is shown.
-  Sections: array[0..15] of string = (
+  Sections: array[0..16] of string = (
     'printing: print println display_size display_decimals format',
+    'output-and-text-functions: split join trim',
     'strings-1: string',
     'vectors-and-matrices: zeros ones eye rand linspace size length reshape ' +
       'eltype sum prod mean min max all any',
@@ -41,7 +42,7 @@ const
     'lists-records-and-dictionaries: append get keys haskey dict typeof',
     'comparison: isequal',
     'errors: error',
-    'linear-algebra-operators: dot adjoint',
+    'linear-algebra-operators: dot adjoint tr trace',
     'foreign-functions: keep');
 
 type

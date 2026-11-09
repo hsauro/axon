@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..96] of TBuiltinDoc = (
+  BuiltinDocs: array[0..104] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -53,6 +53,8 @@ const
     (Name: 'any';      Params: '(A)';     Text: 'True when some element of a bool array is true'),
     (Name: 'dot';      Params: '(u, v)';  Text: 'The inner product, with u conjugated'),
     (Name: 'adjoint';  Params: '(A)';     Text: 'The conjugate transpose'),
+    (Name: 'tr';       Params: '(A)';     Text: 'The transpose, the same as A'''),
+    (Name: 'trace';    Params: '(A)';     Text: 'The sum of the diagonal of a square matrix'),
     (Name: 'isequal';  Params: '(a, b)';  Text: 'True when two values are equal as whole values'),
     (Name: 'isa';      Params: '(x, T)';  Text: 'True when x is exactly of type T: a name such as "int" or "vector{real}", or a record type'),
     (Name: 'keep';     Params: '(f)';     Text: 'Keeps a callback valid after the extern call that received it'),
@@ -78,6 +80,9 @@ const
     (Name: 'format';   Params: '(x, decimals)'; Text: 'x as text with exactly that many decimals, rounded: format(3.14159, 2) is "3.14"'),
     (Name: 'error';    Params: '(kind, message)'; Text: 'Raises an error; error("text") raises a UserError'),
     (Name: 'string';   Params: '(x)';     Text: 'The display form of a value, as a string'),
+    (Name: 'split';    Params: '(s, sep)'; Text: 'The words of s (split at spaces), or with sep the pieces between each sep, as a list'),
+    (Name: 'join';     Params: '(parts, sep)'; Text: 'The strings of a list joined into one, with sep between them'),
+    (Name: 'trim';     Params: '(s)';     Text: 's without spaces, tabs and line breaks at either end'),
     (Name: 'length';   Params: '(x)';     Text: 'The number of elements of an array, list, string or dictionary'),
     (Name: 'typeof';   Params: '(x)';     Text: 'The type of a value, as a string'),
     (Name: 'sqrt';     Params: '(x)';     Text: 'The square root (NaN for a negative real; use a complex argument)'),
@@ -96,11 +101,11 @@ const
     (Name: 'acosh';    Params: '(x)';     Text: 'The inverse hyperbolic cosine'),
     (Name: 'atanh';    Params: '(x)';     Text: 'The inverse hyperbolic tangent'),
     (Name: 'abs';      Params: '(x)';     Text: 'The absolute value, or the modulus of a complex number'),
-    (Name: 'int';      Params: '(x)';     Text: 'Converts to int, truncating toward zero'),
+    (Name: 'int';      Params: '(x)';     Text: 'Converts to int, truncating toward zero; int("42") reads a string'),
     (Name: 'floor';    Params: '(x)';     Text: 'The largest integer not above x'),
     (Name: 'ceil';     Params: '(x)';     Text: 'The smallest integer not below x'),
     (Name: 'round';    Params: '(x)';     Text: 'The nearest integer, halves away from zero'),
-    (Name: 'real';     Params: '(z)';     Text: 'The real part'),
+    (Name: 'real';     Params: '(z)';     Text: 'The real part; real("2.5") reads a number from a string'),
     (Name: 'imag';     Params: '(z)';     Text: 'The imaginary part'),
     (Name: 'conj';     Params: '(z)';     Text: 'The complex conjugate'),
     (Name: 'arg';      Params: '(z)';     Text: 'The argument (phase angle) of a complex number'),
@@ -123,6 +128,9 @@ const
     (Name: 'delete_file'; Params: '(path)'; Text: 'Deletes a file; false when there was no such file'),
     (Name: 'write_json'; Params: '(path, value)'; Text: 'Writes a value as JSON (records and string-keyed dictionaries as objects, arrays as numbers)'),
     (Name: 'read_json'; Params: '(path)'; Text: 'Reads a JSON file: objects as records, number arrays as vectors or matrices'),
+    (Name: 'read_lines'; Params: '(path)'; Text: 'The lines of a text file, as a list of strings'),
+    (Name: 'read_csv'; Params: '(path, sep)'; Text: 'A CSV table of numbers, as a record {names, data}: column names (or nothing) and a real matrix'),
+    (Name: 'write_csv'; Params: '(path, A, names, sep)'; Text: 'Writes a matrix (or a vector as one column) as CSV, optionally under a header of column names'),
     // time
     (Name: 'clock';   Params: '()'; Text: 'Seconds on a monotonic high-resolution clock; subtract two readings'),
     (Name: 'now';     Params: '()'; Text: 'Wall-clock seconds since 1970-01-01 UTC'),

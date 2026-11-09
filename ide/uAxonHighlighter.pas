@@ -45,7 +45,7 @@ const
 
   // The prelude functions (available without import), and the constant pi
   // (not e, which is often a variable of the program's own).
-  Builtins: array[0..71] of string = (
+  Builtins: array[0..76] of string = (
     'zeros', 'ones', 'eye', 'rand', 'linspace', 'size', 'sum', 'prod', 'mean',
     'all', 'any', 'dot', 'adjoint', 'isequal', 'keep', 'eltype', 'reshape',
     'sparse', 'speye', 'nnz', 'full', 'splu', 'append', 'get', 'keys', 'haskey',
@@ -54,7 +54,8 @@ const
     'acosh', 'atanh', 'abs', 'int', 'floor', 'ceil', 'round', 'real', 'imag',
     'conj', 'arg', 'complex', 'div', 'mod', 'min', 'max', 'factorial',
     'println', 'format', 'display_size', 'display_decimals', 'pi',
-    'sort', 'sortperm', 'atexit', 'range', 'isa');
+    'sort', 'sortperm', 'atexit', 'range', 'isa', 'tr', 'trace', 'split', 'join',
+    'trim');
 
 var
   KeywordSet, BuiltinSet: TDictionary<string, Boolean>;

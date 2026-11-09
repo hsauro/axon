@@ -24,6 +24,15 @@ interface
 // underflow 0 or a subnormal.
 function TryDecimalToDouble(const S: string; out D: Double): Boolean;
 
+// A number written as text, for real("...") and io.read_csv: surrounding
+// spaces and tabs are ignored; an optional sign, then a decimal number as
+// TryDecimalToDouble reads it, or NaN, Inf or Infinity in any case.
+function TryParseReal(const S: string; out D: Double): Boolean;
+
+// An integer written as text, for int("..."): surrounding spaces and tabs
+// ignored, an optional sign, then digits; False beyond the 64-bit range.
+function TryParseInt(const S: string; out I: Int64): Boolean;
+
 // X with exactly Decimals digits after the point, rounded from X's exact
 // binary value (ties to even): FormatFixed(2.675, 2) is '2.67' because the
 // double nearest 2.675 is just below it. Decimals = 0 gives no point. A
@@ -301,6 +310,56 @@ begin
     Exp := Bias;            // subnormal
   Result := BitsToDouble((Mant and ((UInt64(1) shl MantBits) - 1)) or
     (UInt64((Exp - Bias) and ((1 shl ExpBits) - 1)) shl MantBits));
+end;
+
+function TryParseReal(const S: string; out D: Double): Boolean;
+var
+  T, W: string;
+  Neg: Boolean;
+begin
+  T := S.Trim([' ', #9]);
+  Neg := False;
+  if (T <> '') and ((T[1] = '+') or (T[1] = '-')) then
+  begin
+    Neg := T[1] = '-';
+    T := T.Substring(1);
+  end;
+  W := LowerCase(T);
+  if W = 'nan' then
+  begin
+    D := NaN;
+    Exit(True);
+  end;
+  if (W = 'inf') or (W = 'infinity') then
+    D := Infinity
+  else
+  begin
+    if (T = '') or not CharInSet(T[1], ['0'..'9', '.']) then
+      Exit(False);
+    if not TryDecimalToDouble(T, D) then
+      Exit(False);
+  end;
+  if Neg then
+    D := -D;
+  Result := True;
+end;
+
+function TryParseInt(const S: string; out I: Int64): Boolean;
+var
+  T: string;
+  K: Integer;
+begin
+  I := 0;
+  T := S.Trim([' ', #9]);
+  K := 1;
+  if (T <> '') and ((T[1] = '+') or (T[1] = '-')) then
+    K := 2;
+  if K > Length(T) then
+    Exit(False);
+  for K := K to Length(T) do
+    if not CharInSet(T[K], ['0'..'9']) then
+      Exit(False);
+  Result := TryStrToInt64(T, I);
 end;
 
 function TryDecimalToDouble(const S: string; out D: Double): Boolean;

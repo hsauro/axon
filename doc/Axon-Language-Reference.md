@@ -396,7 +396,7 @@ The settings return `nothing` and last until changed: for the rest of a program,
 | `A ^ k` | `A` square; `k` an integer, or any scalar for diagonalisable `A` | Matrix power |
 | `A'` | Any | Plain transpose; no conjugation |
 
-For complex data, `adjoint(A)` gives the conjugate transpose and `dot(u, v)` gives the inner product with `u` conjugated. For real vectors `u' * v` and `dot(u, v)` are equal.
+The built-in `tr(A)` is the same transpose as `A'`, and `trace(A)` the sum of the diagonal of a square matrix. For complex data, `adjoint(A)` gives the conjugate transpose and `dot(u, v)` gives the inner product with `u` conjugated. For real vectors `u' * v` and `dot(u, v)` are equal.
 
 A shape mismatch raises `DimensionError`. A singular or near-singular system in `\` or `/` raises `SingularMatrix`.
 
@@ -642,7 +642,9 @@ These functions, and the constants `pi` and `e`, are always available, without a
 | `min(a, b)`, `max(a, b)` | The smaller or larger value, elementwise with broadcasting |
 | `all(A)`, `any(A)` | Whether every, or some, element of a `bool` array is `true` |
 | `dot(u, v)` | The inner product, with `u` conjugated |
-| `adjoint(A)` | The conjugate transpose, the same as `A'` |
+| `tr(A)` | The transpose, the same as `A'`: complex entries are not conjugated, and a number is its own transpose |
+| `trace(A)` | The sum of the diagonal of a square matrix (dense or sparse), of the matrix's element type; a number is its own trace. Any other shape raises `DimensionError` |
+| `adjoint(A)` | The conjugate transpose; for real matrices the same as `A'` and `tr(A)` |
 | `sort(x)`, `sort(x, "descend")` | The elements in order, smallest first (or largest first), as a new vector, row or list of the same kind |
 | `sortperm(x)`, `sortperm(x, "descend")` | The `int` vector of positions `p` that puts `x` in order, so `x[p]` is sorted |
 
@@ -703,6 +705,10 @@ See [Numeric promotion](#numeric-promotion).
 | `println(a, b, ...)` | Writes the values separated by spaces, then a newline |
 | `format(x, decimals)` | `x` as text with exactly that many digits after the point: `format(3.14159, 2)` is `"3.14"` |
 | `string(x)` | The display form of any value, as a string |
+| `split(s)`, `split(s, sep)` | The words of `s`, separated by runs of spaces, tabs and line breaks (no empty words); with `sep`, the pieces between each occurrence of the string `sep`, empty ones included: `split("a,,b", ",")` is `{"a", "", "b"}`. An empty `sep` raises `ArgumentError` |
+| `join(parts)`, `join(parts, sep)` | The strings of the list `parts` joined, with `sep` between them (default none); an item that is not a string raises `TypeError` |
+| `trim(s)` | `s` without the spaces, tabs and line breaks at either end |
+| `int(s)`, `real(s)` | A number read from text: `int("42")`, `real("2.5e-3")`. Spaces around the number are ignored; `real` reads a decimal number correctly rounded, and `NaN`, `Inf` and `-Inf`. Text that is not a number of that kind raises `ArgumentError` |
 | `display_size(rows, cols)` | Arrays up to rows×cols are displayed in full; `display_size()` restores 10×8 |
 | `display_decimals(n)` | Displayed reals show n decimals (1 to 15); `display_decimals()` restores the default |
 
@@ -768,17 +774,22 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 
 ### The io module
 
-`io` is a core module, written in the interpreter, for whole-file reading and writing. Relative paths are relative to the working directory, and a failure raises `IOError`.
+`io` is a core module, written in the interpreter, for reading and writing files: whole text files, lines, bytes, CSV tables of numbers and JSON. Relative paths are relative to the working directory, and a failure raises `IOError`.
 
 | Function | Result |
 | --- | --- |
 | `read_file(path)` | The contents of a UTF-8 text file, as a string; a leading byte-order mark is dropped, and a file that is not valid UTF-8 raises `IOError` |
+| `read_lines(path)` | The lines of a UTF-8 text file, as a list of strings without their line breaks (LF or CR LF); a final line break does not add an empty line |
 | `read_bytes(path)` | The bytes of a file, as an `int` vector of values 0 to 255 |
 | `write_file(path, text)` | Writes the string as UTF-8, replacing the file; returns `nothing` |
 | `file_exists(path)` | `true` when the file exists |
 | `delete_file(path)` | Deletes the file and returns `true`, or returns `false` when there was no such file |
 | `write_json(path, value)` | Writes the value as JSON text (UTF-8), replacing the file; returns `nothing` |
 | `read_json(path)` | The value described by the JSON text in the file |
+| `read_csv(path)`, `read_csv(path, sep)` | A table of numbers, as a record `{names, data}`: `data` is a `real` matrix with a row per line and a column per field, and `names` the list of column names, or `nothing` when the file has no header |
+| `write_csv(path, A)`, `write_csv(path, A, names)`, `write_csv(path, A, names, sep)` | Writes a matrix, or a vector as one column, one row per line, under a header of column names when `names` (a list of strings, one per column) is given and not `nothing`; returns `nothing` |
+
+CSV files are text with one row per line and fields separated by `sep`, a one-character string (default `","`; `";"` and `"\t"` are common). Reading: blank lines are skipped; the first line is a header when any of its fields is not a number; every row must have as many fields as the first, or `IOError` names the line; a field is read as `real` does a string (spaces around it are ignored, and `NaN` and `Inf` are accepted), an empty field is NaN, and any other text raises `IOError` naming the line and field; a field in double quotes may contain the separator, with `""` for a quote. Writing: `int` and `bool` elements are written as integers (`bool` as 1 or 0) and reals in the shortest form that reads back to the same value, NaN and infinities as `NaN`, `Inf` and `-Inf`; a name containing the separator, a quote or a line break is quoted; lines end with LF. Complex values raise `TypeError`, and a list of names of the wrong length `DimensionError`.
 
 JSON and Axon values correspond as follows. Writing: `nothing` is `null`; `bool`, `int` and `real` are JSON literals, reals with enough digits to read back exactly and a `.0` on whole numbers, and NaN and infinities `null`; strings are escaped; lists and ranges are arrays; records, and dictionaries with string keys, are objects; a vector is an array of numbers and a matrix an array of its rows. Complex numbers, sparse matrices and functions raise `TypeError`. Reading: `null` is `nothing`; a number with no point or exponent that fits in an `int` is an `int`, any other a `real`, read exactly; an array of numbers (with `null` read as NaN) is a vector, an array of such arrays of one length is a matrix, and any other array is a list; an object is a record when every key is a valid name and a dictionary otherwise. Text that is not valid JSON raises `IOError`.
 

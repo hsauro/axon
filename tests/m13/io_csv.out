@@ -1,0 +1,8 @@
+{"first", "second", "", "fourth"}
+{"time,\"conc, mM\"", "1,2.5", "3,NaN", "0.1,1e-20"}
+{"time", "conc, mM"}
+3 2 2.5 true true false
+{"1", "2", "3"}
+nothing 3 1 3.0
+{"a;1", "b"} 2.0 3.0 false
+{"\"a;1\";b", "1;2", "3;NaN"}

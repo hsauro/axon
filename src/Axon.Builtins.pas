@@ -427,7 +427,18 @@ begin
 end;
 
 function BInt(const Args: TAxValues): TAxValue;
-begin Result := RoundingFn('int', Args[0], 0); end;
+var
+  I: Int64;
+begin
+  // A string is read as an integer written in decimal: int("42").
+  if Args[0].Kind = vkString then
+  begin
+    if not TryParseInt(AsString(Args[0]), I) then
+      RaiseFmt(ArgumentError, 'int: cannot read "%s" as an integer', [AsString(Args[0])]);
+    Exit(IntValue(I));
+  end;
+  Result := RoundingFn('int', Args[0], 0);
+end;
 function BFloor(const Args: TAxValues): TAxValue;
 begin Result := RoundingFn('floor', Args[0], 1); end;
 function BCeil(const Args: TAxValues): TAxValue;
@@ -436,7 +447,16 @@ function BRound(const Args: TAxValues): TAxValue;
 begin Result := RoundingFn('round', Args[0], 3); end;
 
 function BReal(const Args: TAxValues): TAxValue;
+var
+  D: Double;
 begin
+  // A string is read as a decimal number, correctly rounded: real("2.5").
+  if Args[0].Kind = vkString then
+  begin
+    if not TryParseReal(AsString(Args[0]), D) then
+      RaiseFmt(ArgumentError, 'real: cannot read "%s" as a number', [AsString(Args[0])]);
+    Exit(RealValue(D));
+  end;
   if IsArrayLike(Args[0]) then
     Exit(MapArray(Args[0], function(const X: TAxValue): TAxValue begin Result := BReal([X]) end));
   NeedNumber('real', Args[0]);
@@ -849,6 +869,52 @@ begin
   A := ToArray(Args[0]);
   Holder := ArrayValue(A);
   Result := Transpose(A, True);
+end;
+
+{ tr(A): the transpose, exactly A' (no conjugation; see adjoint). }
+function BTr(const Args: TAxValues): TAxValue;
+begin
+  Result := UnaryOp(tkQuote, Args[0]);
+end;
+
+{ trace(A): the sum of the diagonal of a square matrix, of its element type;
+  a number is its own trace. }
+function BTrace(const Args: TAxValues): TAxValue;
+var
+  A: TArrayObj;
+  S: TSparseObj;
+  Holder: TAxValue;
+  K, N: Integer;
+begin
+  if Args[0].Kind = vkSparse then
+  begin
+    S := AsSparse(Args[0]);
+    if S.Rows <> S.Cols then
+      RaiseFmt(DimensionError, 'trace needs a square matrix, got %d' + #$00D7 + '%d',
+        [S.Rows, S.Cols]);
+    if S.IsComplex then Result := ComplexValue2(0, 0) else Result := RealValue(0);
+    for K := 0 to S.Rows - 1 do
+      Result := BinaryOp(tkPlus, Result, S.Get(K, K));
+    Exit;
+  end;
+  if (Args[0].Kind <> vkArray) and (NumRank(Args[0]) >= 0) and (Args[0].Kind <> vkRange) then
+    Exit(BinaryOp(tkPlus, IntValue(0), Args[0]));
+  if not IsArrayLike(Args[0]) then
+    RaiseFmt(TypeError, 'trace needs a square matrix, got %s', [TypeName(Args[0])]);
+  A := ToArray(Args[0]);
+  Holder := ArrayValue(A);
+  if (A.Rows <> A.Cols) then
+    RaiseFmt(DimensionError, 'trace needs a square matrix, got %d' + #$00D7 + '%d',
+      [A.Rows, A.Cols]);
+  N := A.Rows;
+  case A.ElemType of
+    etBool, etInt: Result := IntValue(0);
+    etReal: Result := RealValue(0);
+  else
+    Result := ComplexValue2(0, 0);
+  end;
+  for K := 0 to N - 1 do
+    Result := BinaryOp(tkPlus, Result, A.Get(K + K * N));
 end;
 
 function BIsequal(const Args: TAxValues): TAxValue;
@@ -1421,6 +1487,94 @@ begin
   end;
 end;
 
+{ ---- strings ---- }
+
+function NeedString(const Fn: string; const V: TAxValue; const What: string): string;
+begin
+  if V.Kind <> vkString then
+    RaiseFmt(TypeError, '%s needs %s, got %s', [Fn, What, TypeName(V)]);
+  Result := AsString(V);
+end;
+
+{ split(s): the words of s, separated by runs of spaces, tabs and line
+  breaks, with no empty words. split(s, sep): the pieces between each
+  occurrence of sep, empty ones included ("a,,b" gives "a", "", "b"). }
+function BSplit(const Args: TAxValues): TAxValue;
+var
+  S, Sep: string;
+  Items: TAxValues;
+  K, Start, P: Integer;
+begin
+  S := NeedString('split', Args[0], 'a string to split');
+  Items := nil;
+  if Length(Args) = 1 then
+  begin
+    K := 1;
+    while K <= Length(S) do
+    begin
+      while (K <= Length(S)) and CharInSet(S[K], [' ', #9, #10, #13]) do
+        Inc(K);
+      Start := K;
+      while (K <= Length(S)) and not CharInSet(S[K], [' ', #9, #10, #13]) do
+        Inc(K);
+      if K > Start then
+        Items := Items + [StringValue(Copy(S, Start, K - Start))];
+    end;
+    Exit(ListValue(Items));
+  end;
+  Sep := NeedString('split', Args[1], 'a separator string');
+  if Sep = '' then
+    RaiseError(ArgumentError, 'split: the separator cannot be empty');
+  Start := 1;
+  repeat
+    P := Pos(Sep, S, Start);
+    if P = 0 then
+      Break;
+    Items := Items + [StringValue(Copy(S, Start, P - Start))];
+    Start := P + Length(Sep);
+  until False;
+  Items := Items + [StringValue(Copy(S, Start, MaxInt))];
+  Result := ListValue(Items);
+end;
+
+{ join(parts) and join(parts, sep): the strings of a list, with sep (default
+  none) between them. }
+function BJoin(const Args: TAxValues): TAxValue;
+var
+  Items: TAxValues;
+  Sep: string;
+  SB: TStringBuilder;
+  K: Integer;
+begin
+  if Args[0].Kind <> vkList then
+    RaiseFmt(TypeError, 'join needs a list of strings, got %s', [TypeName(Args[0])]);
+  Items := AsList(Args[0]).Items;
+  Sep := '';
+  if Length(Args) = 2 then
+    Sep := NeedString('join', Args[1], 'a separator string');
+  SB := TStringBuilder.Create;
+  try
+    for K := 0 to High(Items) do
+    begin
+      if Items[K].Kind <> vkString then
+        RaiseFmt(TypeError, 'join: item %d is %s, not a string; convert it with string(x)',
+          [K + 1, TypeName(Items[K])]);
+      if K > 0 then
+        SB.Append(Sep);
+      SB.Append(AsString(Items[K]));
+    end;
+    Result := StringValue(SB.ToString);
+  finally
+    SB.Free;
+  end;
+end;
+
+{ trim(s): s without the spaces, tabs and line breaks at either end. }
+function BTrim(const Args: TAxValues): TAxValue;
+begin
+  Result := StringValue(NeedString('trim', Args[0], 'a string').Trim([' ', #9, #10, #13]));
+end;
+
 { ---- isa ---- }
 
 (* isa(x, T): whether x is exactly of type T (no widening: isa(1, "real") is
@@ -1620,6 +1774,11 @@ begin
   Add('atexit', BAtExit, 1, 1);
   Add('range', BRange, 1, 3);
   Add('isa', BIsa, 2, 2);
+  Add('tr', BTr, 1, 1);
+  Add('split', BSplit, 1, 2);
+  Add('join', BJoin, 1, 2);
+  Add('trim', BTrim, 1, 1);
+  Add('trace', BTrace, 1, 1);
   // Constants: the doubles nearest to pi and e, given by their bits so that
   // no conversion can be off by one unit in the last place.
   Define('pi', RealValue(PDouble(@PiBits)^));
