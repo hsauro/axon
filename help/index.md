@@ -61,3 +61,4 @@ Each example opens as your own copy, so you can change it and run it with
 - [Subplots: four views of a damped oscillator](../examples/15_subplots.sci)
 - [Four views: line, bars, histogram and 3D surface in one figure](../examples/16_four_views.sci)
 - [Formatting output, checking types, and reading and writing files](../examples/17_formatting_types_files.sci)
+- [3D scatter plots: three clusters of points in space](../examples/18_scatter3d.sci)
