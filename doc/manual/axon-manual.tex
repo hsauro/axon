@@ -2134,6 +2134,35 @@ Colours are names (\code{"red"}, \code{"blue"}, \code{"gray"} and others),
 \code{"#rrggbb"} hex codes, or vectors \code{[r, g, b]} with components from 0
 to 1.
 
+\paragraph{Colours.} A colour is one of these names, a hex code
+\code{"#rrggbb"} (or \code{"#rrggbbaa"}, whose last two digits set the
+opacity), or a vector \code{[r, g, b]} with components from 0 to 1. The
+first ten names are the colours series get in turn when none is given, in
+that order, so \code{color = "blue"} matches the first default colour.
+
+\begin{longtable}{@{}lll@{}}
+\toprule
+Name & & Hex code \\
+\midrule
+\endhead
+\code{"blue"} & \fcolorbox{black!40}[HTML]{1F77B4}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#1f77b4} \\
+\code{"orange"} & \fcolorbox{black!40}[HTML]{FF7F0E}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#ff7f0e} \\
+\code{"green"} & \fcolorbox{black!40}[HTML]{2CA02C}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#2ca02c} \\
+\code{"red"} & \fcolorbox{black!40}[HTML]{D62728}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#d62728} \\
+\code{"purple"} & \fcolorbox{black!40}[HTML]{9467BD}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#9467bd} \\
+\code{"brown"} & \fcolorbox{black!40}[HTML]{8C564B}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#8c564b} \\
+\code{"pink"} & \fcolorbox{black!40}[HTML]{E377C2}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#e377c2} \\
+\code{"gray"} (or \code{"grey"}) & \fcolorbox{black!40}[HTML]{7F7F7F}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#7f7f7f} \\
+\code{"olive"} & \fcolorbox{black!40}[HTML]{BCBD22}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#bcbd22} \\
+\code{"cyan"} & \fcolorbox{black!40}[HTML]{17BECF}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#17becf} \\
+\code{"yellow"} & \fcolorbox{black!40}[HTML]{FFD700}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#ffd700} \\
+\code{"black"} & \fcolorbox{black!40}[HTML]{000000}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#000000} \\
+\code{"white"} & \fcolorbox{black!40}[HTML]{FFFFFF}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#ffffff} \\
+\code{"lightgray"} & \fcolorbox{black!40}[HTML]{D3D3D3}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#d3d3d3} \\
+\code{"darkgray"} & \fcolorbox{black!40}[HTML]{404040}{\rule{0pt}{0.7em}\hspace{1.6em}} & \texttt{\#404040} \\
+\bottomrule
+\end{longtable}
+
 \section{Scatter plots}
 
 \code{plot.scatter(x, y)} draws a marker at each point, with keywords

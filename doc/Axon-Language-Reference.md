@@ -892,7 +892,26 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 | `"text"` | `x`, `y`, `text`, `size` (10), `color`, `font` (`"sans-serif"`; also `"serif"`, `"monospace"` or a family name), `bold` (`false`), `anchor` (`"start"`, `"middle"` or `"end"`), `baseline` (`"alphabetic"`, `"middle"`, `"top"` or `"bottom"`), `angle` (degrees anticlockwise) |
 | `"group"` | `items`; `dx` and `dy` (default 0), which shift the group; and `clip` (a record `{x, y, w, h}` or `nothing`) that limits drawing to a rectangle, in the shifted coordinates |
 
-- **Colours** are names (`"black"`, `"white"`, `"red"`, `"green"`, `"blue"`, `"orange"`, `"purple"`, `"brown"`, `"pink"`, `"gray"`, `"olive"`, `"cyan"`, `"yellow"`, `"lightgray"`, `"darkgray"`), `"#rrggbb"`, `"#rrggbbaa"`, `"none"`, or a real vector `[r, g, b]` or `[r, g, b, a]` with components from 0 to 1. Anything else raises `ArgumentError`.
+- **Colours** are names (below), `"#rrggbb"`, `"#rrggbbaa"` (the last two digits the opacity), `"none"` (transparent), or a real vector `[r, g, b]` or `[r, g, b, a]` with components from 0 to 1. Anything else raises `ArgumentError`. The first ten names are the colours `plot` gives series in turn, in that order, so `color = "blue"` matches the first default colour:
+
+| Name | Colour |
+| --- | --- |
+| `"blue"` | `#1f77b4` |
+| `"orange"` | `#ff7f0e` |
+| `"green"` | `#2ca02c` |
+| `"red"` | `#d62728` |
+| `"purple"` | `#9467bd` |
+| `"brown"` | `#8c564b` |
+| `"pink"` | `#e377c2` |
+| `"gray"` (also `"grey"`) | `#7f7f7f` |
+| `"olive"` | `#bcbd22` |
+| `"cyan"` | `#17becf` |
+| `"yellow"` | `#ffd700` |
+| `"black"` | `#000000` |
+| `"white"` | `#ffffff` |
+| `"lightgray"` | `#d3d3d3` |
+| `"darkgray"` | `#404040` |
+
 - **Checks.** A field of the wrong type raises `TypeError`, a missing required field `FieldError`, `x` and `y` of different lengths `DimensionError`, and an unknown kind, shape, anchor or baseline `ArgumentError`. Each message names the item by its position.
 
 ### The ode module
