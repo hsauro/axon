@@ -26,7 +26,8 @@ const
   // reference's headings: a stale anchor only means no section is shown.
   Sections: array[0..16] of string = (
     'printing: print println display_size display_decimals format',
-    'output-and-text-functions: split join trim',
+    'output-and-text-functions: split join trim ltrim rtrim upper lower contains ' +
+      'startswith endswith find replace repeat',
     'strings-1: string',
     'vectors-and-matrices: zeros ones eye rand linspace size length reshape ' +
       'eltype sum prod mean min max all any',

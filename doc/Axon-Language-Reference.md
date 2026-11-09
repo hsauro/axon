@@ -305,7 +305,7 @@ Mixed arithmetic promotes along `bool` → `int` → `real` → `complex`. Nothi
 
 ### Strings
 
-`+` concatenates two strings. `string(x)` converts any value to its display form. Strings are immutable, and indexing a string returns a one-character string.
+`+` concatenates two strings. `string(x)` converts any value to its display form. Strings are immutable, and indexing a string returns a one-character string. Indexes and lengths count characters (Unicode code points), not bytes. `<`, `<=`, `>` and `>=` compare strings by character code, so capitals sort before small letters. The functions for searching, changing, splitting and reading numbers from strings are listed under [Output and text functions](#output-and-text-functions).
 
 ### Truth values
 
@@ -707,7 +707,12 @@ See [Numeric promotion](#numeric-promotion).
 | `string(x)` | The display form of any value, as a string |
 | `split(s)`, `split(s, sep)` | The words of `s`, separated by runs of spaces, tabs and line breaks (no empty words); with `sep`, the pieces between each occurrence of the string `sep`, empty ones included: `split("a,,b", ",")` is `{"a", "", "b"}`. An empty `sep` raises `ArgumentError` |
 | `join(parts)`, `join(parts, sep)` | The strings of the list `parts` joined, with `sep` between them (default none); an item that is not a string raises `TypeError` |
-| `trim(s)` | `s` without the spaces, tabs and line breaks at either end |
+| `trim(s)`, `ltrim(s)`, `rtrim(s)` | `s` without the spaces, tabs and line breaks at both ends, at the start only, or at the end only |
+| `upper(s)`, `lower(s)` | `s` in capital or small letters, for every alphabet |
+| `contains(s, part)`, `startswith(s, part)`, `endswith(s, part)` | Whether `part` occurs in `s`, begins it or ends it; an empty `part` always does |
+| `find(s, part)`, `find(s, part, start)` | The position of the first `part` in `s` at or after position `start` (default 1), or 0 when there is none. Positions count characters, as indexing does; a `start` below 1 raises `ArgumentError` |
+| `replace(s, old, new)` | `s` with every occurrence of `old` replaced by `new`; an empty `old` raises `ArgumentError` |
+| `repeat(s, n)` | `s` repeated `n` times: `repeat("-", 40)`; a negative `n` raises `ArgumentError` |
 | `int(s)`, `real(s)` | A number read from text: `int("42")`, `real("2.5e-3")`. Spaces around the number are ignored; `real` reads a decimal number correctly rounded, and `NaN`, `Inf` and `-Inf`. Text that is not a number of that kind raises `ArgumentError` |
 | `display_size(rows, cols)` | Arrays up to rows×cols are displayed in full; `display_size()` restores 10×8 |
 | `display_decimals(n)` | Displayed reals show n decimals (1 to 15); `display_decimals()` restores the default |

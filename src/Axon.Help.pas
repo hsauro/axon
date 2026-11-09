@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..104] of TBuiltinDoc = (
+  BuiltinDocs: array[0..114] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -83,6 +83,16 @@ const
     (Name: 'split';    Params: '(s, sep)'; Text: 'The words of s (split at spaces), or with sep the pieces between each sep, as a list'),
     (Name: 'join';     Params: '(parts, sep)'; Text: 'The strings of a list joined into one, with sep between them'),
     (Name: 'trim';     Params: '(s)';     Text: 's without spaces, tabs and line breaks at either end'),
+    (Name: 'ltrim';    Params: '(s)';     Text: 's without spaces, tabs and line breaks at the start'),
+    (Name: 'rtrim';    Params: '(s)';     Text: 's without spaces, tabs and line breaks at the end'),
+    (Name: 'upper';    Params: '(s)';     Text: 's in capital letters'),
+    (Name: 'lower';    Params: '(s)';     Text: 's in small letters'),
+    (Name: 'contains'; Params: '(s, part)'; Text: 'True when part occurs in s'),
+    (Name: 'startswith'; Params: '(s, part)'; Text: 'True when s begins with part'),
+    (Name: 'endswith'; Params: '(s, part)'; Text: 'True when s ends with part'),
+    (Name: 'find';     Params: '(s, part, start)'; Text: 'The position of the first part in s (from start), or 0'),
+    (Name: 'replace';  Params: '(s, old, new)'; Text: 's with every old replaced by new'),
+    (Name: 'repeat';   Params: '(s, n)';  Text: 's repeated n times'),
     (Name: 'length';   Params: '(x)';     Text: 'The number of elements of an array, list, string or dictionary'),
     (Name: 'typeof';   Params: '(x)';     Text: 'The type of a value, as a string'),
     (Name: 'sqrt';     Params: '(x)';     Text: 'The square root (NaN for a negative real; use a complex argument)'),

@@ -1569,10 +1569,167 @@ begin
   end;
 end;
 
-{ trim(s): s without the spaces, tabs and line breaks at either end. }
+{ trim(s): s without the spaces, tabs and line breaks at either end;
+  ltrim and rtrim trim only the start or the end. }
 function BTrim(const Args: TAxValues): TAxValue;
 begin
   Result := StringValue(NeedString('trim', Args[0], 'a string').Trim([' ', #9, #10, #13]));
+end;
+
+function BLtrim(const Args: TAxValues): TAxValue;
+begin
+  Result := StringValue(NeedString('ltrim', Args[0], 'a string').TrimLeft([' ', #9, #10, #13]));
+end;
+
+function BRtrim(const Args: TAxValues): TAxValue;
+begin
+  Result := StringValue(NeedString('rtrim', Args[0], 'a string').TrimRight([' ', #9, #10, #13]));
+end;
+
+{ upper(s), lower(s): s in capitals or small letters (Unicode-aware). }
+function BUpper(const Args: TAxValues): TAxValue;
+begin
+  Result := StringValue(NeedString('upper', Args[0], 'a string').ToUpper);
+end;
+
+function BLower(const Args: TAxValues): TAxValue;
+begin
+  Result := StringValue(NeedString('lower', Args[0], 'a string').ToLower);
+end;
+
+{ contains(s, part), startswith(s, part), endswith(s, part). An empty part
+  is found everywhere. }
+function BContains(const Args: TAxValues): TAxValue;
+var
+  S, Part: string;
+begin
+  S := NeedString('contains', Args[0], 'a string');
+  Part := NeedString('contains', Args[1], 'a string to look for');
+  Result := BoolValue((Part = '') or S.Contains(Part));
+end;
+
+function BStartsWith(const Args: TAxValues): TAxValue;
+var
+  S, Part: string;
+begin
+  S := NeedString('startswith', Args[0], 'a string');
+  Part := NeedString('startswith', Args[1], 'a string to look for');
+  Result := BoolValue((Part = '') or S.StartsWith(Part));
+end;
+
+function BEndsWith(const Args: TAxValues): TAxValue;
+var
+  S, Part: string;
+begin
+  S := NeedString('endswith', Args[0], 'a string');
+  Part := NeedString('endswith', Args[1], 'a string to look for');
+  Result := BoolValue((Part = '') or S.EndsWith(Part));
+end;
+
+{ The number of characters (code points) in the first N UTF-16 units of S:
+  string positions count characters, as indexing does. }
+function CharsBefore(const S: string; N: Integer): Integer;
+var
+  K: Integer;
+begin
+  Result := 0;
+  for K := 1 to N do
+    if not ((Ord(S[K]) >= $DC00) and (Ord(S[K]) <= $DFFF)) then
+      Inc(Result);
+end;
+
+{ The UTF-16 index (1-based) of character C (1-based) of S, or Length(S) + 1
+  past the end. }
+function UnitOfChar(const S: string; C: Integer): Integer;
+var
+  N: Integer;
+begin
+  Result := 1;
+  N := 1;
+  while (Result <= Length(S)) and (N < C) do
+  begin
+    if (Ord(S[Result]) >= $D800) and (Ord(S[Result]) <= $DBFF) and (Result < Length(S)) then
+      Inc(Result, 2)
+    else
+      Inc(Result);
+    Inc(N);
+  end;
+end;
+
+{ find(s, part) and find(s, part, start): the position (in characters) of
+  the first occurrence of part in s, at or after position start (default 1),
+  or 0 when there is none. }
+function BFind(const Args: TAxValues): TAxValue;
+var
+  S, Part: string;
+  Start, From, P: Integer;
+begin
+  S := NeedString('find', Args[0], 'a string');
+  Part := NeedString('find', Args[1], 'a string to look for');
+  Start := 1;
+  if Length(Args) = 3 then
+  begin
+    if Args[2].Kind <> vkInt then
+      RaiseFmt(TypeError, 'find: the start position must be an int, got %s',
+        [TypeName(Args[2])]);
+    if Args[2].I < 1 then
+      RaiseFmt(ArgumentError, 'find: the start position must be at least 1, got %d',
+        [Args[2].I]);
+    if Args[2].I > MaxInt then
+      Exit(IntValue(0));
+    Start := Args[2].I;
+  end;
+  From := UnitOfChar(S, Start);
+  if From > Length(S) + 1 then
+    Exit(IntValue(0));
+  if Part = '' then
+  begin
+    if Start > CharsBefore(S, Length(S)) + 1 then
+      Exit(IntValue(0));
+    Exit(IntValue(Start));
+  end;
+  P := Pos(Part, S, From);
+  if P = 0 then
+    Result := IntValue(0)
+  else
+    Result := IntValue(CharsBefore(S, P - 1) + 1);
+end;
+
+{ replace(s, old, new): s with every occurrence of old replaced by new. }
+function BReplace(const Args: TAxValues): TAxValue;
+var
+  Old: string;
+begin
+  Old := NeedString('replace', Args[1], 'the string to replace');
+  if Old = '' then
+    RaiseError(ArgumentError, 'replace: the string to replace cannot be empty');
+  Result := StringValue(NeedString('replace', Args[0], 'a string').Replace(Old,
+    NeedString('replace', Args[2], 'a replacement string'), [rfReplaceAll]));
+end;
+
+{ repeat(s, n): s repeated n times (n >= 0). }
+function BRepeat(const Args: TAxValues): TAxValue;
+var
+  S: string;
+  N, K: Int64;
+  SB: TStringBuilder;
+begin
+  S := NeedString('repeat', Args[0], 'a string');
+  if Args[1].Kind <> vkInt then
+    RaiseFmt(TypeError, 'repeat: the count must be an int, got %s', [TypeName(Args[1])]);
+  N := Args[1].I;
+  if N < 0 then
+    RaiseFmt(ArgumentError, 'repeat: the count cannot be negative, got %d', [N]);
+  if N * Length(S) > 100000000 then
+    RaiseError(ArgumentError, 'repeat: the result would be too long');
+  SB := TStringBuilder.Create;
+  try
+    for K := 1 to N do
+      SB.Append(S);
+    Result := StringValue(SB.ToString);
+  finally
+    SB.Free;
+  end;
 end;
 
 { ---- isa ---- }
@@ -1778,6 +1935,16 @@ begin
   Add('split', BSplit, 1, 2);
   Add('join', BJoin, 1, 2);
   Add('trim', BTrim, 1, 1);
+  Add('ltrim', BLtrim, 1, 1);
+  Add('rtrim', BRtrim, 1, 1);
+  Add('upper', BUpper, 1, 1);
+  Add('lower', BLower, 1, 1);
+  Add('contains', BContains, 2, 2);
+  Add('startswith', BStartsWith, 2, 2);
+  Add('endswith', BEndsWith, 2, 2);
+  Add('find', BFind, 2, 3);
+  Add('replace', BReplace, 3, 3);
+  Add('repeat', BRepeat, 2, 2);
   Add('trace', BTrace, 1, 1);
   // Constants: the doubles nearest to pi and e, given by their bits so that
   // no conversion can be off by one unit in the last place.

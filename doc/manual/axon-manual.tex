@@ -166,7 +166,7 @@ This manual teaches Axon and its IDE to someone who knows another numerical
 language, such as MATLAB, Python with NumPy, R or Julia. Chapter~\ref{ch:start}
 gets a first program running; Chapter~\ref{ch:ide} tours the IDE;
 Chapters~\ref{ch:lang} to \ref{ch:c} cover the language, the numerical modules,
-files and data, plotting, writing modules of your own, performance and calling
+working with text, files and data, plotting, writing modules of your own, performance and calling
 C. Appendix~\ref{app:builtins} lists every
 built-in function, and Appendix~\ref{app:examples} prints the example programs
 that come with Axon.
@@ -898,7 +898,8 @@ a b c
 \end{axonout}
 
 Strings compare with \code{==} and order with \code{<}. They cannot be changed
-in place: build a new one instead.
+in place: build a new one instead. Chapter~\ref{ch:text} covers strings in
+full: searching, changing, splitting and reading numbers from text.
 
 \section{Printing and display}\label{sec:printing}
 
@@ -1288,30 +1289,11 @@ Module & Contents \\
   PNG, SVG and PDF \\
 \texttt{random} & Seeded uniform, normal and integer random numbers \\
 \texttt{time} & Clocks and timing code \\
-\texttt{io} & Reading and writing files, and JSON \\
+\texttt{io} & Reading and writing files: text, lines, CSV and JSON (Chapter~\ref{ch:files}) \\
 \texttt{graphics} & The drawing layer under \texttt{plot} \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\paragraph{Files.} The \code{io} module reads and writes files: text, lines,
-CSV tables and JSON. Chapter~\ref{ch:files} covers it in full.
-
-\begin{axon}
-import io
-io.write_file("_notes.txt", "line one\nline two\n")
-println(length(io.read_file("_notes.txt")))
-io.write_json("_params.json", {rate: 0.3, names: {"S1", "S2"}, x: [1.0; 2.0]})
-p = io.read_json("_params.json")
-println(p.rate, p.names, p.x')
-io.delete_file("_notes.txt")
-io.delete_file("_params.json")
-\end{axon}
-\begin{axonout}
-18
-0.3 {"S1", "S2"} 1(*@\texttimes@*)2 matrix{real}
-  1.0  2.0
-\end{axonout}
 
 % ===================================================================
 \chapter{Numerical computing}\label{ch:num}
@@ -1518,6 +1500,226 @@ function times any expression: \code{time.bench(function() return A * A end)}.
 Section~\ref{sec:bench} shows them at work.
 
 % ===================================================================
+\chapter{Working with text}\label{ch:text}
+
+Text turns up in every program: labels and titles, names in data files,
+messages and reports. This chapter covers how to write strings, take them
+apart, search and change them, and put them back together.
+
+\section{Writing strings}
+
+A string is text in double quotes. A backslash starts an escape for a
+character that is awkward to type:
+
+\begin{longtable}{@{}lp{0.7\linewidth}@{}}
+\toprule
+Escape & Character \\
+\midrule
+\endhead
+\code{\n} & A line break \\
+\code{\t} & A tab \\
+\code{\"} & A double quote \\
+\code{\\} & A backslash \\
+\code|\u{3B1}| & The character with that hexadecimal code, here the Greek
+  letter alpha \\
+\bottomrule
+\end{longtable}
+
+There are no single-quoted strings, because \code{'} is the transpose
+operator. A string cannot run across a line break in the program; join pieces
+with \code{+} instead, which may end a line:
+
+\begin{axon}
+note = "First line\n\tthen an indented one, " +
+       "and \"quotes\" and \u{3B1} too"
+println(note)
+\end{axon}
+\begin{axonout}
+First line
+	then an indented one, and "quotes" and (*@$\alpha$@*) too
+\end{axonout}
+
+\section{Characters, length and slices}
+
+Indexing picks characters, starting from 1, and a range of indexes gives a
+slice; \code{end} is the last position. \code{length} counts characters, not
+bytes, so accented letters and other alphabets count one each. Strings cannot
+be changed in place: \code{s[1] = "j"} raises \code{TypeError}, so build a new
+string instead.
+
+\begin{axon}
+s = "Bacillus"
+println(s[1], s[end], s[2:4], s[end - 2:end], length(s))
+println(length("na\u{EF}ve"))
+for c in "abc"
+  print(c, "")
+end
+println()
+t = "M" + s[2:end]       # a new string; s is unchanged
+println(t, s)
+\end{axon}
+\begin{axonout}
+B s aci lus 8
+5
+a b c
+Macillus Bacillus
+\end{axonout}
+
+\section{Building strings}
+
+\begin{itemize}
+\item \code{+} joins two strings. Numbers must be converted first:
+  \code{"n = " + string(n)}; \code{"n = " + n} raises \code{TypeError}.
+\item \code{string(x)} gives any value as text, as \code{println} would show
+  it, and \code{format(x, d)} a number with exactly \code{d} decimals.
+\item \code{repeat(s, n)} repeats a string, which is handy for rules and
+  padding, and \code{join(parts, sep)} joins a list of strings with a separator.
+\item \code{println(a, b, c)} prints its values separated by single spaces;
+  to control the spacing exactly, build one string with \code{+} and print
+  that.
+\end{itemize}
+
+\begin{axon}
+x = 2.0 / 3.0
+println("x = " + string(x) + ", or about " + format(x, 3))
+println(repeat("=", 20))
+println(join({"Na", "K", "Cl"}, ", "), "|", join({"a", "b"}))
+\end{axon}
+\begin{axonout}
+x = 0.666666666666667, or about 0.667
+====================
+Na, K, Cl | ab
+\end{axonout}
+
+\section{Comparing and sorting}
+
+\code{==} and \code{!=} compare whole strings, and \code{<}, \code{<=},
+\code{>} and \code{>=} compare them by character code, which is alphabetical
+order except that all capitals come before all small letters. \code{sort} on a
+list of strings uses the same order. To ignore case, compare or sort
+lowered copies:
+
+\begin{axon}
+names = {"pear", "Apple", "fig"}
+println(sort(names), "Zebra" < "apple")
+println(lower("Apple") < lower("apple") or lower("Apple") == lower("apple"))
+\end{axon}
+\begin{axonout}
+{"Apple", "fig", "pear"} true
+true
+\end{axonout}
+
+\section{Searching}
+
+\begin{longtable}{@{}p{0.34\linewidth}p{0.6\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{contains(s, part)} & Whether \code{part} occurs anywhere in \code{s} \\
+\code{startswith(s, part)} & Whether \code{s} begins with \code{part} \\
+\code{endswith(s, part)} & Whether \code{s} ends with \code{part} \\
+\code{find(s, part)} & The position of the first \code{part} in \code{s}, or 0
+  when there is none \\
+\code{find(s, part, start)} & The same, looking from position \code{start} \\
+\bottomrule
+\end{longtable}
+
+Positions from \code{find} are character positions, so they work directly as
+indexes. Searching again from just after the last match finds every
+occurrence:
+
+\begin{axon}
+s = "abracadabra"
+println(contains(s, "cad"), startswith(s, "abr"), endswith(s, ".csv"))
+k = find(s, "a")
+while k > 0
+  print(k, "")
+  k = find(s, "a", k + 1)
+end
+println()
+\end{axon}
+\begin{axonout}
+true true false
+1 4 6 8 11
+\end{axonout}
+
+\section{Changing strings}
+
+These functions return a new string and leave the original alone:
+
+\begin{longtable}{@{}p{0.34\linewidth}p{0.6\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{upper(s)}, \code{lower(s)} & \code{s} in capitals or small letters, for
+  any alphabet \\
+\code{trim(s)} & \code{s} without spaces, tabs and line breaks at either end \\
+\code{ltrim(s)}, \code{rtrim(s)} & The same at the start only, or at the end
+  only \\
+\code{replace(s, old, new)} & \code{s} with every \code{old} replaced by
+  \code{new} \\
+\bottomrule
+\end{longtable}
+
+\begin{axon}
+s = "   Sample 7: OD = 0.42   "
+println("[" + trim(s) + "]", "[" + ltrim(s) + "]", "[" + rtrim(s) + "]")
+println(upper("ph"), lower("NaCl"), replace("2024-03-15", "-", "/"))
+\end{axon}
+\begin{axonout}
+[Sample 7: OD = 0.42] [Sample 7: OD = 0.42   ] [   Sample 7: OD = 0.42]
+PH nacl 2024/03/15
+\end{axonout}
+
+\section{Splitting text and reading numbers}
+
+\code{split(s)} breaks a string into words at runs of spaces, tabs and line
+breaks; \code{split(s, sep)} breaks it at every \code{sep}, keeping empty
+pieces, as a list of strings. \code{int(s)} and \code{real(s)} read the number
+written in a string, ignoring spaces around it, and raise
+\code{ArgumentError} for anything else. Chapter~\ref{ch:files} uses them to
+read data files line by line.
+
+\begin{axon}
+words = split("  the  quick brown\tfox ")
+println(words, length(words))
+fields = split("12, 4.5, , 7", ",")
+println(fields)
+println(int(trim(fields[1])) + 1, real(fields[2]) * 2)
+\end{axon}
+\begin{axonout}
+{"the", "quick", "brown", "fox"} 4
+{"12", " 4.5", " ", " 7"}
+13 9.0
+\end{axonout}
+
+\section{An example: tidying names and a report}
+
+Hand-typed data is rarely consistent. This program brings a list of messy
+species names to one spelling each, counts them, and prints an aligned table,
+using most of the functions in this chapter.
+
+\ex{text_report.sci}
+\begin{axonout}
+Organism           Count
+------------------------
+Bacillus subtilis  2
+E. coli            2
+Pseudomonas        1
+Yeast              1
+Bacillus subtilis matches; "i" first at 4
+E. coli matches; "i" first at 7
+E. coli MG1655
+\end{axonout}
+
+The \code{pad} function shows a common pattern: a column lines up when each
+entry is padded with \code{repeat(" ", width - length(s))} to the width of the
+longest one, and each line is built as one string so that \code{println}
+adds no spaces of its own.
+
+% ===================================================================
 \chapter{Files and data}\label{ch:files}
 
 Data comes in files and results go out to them. The \code{io} module reads
@@ -1610,7 +1812,8 @@ names label the axes.
 
 \code{io.read_lines(path)} gives the lines of a text file as a list of
 strings, without their line endings, whether the file was written on Windows
-or not. Four built-in functions then take each line apart:
+or not. These built-in functions then take each line apart
+(Chapter~\ref{ch:text} has the rest of the string functions):
 
 \begin{longtable}{@{}p{0.3\linewidth}p{0.64\linewidth}@{}}
 \toprule
@@ -2258,7 +2461,15 @@ Function & Result \\
 \code{split(s)}, \code{split(s, sep)} & The words of s, or the pieces between
   each sep, as a list of strings \\
 \code{join(parts, sep)} & A list of strings joined, with sep between them \\
-\code{trim(s)} & s without spaces, tabs and line breaks at either end \\
+\code{trim(s)}, \code{ltrim(s)}, \code{rtrim(s)} & s without spaces, tabs and
+  line breaks at both ends, the start or the end \\
+\code{upper(s)}, \code{lower(s)} & s in capital or small letters \\
+\code{contains(s, p)}, \code{startswith(s, p)}, \code{endswith(s, p)} & Whether
+  p occurs in s, begins it or ends it \\
+\code{find(s, p)}, \code{find(s, p, start)} & The position of the first p in s,
+  or 0 \\
+\code{replace(s, old, new)} & s with every old replaced by new \\
+\code{repeat(s, n)} & s repeated n times \\
 \code{int(s)}, \code{real(s)} & The number written in the string s \\
 \code{display_size(rows, cols)} & Arrays up to that size are shown in full \\
 \code{display_decimals(n)} & Displayed reals show \code{n} decimals \\
