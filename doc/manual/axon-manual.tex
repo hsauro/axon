@@ -1015,7 +1015,8 @@ end
 \end{axonout}
 
 \paragraph{Keyword parameters.} Parameters after a \code{;} are keyword
-parameters: they have defaults and are passed by name.
+parameters: they have defaults and are passed by name. In calls the \code{;}
+is not written, only commas: \code{damped(2.0, rate = 0.1)}.
 
 \begin{axon}
 function damped(t; rate = 0.5, amplitude = 1.0)
@@ -1026,6 +1027,16 @@ println(damped(2.0), damped(2.0, rate = 0.1), damped(2.0, amplitude = 3.0, rate 
 \begin{axonout}
 0.367879441171442 0.818730753077982 3.0
 \end{axonout}
+
+\paragraph{Reading signatures.} This manual and the Language Reference write
+a function's parameters the same way:
+\code{fmt.matrix(A; decimals: int, digits: int = 6)} means \code{A} is passed
+by position and the rest by name. \code{: int} gives a parameter's type, as in
+an annotation, and \code{= 6} its default. A keyword shown without a value,
+like \code{decimals} here, is \emph{not set} unless you give it (its value is
+\code{nothing}), and the function then does what its description says: here,
+numbers show their significant digits. Not set is different from zero:
+\code{decimals = 0} asks for no digits after the point.
 
 \paragraph{Optional positional parameters.} A positional parameter with a
 default may be left out. Every positional parameter after it needs a default
@@ -1332,7 +1343,7 @@ Function & Result \\
 \code{lstsq(A, b)} & The minimum-norm least-squares solution, for any shape \\
 \code{det(A)} & The determinant \\
 \code{inv(A)} & The inverse \\
-\code{eig(A)} & The eigenvalues; \code{eig(A, vectors = true)} also returns the
+\code{eig(A; vectors: bool = false)} & The eigenvalues; \code{eig(A, vectors = true)} also returns the
   eigenvectors \\
 \code{svd(A)} & \code{U, s, V} with \code{A = U*diag(s)*V'}, \code{s} in
   decreasing order \\
@@ -1340,8 +1351,8 @@ Function & Result \\
 \code{lu(A)} & \code{L, U} with \code{A = L*U} (\code{L} row-permuted); works
   on sparse matrices too \\
 \code{chol(A)} & Upper-triangular \code{R} with \code{A = R'*R} \\
-\code{rank(A; tol)} & The numerical rank \\
-\code{null(A; tol)} & An orthonormal basis of the null space \\
+\code{rank(A; tol: real)} & The numerical rank \\
+\code{null(A; tol: real)} & An orthonormal basis of the null space \\
 \code{norm(x; p = 2)} & Vector p-norms; for a matrix the 2-norm, \code{p = 1},
   \code{"inf"} or \code{"fro"} \\
 \code{expm(A)} & The matrix exponential \\
@@ -1475,17 +1486,17 @@ takes its parameters, then an optional shape: nothing for a number, \code{n} for
 a vector, \code{m, n} for a matrix.
 
 \begin{center}
-\begin{tabular}{@{}lp{0.55\linewidth}@{}}
+\begin{tabular}{@{}lp{0.5\linewidth}@{}}
 \toprule
 Function & Result \\
 \midrule
-\code{seed(n)} & Seeds the generator \\
+\code{seed(n: int)} & Seeds the generator \\
 \code{rand(...)} & Uniform reals in $[0, 1)$ \\
 \code{randn(...)} & Standard normal reals \\
-\code{uniform(a, b, ...)} & Uniform reals in $[a, b)$ \\
-\code{normal(mu, sigma, ...)} & Normal reals with mean \code{mu} and
+\code{uniform(a: real, b: real, ...)} & Uniform reals in $[a, b)$ \\
+\code{normal(mu: real, sigma: real, ...)} & Normal reals with mean \code{mu} and
   standard deviation \code{sigma} \\
-\code{randint(lo, hi, ...)} & Integers from \code{lo} to \code{hi} inclusive \\
+\code{randint(lo: int, hi: int, ...)} & Integers from \code{lo} to \code{hi} inclusive \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1657,12 +1668,12 @@ true
 Function & Result \\
 \midrule
 \endhead
-\code{contains(s, part)} & Whether \code{part} occurs anywhere in \code{s} \\
-\code{startswith(s, part)} & Whether \code{s} begins with \code{part} \\
-\code{endswith(s, part)} & Whether \code{s} ends with \code{part} \\
-\code{find(s, part)} & The position of the first \code{part} in \code{s}, or 0
+\code{contains(s: string, part: string)} & Whether \code{part} occurs anywhere in \code{s} \\
+\code{startswith(s: string, part: string)} & Whether \code{s} begins with \code{part} \\
+\code{endswith(s: string, part: string)} & Whether \code{s} ends with \code{part} \\
+\code{find(s: string, part: string)} & The position of the first \code{part} in \code{s}, or 0
   when there is none \\
-\code{find(s, part, start)} & The same, looking from position \code{start} \\
+\code{find(s, part, start: int)} & The same, looking from position \code{start} \\
 \bottomrule
 \end{longtable}
 
@@ -1694,12 +1705,12 @@ These functions return a new string and leave the original alone:
 Function & Result \\
 \midrule
 \endhead
-\code{upper(s)}, \code{lower(s)} & \code{s} in capitals or small letters, for
+\code{upper(s: string)}, \code{lower(s: string)} & \code{s} in capitals or small letters, for
   any alphabet \\
-\code{trim(s)} & \code{s} without spaces, tabs and line breaks at either end \\
-\code{ltrim(s)}, \code{rtrim(s)} & The same at the start only, or at the end
+\code{trim(s: string)} & \code{s} without spaces, tabs and line breaks at either end \\
+\code{ltrim(s: string)}, \code{rtrim(s: string)} & The same at the start only, or at the end
   only \\
-\code{replace(s, old, new)} & \code{s} with every \code{old} replaced by
+\code{replace(s: string, old: string, new: string)} & \code{s} with every \code{old} replaced by
   \code{new} \\
 \bottomrule
 \end{longtable}
@@ -1795,17 +1806,19 @@ leave the display settings alone:
 Keyword & Effect \\
 \midrule
 \endhead
-\code{decimals} & Exactly that many digits after the point \\
-\code{digits} & Up to that many significant digits (\code{matrix} uses 6, as
-  the display does) \\
-\code{sci = true} & Scientific notation, with \code{decimals} digits after the
-  point \\
-\code{width} & \code{number} only: pad on the left to that many characters \\
-\code{header} & \code{matrix} only: \code{true} adds the
+\code{decimals: int} & Exactly that many digits after the point \\
+\code{digits: int} & Up to that many significant digits (\code{matrix} uses 6,
+  as the display does) \\
+\code{sci: bool} & \code{true} for scientific notation, with \code{decimals}
+  digits after the point \\
+\code{width: int} & \code{number} only: pad on the left to that many
+  characters \\
+\code{header: bool} & \code{matrix} only: \code{true} adds the
   \code|2x3 matrix{real}| line \\
-\code{sep} & \code{matrix} only: what goes between values (two spaces) \\
-\code{align} & \code{matrix} only: \code{false} drops the padding that lines
-  up the columns \\
+\code{sep: string} & \code{matrix} only: what goes between values (two
+  spaces) \\
+\code{align: bool} & \code{matrix} only: \code{false} drops the padding that
+  lines up the columns \\
 \bottomrule
 \end{longtable}
 
@@ -1876,19 +1889,19 @@ raises \code{IOError}.
 Function & Result \\
 \midrule
 \endhead
-\code{io.read_file(path)} & The whole of a text file, as one string \\
-\code{io.write_file(path, text)} & Writes a string, replacing the file \\
-\code{io.read_lines(path)} & The lines of a text file, as a list of strings \\
-\code{io.read_csv(path)} & A table of numbers: the record
+\code{io.read_file(path: string)} & The whole of a text file, as one string \\
+\code{io.write_file(path: string, text: string)} & Writes a string, replacing the file \\
+\code{io.read_lines(path: string)} & The lines of a text file, as a list of strings \\
+\code{io.read_csv(path: string)} & A table of numbers: the record
   \code|{names, data}| \\
-\code{io.write_csv(path, A, names)} & Writes a matrix as a table, with an
+\code{io.write_csv(path: string, A, names)} & Writes a matrix as a table, with an
   optional header \\
-\code{io.write_json(path, value)} & Writes any value (numbers, strings, lists,
+\code{io.write_json(path: string, value)} & Writes any value (numbers, strings, lists,
   records, vectors, matrices) as JSON \\
-\code{io.read_json(path)} & The value a JSON file describes \\
-\code{io.file_exists(path)} & Whether the file exists \\
-\code{io.delete_file(path)} & Deletes the file; \code{false} if there was none \\
-\code{io.read_bytes(path)} & The bytes of any file, as an \code{int} vector \\
+\code{io.read_json(path: string)} & The value a JSON file describes \\
+\code{io.file_exists(path: string)} & Whether the file exists \\
+\code{io.delete_file(path: string)} & Deletes the file; \code{false} if there was none \\
+\code{io.read_bytes(path: string)} & The bytes of any file, as an \code{int} vector \\
 \bottomrule
 \end{longtable}
 
@@ -1962,14 +1975,14 @@ or not. These built-in functions then take each line apart
 Function & Result \\
 \midrule
 \endhead
-\code{split(s)} & The words of \code{s}: the pieces between runs of spaces,
+\code{split(s: string)} & The words of \code{s}: the pieces between runs of spaces,
   tabs and line breaks \\
-\code{split(s, sep)} & The pieces between each \code{sep}, empty ones
+\code{split(s, sep: string)} & The pieces between each \code{sep}, empty ones
   included: \code{split("a,,b", ",")} is \code|{"a", "", "b"}| \\
-\code{trim(s)} & \code{s} without spaces, tabs and line breaks at either end \\
-\code{join(parts, sep)} & The strings of a list joined, with \code{sep}
+\code{trim(s: string)} & \code{s} without spaces, tabs and line breaks at either end \\
+\code{join(parts: list, sep: string)} & The strings of a list joined, with \code{sep}
   between them \\
-\code{real(s)}, \code{int(s)} & The number written in \code{s}:
+\code{real(s: string)}, \code{int(s: string)} & The number written in \code{s}:
   \code{real("2.5e-3")}, \code{int("42")}; anything else raises
   \code{ArgumentError} \\
 \bottomrule
@@ -2501,27 +2514,27 @@ IDE \key{F1} does.
 Function & Result \\
 \midrule
 \endhead
-\code{zeros(m, n)}, \code{zeros(n)} & An m\texttimes n real matrix, or a vector,
+\code{zeros(m: int, n: int)}, \code{zeros(n: int)} & An m\texttimes n real matrix, or a vector,
   of zeros \\
-\code{ones(m, n)}, \code{ones(n)} & The same, filled with ones \\
-\code{eye(n)}, \code{eye(m, n)} & The identity matrix \\
-\code{rand()}, \code{rand(n)}, \code{rand(m, n)} & Uniform random reals in
+\code{ones(m: int, n: int)}, \code{ones(n: int)} & The same, filled with ones \\
+\code{eye(n: int)}, \code{eye(m: int, n: int)} & The identity matrix \\
+\code{rand()}, \code{rand(n: int)}, \code{rand(m: int, n: int)} & Uniform random reals in
   $[0, 1)$ \\
-\code{linspace(a, b, n)} & n equally spaced points from a to b \\
+\code{linspace(a: real, b: real, n: int)} & n equally spaced points from a to b \\
 \code{range(n)}, \code{range(a, b)}, \code{range(a, b, h)} & \code{1:n}, or the
   range \code{a:h:b} in reading order (step 1 if left out) \\
-\code{size(A)}, \code{size(A, d)} & The row and column counts as two values,
+\code{size(A)}, \code{size(A, d: int)} & The row and column counts as two values,
   or the count along dimension d \\
 \code{length(x)} & The number of elements of an array, list, string or
   dictionary \\
-\code{reshape(A, m, n)}, \code{reshape(A, n)} & The elements in column-major
+\code{reshape(A, m: int, n: int)}, \code{reshape(A, n: int)} & The elements in column-major
   order, as an m\texttimes n matrix or a vector \\
 \code{eltype(A)} & The element type: \code{"bool"}, \code{"int"},
   \code{"real"} or \code{"complex"} \\
-\code{sum(A)}, \code{sum(A, d)} & The sum of all elements, or along dimension
+\code{sum(A)}, \code{sum(A, d: int)} & The sum of all elements, or along dimension
   d \\
-\code{prod(A)}, \code{prod(A, d)} & The product \\
-\code{mean(A)}, \code{mean(A, d)} & The mean \\
+\code{prod(A)}, \code{prod(A, d: int)} & The product \\
+\code{mean(A)}, \code{mean(A, d: int)} & The mean \\
 \code{min(A)}, \code{max(A)} & The smallest or largest element \\
 \code{min(a, b)}, \code{max(a, b)} & Elementwise, with broadcasting \\
 \code{all(A)}, \code{any(A)} & Whether every, or some, element of a
@@ -2543,10 +2556,10 @@ Function & Result \\
 Function & Result \\
 \midrule
 \endhead
-\code{sparse(i, j, v, m, n)} & An m\texttimes n sparse matrix with entries
+\code{sparse(i, j, v, m: int, n: int)} & An m\texttimes n sparse matrix with entries
   \code{v[k]} at \code{(i[k], j[k])} \\
 \code{sparse(A)} & A dense matrix as a sparse one \\
-\code{speye(n)}, \code{speye(m, n)} & The sparse identity \\
+\code{speye(n: int)}, \code{speye(m: int, n: int)} & The sparse identity \\
 \code{nnz(S)} & The number of stored entries \\
 \code{full(S)} & A sparse matrix as a dense one \\
 \code{splu(S)} & \code{L, U} with \code{S = L*U} \\
@@ -2583,7 +2596,7 @@ Function & Result \\
 Function & Result \\
 \midrule
 \endhead
-\code{complex(re, im)}, \code{complex(x)} & A complex number \\
+\code{complex(re: real, im: real)}, \code{complex(x)} & A complex number \\
 \code{real(z)}, \code{imag(z)} & The real or imaginary part \\
 \code{conj(z)} & The complex conjugate \\
 \code{arg(z)} & The phase angle in radians \\
@@ -2598,23 +2611,23 @@ Function & Result \\
 \endhead
 \code{print(a, b, ...)} & Writes the values separated by spaces \\
 \code{println(a, b, ...)} & The same, then ends the line \\
-\code{format(x, d)} & \code{x} as text with exactly \code{d} decimals \\
+\code{format(x, d: int)} & \code{x} as text with exactly \code{d} decimals \\
 \code{string(x)} & The display form of any value, as a string \\
-\code{split(s)}, \code{split(s, sep)} & The words of s, or the pieces between
+\code{split(s: string)}, \code{split(s: string, sep: string)} & The words of s, or the pieces between
   each sep, as a list of strings \\
-\code{join(parts, sep)} & A list of strings joined, with sep between them \\
-\code{trim(s)}, \code{ltrim(s)}, \code{rtrim(s)} & s without spaces, tabs and
+\code{join(parts: list, sep: string)} & A list of strings joined, with sep between them \\
+\code{trim(s: string)}, \code{ltrim(s: string)}, \code{rtrim(s: string)} & s without spaces, tabs and
   line breaks at both ends, the start or the end \\
-\code{upper(s)}, \code{lower(s)} & s in capital or small letters \\
-\code{contains(s, p)}, \code{startswith(s, p)}, \code{endswith(s, p)} & Whether
+\code{upper(s: string)}, \code{lower(s: string)} & s in capital or small letters \\
+\code{contains(s: string, p: string)}, \code{startswith(s: string, p: string)}, \code{endswith(s: string, p: string)} & Whether
   p occurs in s, begins it or ends it \\
-\code{find(s, p)}, \code{find(s, p, start)} & The position of the first p in s,
+\code{find(s: string, p: string)}, \code{find(s, p, start: int)} & The position of the first p in s,
   or 0 \\
-\code{replace(s, old, new)} & s with every old replaced by new \\
-\code{repeat(s, n)} & s repeated n times \\
-\code{parse_function(params, expr)} & A function made from text
+\code{replace(s: string, old: string, new: string)} & s with every old replaced by new \\
+\code{repeat(s: string, n: int)} & s repeated n times \\
+\code{parse_function(params: string, expr: string)} & A function made from text
   (Section~\ref{sec:parsefn}) \\
-\code{int(s)}, \code{real(s)} & The number written in the string s \\
+\code{int(s: string)}, \code{real(s: string)} & The number written in the string s \\
 \bottomrule
 \end{longtable}
 
@@ -2626,9 +2639,9 @@ Function & Result \\
 \endhead
 \code{append(l, x)} & A new list or vector with \code{x} added \\
 \code{dict(key => value, ...)} & A dictionary \\
-\code{get(d, key, default)} & \code{d[key]}, or \code{default} when missing \\
-\code{haskey(d, key)} & Whether the key is present \\
-\code{keys(d)} & The keys, as a list in insertion order \\
+\code{get(d: dict, key, default)} & \code{d[key]}, or \code{default} when missing \\
+\code{haskey(d: dict, key)} & Whether the key is present \\
+\code{keys(d: dict)} & The keys, as a list in insertion order \\
 \bottomrule
 \end{longtable}
 
@@ -2642,10 +2655,10 @@ Function & Result \\
 \code{isequal(a, b)} & Whether two values are equal as whole values \\
 \code{isa(x, T)} & Whether x is exactly of type T: a type name such as
   \code|"int"| or \code|"vector{real}"|, or a declared record type \\
-\code{error(message)}, \code{error(kind, message)} & Raises an error \\
-\code{keep(f)} & Keeps a callback valid after the \code{extern} call that
+\code{error(message: string)}, \code{error(kind: string, message: string)} & Raises an error \\
+\code{keep(f: function)} & Keeps a callback valid after the \code{extern} call that
   received it \\
-\code{atexit(f)} & Calls \code{f()} when the program ends normally, the last
+\code{atexit(f: function)} & Calls \code{f()} when the program ends normally, the last
   registered first \\
 \bottomrule
 \end{longtable}

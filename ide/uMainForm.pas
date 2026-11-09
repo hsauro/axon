@@ -2609,6 +2609,28 @@ begin
       if T.StartsWith('import ') or (T.StartsWith('from ') and T.Contains(' import ')) then
         Imports.Add(T);
     end;
+    // F1 on the module in "from m import f" or "import m as a" (or any
+    // import of m): those lines do not bind m itself, so import it too.
+    for K := 0 to Imports.Count - 1 do
+    begin
+      T := Imports[K];
+      if T.StartsWith('from ') then
+        ModName := T.Substring(5, T.IndexOf(' import ') - 5).Trim
+      else
+      begin
+        ModName := T.Substring(7);
+        if ModName.Contains(' as ') then
+          ModName := ModName.Substring(0, ModName.IndexOf(' as '));
+        if ModName.Contains('#') then
+          ModName := ModName.Substring(0, ModName.IndexOf('#'));
+        ModName := ModName.Trim;
+      end;
+      if ModName = Name then
+      begin
+        Imports.Add('import ' + Name);
+        Break;
+      end;
+    end;
     // The reference names modules by their real name: undo "import m as a".
     FHelpRefName := Name;
     for T in Imports do

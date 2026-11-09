@@ -80,6 +80,7 @@ This reference defines the syntax and semantics of Axon precisely enough to impl
 
 - **Grammar notation.** The grammar uses EBNF: `{ x }` means zero or more repetitions, `[ x ]` means optional, `|` separates alternatives, and quoted text is a literal token.
 - **Token names.** Upper-case names such as `IDENT`, `NUMBER` and `NEWLINE` are tokens produced by the lexer.
+- **Signatures.** The tables of functions write a signature as `name(positional; keywords)`, as a definition does: the parameters before `;` are passed in order, and those after it by name, as in `matrix(A, decimals = 2)`; the `;` is not written in calls. `name: type` gives a parameter's type, written as in an annotation (a parameter without one takes several kinds of value, described in the text, such as `x` for any number or `A` for a vector or matrix), and `name = value` its default. A keyword parameter listed without a value, such as `decimals` in `matrix(A; decimals: int, digits: int = 6)` or `label` in `line(x, y; label: string, color)`, is **not set** unless it is given (its value is `nothing`), and the function then behaves as its description says: `matrix` without `decimals` shows significant digits, and `line` without `label` leaves the series out of the legend. Not set is not the same as a zero or empty value: `decimals = 0` asks for no digits after the point.
 - **Normative words.** "Error" means the implementation must raise the named error kind (see Errors). "Undefined" is never used, because every construct either has a defined result or raises an error.
 
 ## Lexical structure
@@ -634,19 +635,19 @@ These functions, and the constants `pi` and `e`, are always available, without a
 
 | Function | Result |
 | --- | --- |
-| `zeros(m, n)`, `zeros(n)` | An m×n `real` matrix, or a vector of length n, of zeros |
-| `ones(m, n)`, `ones(n)` | The same, filled with ones |
-| `eye(n)`, `eye(m, n)` | The identity matrix |
-| `rand()`, `rand(n)`, `rand(m, n)` | Uniform random reals in [0, 1); `random.seed` makes them repeat |
-| `linspace(a, b, n)` | A `real` vector of n points from a to b inclusive |
+| `zeros(m: int, n: int)`, `zeros(n: int)` | An m×n `real` matrix, or a vector of length n, of zeros |
+| `ones(m: int, n: int)`, `ones(n: int)` | The same, filled with ones |
+| `eye(n: int)`, `eye(m: int, n: int)` | The identity matrix |
+| `rand()`, `rand(n: int)`, `rand(m: int, n: int)` | Uniform random reals in [0, 1); `random.seed` makes them repeat |
+| `linspace(a: real, b: real, n: int)` | A `real` vector of n points from a to b inclusive |
 | `range(n)`, `range(start, stop)`, `range(start, stop, step)` | `1:n`, or the range `start:step:stop` (step 1 by default) written in reading order: `range(0, 1, 0.1)` is `0:0.1:1` |
-| `size(A)`, `size(A, d)` | The row and column counts as two values (`[m, n] = size(A)`), or the count along dimension d |
+| `size(A)`, `size(A, d: int)` | The row and column counts as two values (`[m, n] = size(A)`), or the count along dimension d |
 | `length(x)` | The number of elements of an array, list, string or dictionary |
-| `reshape(A, m, n)`, `reshape(A, n)` | The elements of `A` in column-major order, as an m×n matrix or a vector |
+| `reshape(A, m: int, n: int)`, `reshape(A, n: int)` | The elements of `A` in column-major order, as an m×n matrix or a vector |
 | `eltype(A)` | The element type of an array, as a string: `"bool"`, `"int"`, `"real"` or `"complex"` |
-| `sum(A)`, `sum(A, d)` | The sum of all elements, or the sums along dimension d |
-| `prod(A)`, `prod(A, d)` | The product of all elements, or the products along dimension d |
-| `mean(A)`, `mean(A, d)` | The mean of all elements, or the means along dimension d (`mean(A, 1)` is the row of column means) |
+| `sum(A)`, `sum(A, d: int)` | The sum of all elements, or the sums along dimension d |
+| `prod(A)`, `prod(A, d: int)` | The product of all elements, or the products along dimension d |
+| `mean(A)`, `mean(A, d: int)` | The mean of all elements, or the means along dimension d (`mean(A, 1)` is the row of column means) |
 | `min(A)`, `max(A)` | The smallest or largest element |
 | `min(a, b)`, `max(a, b)` | The smaller or larger value, elementwise with broadcasting |
 | `all(A)`, `any(A)` | Whether every, or some, element of a `bool` array is `true` |
@@ -665,9 +666,9 @@ See [Vectors and matrices](#vectors-and-matrices) and [Linear-algebra operators]
 
 | Function | Result |
 | --- | --- |
-| `sparse(i, j, v, m, n)` | An m×n sparse matrix with entries `v[k]` at `(i[k], j[k])` |
+| `sparse(i, j, v, m: int, n: int)` | An m×n sparse matrix with entries `v[k]` at `(i[k], j[k])` |
 | `sparse(A)` | A dense matrix as a sparse one |
-| `speye(n)`, `speye(m, n)` | The sparse identity |
+| `speye(n: int)`, `speye(m: int, n: int)` | The sparse identity |
 | `nnz(S)` | The number of stored entries of a sparse matrix, or of nonzero elements of an array |
 | `full(S)` | A sparse matrix as a dense one |
 | `splu(S)` | Two sparse values `L, U` with `S = L*U`: `[L, U] = splu(S)` |
@@ -681,7 +682,7 @@ See [Sparse operands](#sparse-operands).
 | Function | Result |
 | --- | --- |
 | `abs(x)` | The absolute value, or the modulus of a complex number |
-| `factorial(n)` | n! for an `int` n ≥ 0 |
+| `factorial(n: int)` | n! for an `int` n ≥ 0 |
 
 ### Rounding and integer functions
 
@@ -700,7 +701,7 @@ See [Numeric promotion](#numeric-promotion).
 
 | Function | Result |
 | --- | --- |
-| `complex(re, im)`, `complex(x)` | A complex number from its parts, or from a real |
+| `complex(re: real, im: real)`, `complex(x)` | A complex number from its parts, or from a real |
 | `real(z)`, `imag(z)` | The real or imaginary part |
 | `conj(z)` | The complex conjugate |
 | `arg(z)` | The argument (phase angle) in radians |
@@ -712,17 +713,17 @@ See [Numeric promotion](#numeric-promotion).
 | --- | --- |
 | `print(a, b, ...)` | Writes the values separated by spaces, without a newline |
 | `println(a, b, ...)` | Writes the values separated by spaces, then a newline |
-| `format(x, decimals)` | `x` as text with exactly that many digits after the point: `format(3.14159, 2)` is `"3.14"` |
+| `format(x, decimals: int)` | `x` as text with exactly that many digits after the point: `format(3.14159, 2)` is `"3.14"` |
 | `string(x)` | The display form of any value, as a string |
-| `split(s)`, `split(s, sep)` | The words of `s`, separated by runs of spaces, tabs and line breaks (no empty words); with `sep`, the pieces between each occurrence of the string `sep`, empty ones included: `split("a,,b", ",")` is `{"a", "", "b"}`. An empty `sep` raises `ArgumentError` |
-| `join(parts)`, `join(parts, sep)` | The strings of the list `parts` joined, with `sep` between them (default none); an item that is not a string raises `TypeError` |
-| `trim(s)`, `ltrim(s)`, `rtrim(s)` | `s` without the spaces, tabs and line breaks at both ends, at the start only, or at the end only |
-| `upper(s)`, `lower(s)` | `s` in capital or small letters, for every alphabet |
-| `contains(s, part)`, `startswith(s, part)`, `endswith(s, part)` | Whether `part` occurs in `s`, begins it or ends it; an empty `part` always does |
-| `find(s, part)`, `find(s, part, start)` | The position of the first `part` in `s` at or after position `start` (default 1), or 0 when there is none. Positions count characters, as indexing does; a `start` below 1 raises `ArgumentError` |
-| `replace(s, old, new)` | `s` with every occurrence of `old` replaced by `new`; an empty `old` raises `ArgumentError` |
-| `repeat(s, n)` | `s` repeated `n` times: `repeat("-", 40)`; a negative `n` raises `ArgumentError` |
-| `int(s)`, `real(s)` | A number read from text: `int("42")`, `real("2.5e-3")`. Spaces around the number are ignored; `real` reads a decimal number correctly rounded, and `NaN`, `Inf` and `-Inf`. Text that is not a number of that kind raises `ArgumentError` |
+| `split(s: string)`, `split(s: string, sep: string)` | The words of `s`, separated by runs of spaces, tabs and line breaks (no empty words); with `sep`, the pieces between each occurrence of the string `sep`, empty ones included: `split("a,,b", ",")` is `{"a", "", "b"}`. An empty `sep` raises `ArgumentError` |
+| `join(parts: list)`, `join(parts: list, sep: string)` | The strings of the list `parts` joined, with `sep` between them (default none); an item that is not a string raises `TypeError` |
+| `trim(s: string)`, `ltrim(s: string)`, `rtrim(s: string)` | `s` without the spaces, tabs and line breaks at both ends, at the start only, or at the end only |
+| `upper(s: string)`, `lower(s: string)` | `s` in capital or small letters, for every alphabet |
+| `contains(s: string, part: string)`, `startswith(s: string, part: string)`, `endswith(s: string, part: string)` | Whether `part` occurs in `s`, begins it or ends it; an empty `part` always does |
+| `find(s: string, part: string)`, `find(s: string, part: string, start: int)` | The position of the first `part` in `s` at or after position `start` (default 1), or 0 when there is none. Positions count characters, as indexing does; a `start` below 1 raises `ArgumentError` |
+| `replace(s: string, old: string, new: string)` | `s` with every occurrence of `old` replaced by `new`; an empty `old` raises `ArgumentError` |
+| `repeat(s: string, n: int)` | `s` repeated `n` times: `repeat("-", 40)`; a negative `n` raises `ArgumentError` |
+| `int(s: string)`, `real(s: string)` | A number read from text: `int("42")`, `real("2.5e-3")`. Spaces around the number are ignored; `real` reads a decimal number correctly rounded, and `NaN`, `Inf` and `-Inf`. Text that is not a number of that kind raises `ArgumentError` |
 
 See [Printing](#printing) and [Display](#display).
 
@@ -732,9 +733,9 @@ See [Printing](#printing) and [Display](#display).
 | --- | --- |
 | `append(l, x)` | A new list or vector with `x` added at the end |
 | `dict(key => value, ...)` | A dictionary with the given entries |
-| `get(d, key, default)` | `d[key]`, or `default` when the key is missing |
-| `haskey(d, key)` | Whether the dictionary has the key |
-| `keys(d)` | The keys, as a list in insertion order |
+| `get(d: dict, key, default)` | `d[key]`, or `default` when the key is missing |
+| `haskey(d: dict, key)` | Whether the dictionary has the key |
+| `keys(d: dict)` | The keys, as a list in insertion order |
 
 See [Lists, records and dictionaries](#lists-records-and-dictionaries).
 
@@ -745,10 +746,10 @@ See [Lists, records and dictionaries](#lists-records-and-dictionaries).
 | `typeof(x)` | The type of a value, as a string: `"int"`, `"real"`, `"vector"`, `"matrix"`, `"string"`, `"dict"` and so on |
 | `isequal(a, b)` | Whether two values are equal as whole values (see [Comparison](#comparison)) |
 | `isa(x, T)` | Whether `x` is exactly of type `T`, with no widening (`isa(1, "real")` is `false`). `T` is a declared record type, or a string: a type name as in annotations (`"int"`, `"real"`, `"string"`, `"vector"`, `"vector{real}"`, `"matrix{int}"`, `"list"`, `"record"`, `"dict"`, `"function"`, `"nothing"`, …) or a declared record type's name. Any record is a `"record"`; built-in and extern functions are `"function"`s. A `T` that is neither raises `TypeError` |
-| `error(message)`, `error(kind, message)` | Raises an error (see [Errors](#errors)) |
-| `keep(f)` | Keeps a callback valid after the `extern` call that received it (see [Foreign functions](#foreign-functions)) |
-| `parse_function(params, expr)`, `parse_function(text)` | A function made from text at run time. With two strings, `params` names the parameters (`"x, y"`) and `expr` is the one-line expression the function returns (`"2*sin(x) + y^2"`); with one, `text` is a whole lambda, `"function(x) … end"`. The function sees only its parameters and the built-in functions and constants: not the program's variables, nor any module. In the expression form every name is checked when the function is made, and an unknown one raises `NameError` with its position in the expression; text that does not parse raises `SyntaxError`, and text that is not a single function `ArgumentError`. The result is an ordinary function, compiled by the JIT like any other |
-| `atexit(f)` | Registers the function `f` to be called with no arguments when the program ends: after its last statement, the most recently registered first. It is not called when the program stops with an uncaught error, nor at the REPL. A function that is not a function raises `TypeError` |
+| `error(message: string)`, `error(kind: string, message: string)` | Raises an error (see [Errors](#errors)) |
+| `keep(f: function)` | Keeps a callback valid after the `extern` call that received it (see [Foreign functions](#foreign-functions)) |
+| `parse_function(params: string, expr: string)`, `parse_function(text: string)` | A function made from text at run time. With two strings, `params` names the parameters (`"x, y"`) and `expr` is the one-line expression the function returns (`"2*sin(x) + y^2"`); with one, `text` is a whole lambda, `"function(x) … end"`. The function sees only its parameters and the built-in functions and constants: not the program's variables, nor any module. In the expression form every name is checked when the function is made, and an unknown one raises `NameError` with its position in the expression; text that does not parse raises `SyntaxError`, and text that is not a single function `ArgumentError`. The result is an ordinary function, compiled by the JIT like any other |
+| `atexit(f: function)` | Registers the function `f` to be called with no arguments when the program ends: after its last statement, the most recently registered first. It is not called when the program stops with an uncaught error, nor at the REPL. A function that is not a function raises `TypeError` |
 
 ### Constants
 
@@ -773,13 +774,13 @@ These modules come with Axon and are imported by name (`import linalg`, `from od
 | `lstsq(A, b)` | The minimum-norm least-squares solution, for any shape, including rank-deficient `A` |
 | `det(A)` | The determinant, from the LU factorisation |
 | `inv(A)` | The inverse; `SingularMatrix` when singular |
-| `eig(A)` | The eigenvalues: a `real` vector when all are real, a `complex` vector otherwise. `eig(A, vectors=true)` returns two values, the eigenvalues and a matrix of eigenvectors |
+| `eig(A; vectors: bool = false)` | The eigenvalues: a `real` vector when all are real, a `complex` vector otherwise. `eig(A, vectors=true)` returns two values, the eigenvalues and a matrix of eigenvectors |
 | `svd(A)` | Three values `U, s, V` with `A = U*S*V'` (`adjoint` for complex), `s` the vector of singular values in decreasing order and `U`, `V` square |
 | `qr(A)` | Two values `Q, R`: the thin factorisation, `Q` m×k with orthonormal columns and `R` k×n upper triangular, `k = min(m, n)` |
 | `lu(A)` | Two values `L, U` with `A = L*U`, `U` upper triangular and `L` a row permutation of a unit lower-triangular matrix. For a sparse `A`, which must be square, both are sparse, and the fill-reducing column order is folded into `U`, which is then a column permutation of an upper-triangular matrix |
 | `chol(A)` | Upper-triangular `R` with `A = R'*R` (`adjoint(R)*R` for complex); `DomainError` when `A` is not positive definite |
-| `rank(A; tol)` | The number of singular values above `tol`, by default `max(m, n) * eps * max(s)` with `eps = 2.220446049250313e-16` |
-| `null(A; tol)` | An orthonormal basis of the null space, as the columns of a matrix |
+| `rank(A; tol: real)` | The number of singular values above `tol`, by default `max(m, n) * eps * max(s)` with `eps = 2.220446049250313e-16` |
+| `null(A; tol: real)` | An orthonormal basis of the null space, as the columns of a matrix: the right singular vectors whose singular values are not above `tol`, by default the same tolerance as `rank` |
 | `norm(x; p=2)` | For a vector the p-norm, with `p` a positive number or `"inf"`; for a matrix the 2-norm (largest singular value), `p=1` (largest column sum), `"inf"` (largest row sum) or `"fro"` (Frobenius) |
 | `expm(A)` | The matrix exponential, by scaling and squaring with a degree-13 Padé approximant |
 
@@ -791,11 +792,11 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 
 | Function | Effect |
 | --- | --- |
-| `set_size(rows, cols)` | Arrays with at most `rows` rows and `cols` columns are displayed in full. A larger dimension n shows its first `(n + 1) div 2` and last `n div 2` rows or columns, around the `⋮` line or `…` column. `set_size()` restores 10 rows and 8 columns |
-| `set_decimals(n)` | Every displayed `real` (scalars, array entries, the parts of complex numbers, range bounds) shows exactly `n` decimals, 1 to 15, instead of significant digits; magnitudes from 1e15 keep the exponent form, as in `1.000e20`. `int` values are unaffected. `set_decimals()` restores significant digits |
-| `set_header(on)` | Whether displayed arrays start with their header line (`2×3 matrix{int}`). With `set_header(false)` only the rows are shown, starting at the left margin, an empty array shows as `[]`, and at the REPL an assignment shows `A =` on a line of its own above the rows. `set_header()` turns the header back on |
-| `number(x; decimals, digits, sci = false, width = 0)` | The number `x` as text: with `decimals`, exactly that many digits after the point (as `format`); with `digits`, up to that many significant digits (1 to 17); with `sci = true`, scientific notation with `decimals` digits after the point (6 by default), as in `1.23e4`; padded on the left with spaces to `width` characters. With none of these, an `int` in full and a `real` with up to 15 significant digits. `bool` and `complex` values give their display form |
-| `matrix(A; decimals, digits = 6, sci = false, header = false, sep = "  ", align = true)` | The vector or matrix `A` as text: one line per row (a vector is a column), its elements formatted as by `number` and separated by `sep`, each column right-aligned to its widest entry when `align` is true. `header = true` puts the header line first. Every row and column is included, whatever `set_size` says; there is no line break at the end. A range or a number is taken as a vector |
+| `set_size(rows: int, cols: int)` | Arrays with at most `rows` rows and `cols` columns are displayed in full. A larger dimension n shows its first `(n + 1) div 2` and last `n div 2` rows or columns, around the `⋮` line or `…` column. `set_size()` restores 10 rows and 8 columns |
+| `set_decimals(n: int)` | Every displayed `real` (scalars, array entries, the parts of complex numbers, range bounds) shows exactly `n` decimals, 1 to 15, instead of significant digits; magnitudes from 1e15 keep the exponent form, as in `1.000e20`. `int` values are unaffected. `set_decimals()` restores significant digits |
+| `set_header(on: bool = true)` | Whether displayed arrays start with their header line (`2×3 matrix{int}`). With `set_header(false)` only the rows are shown, starting at the left margin, an empty array shows as `[]`, and at the REPL an assignment shows `A =` on a line of its own above the rows. `set_header()` turns the header back on |
+| `number(x; decimals: int, digits: int, sci: bool = false, width: int = 0)` | The number `x` as text: with `decimals`, exactly that many digits after the point (as `format`); with `digits`, up to that many significant digits (1 to 17); with `sci = true`, scientific notation with `decimals` digits after the point (6 by default), as in `1.23e4`; padded on the left with spaces to `width` characters. With none of these, an `int` in full and a `real` with up to 15 significant digits. `bool` and `complex` values give their display form |
+| `matrix(A; decimals: int, digits: int = 6, sci: bool = false, header: bool = false, sep: string = "  ", align: bool = true)` | The vector or matrix `A` as text: one line per row (a vector is a column), its elements formatted as by `number` and separated by `sep`, each column right-aligned to its widest entry when `align` is true. `header = true` puts the header line first. Every row and column is included, whatever `set_size` says; there is no line break at the end. A range or a number is taken as a vector |
 
 The settings return `nothing` and last until changed: for the rest of a program, or of a REPL session. They change every display form, including `string(x)`, but not `number`, `matrix`, `format`, or the text of error messages. `set_size` and `set_decimals` raise `ArgumentError` for a count out of range, and every function raises `TypeError` for arguments of the wrong type.
 
@@ -813,16 +814,16 @@ println(fmt.number(pi, digits = 4), fmt.number(12345.678, sci = true, decimals =
 
 | Function | Result |
 | --- | --- |
-| `read_file(path)` | The contents of a UTF-8 text file, as a string; a leading byte-order mark is dropped, and a file that is not valid UTF-8 raises `IOError` |
-| `read_lines(path)` | The lines of a UTF-8 text file, as a list of strings without their line breaks (LF or CR LF); a final line break does not add an empty line |
-| `read_bytes(path)` | The bytes of a file, as an `int` vector of values 0 to 255 |
-| `write_file(path, text)` | Writes the string as UTF-8, replacing the file; returns `nothing` |
-| `file_exists(path)` | `true` when the file exists |
-| `delete_file(path)` | Deletes the file and returns `true`, or returns `false` when there was no such file |
-| `write_json(path, value)` | Writes the value as JSON text (UTF-8), replacing the file; returns `nothing` |
-| `read_json(path)` | The value described by the JSON text in the file |
-| `read_csv(path)`, `read_csv(path, sep)` | A table of numbers, as a record `{names, data}`: `data` is a `real` matrix with a row per line and a column per field, and `names` the list of column names, or `nothing` when the file has no header |
-| `write_csv(path, A)`, `write_csv(path, A, names)`, `write_csv(path, A, names, sep)` | Writes a matrix, or a vector as one column, one row per line, under a header of column names when `names` (a list of strings, one per column) is given and not `nothing`; returns `nothing` |
+| `read_file(path: string)` | The contents of a UTF-8 text file, as a string; a leading byte-order mark is dropped, and a file that is not valid UTF-8 raises `IOError` |
+| `read_lines(path: string)` | The lines of a UTF-8 text file, as a list of strings without their line breaks (LF or CR LF); a final line break does not add an empty line |
+| `read_bytes(path: string)` | The bytes of a file, as an `int` vector of values 0 to 255 |
+| `write_file(path: string, text: string)` | Writes the string as UTF-8, replacing the file; returns `nothing` |
+| `file_exists(path: string)` | `true` when the file exists |
+| `delete_file(path: string)` | Deletes the file and returns `true`, or returns `false` when there was no such file |
+| `write_json(path: string, value)` | Writes the value as JSON text (UTF-8), replacing the file; returns `nothing` |
+| `read_json(path: string)` | The value described by the JSON text in the file |
+| `read_csv(path: string)`, `read_csv(path: string, sep: string)` | A table of numbers, as a record `{names, data}`: `data` is a `real` matrix with a row per line and a column per field, and `names` the list of column names, or `nothing` when the file has no header |
+| `write_csv(path: string, A)`, `write_csv(path: string, A, names)`, `write_csv(path: string, A, names, sep: string)` | Writes a matrix, or a vector as one column, one row per line, under a header of column names when `names` (a list of strings, one per column) is given and not `nothing`; returns `nothing` |
 
 CSV files are text with one row per line and fields separated by `sep`, a one-character string (default `","`; `";"` and `"\t"` are common). Reading: blank lines are skipped; the first line is a header when any of its fields is not a number; every row must have as many fields as the first, or `IOError` names the line; a field is read as `real` does a string (spaces around it are ignored, and `NaN` and `Inf` are accepted), an empty field is NaN, and any other text raises `IOError` naming the line and field; a field in double quotes may contain the separator, with `""` for a quote. Writing: `int` and `bool` elements are written as integers (`bool` as 1 or 0) and reals in the shortest form that reads back to the same value, NaN and infinities as `NaN`, `Inf` and `-Inf`; a name containing the separator, a quote or a line break is quoted; lines end with LF. Complex values raise `TypeError`, and a list of names of the wrong length `DimensionError`.
 
@@ -836,10 +837,10 @@ JSON and Axon values correspond as follows. Writing: `nothing` is `null`; `bool`
 | --- | --- |
 | `clock()` | Seconds, as a `real`, on a monotonic high-resolution clock with an arbitrary origin. Only differences of two readings are meaningful; they are not affected by changes to the system clock |
 | `now()` | Wall-clock time as `real` seconds since 1970-01-01 00:00 UTC, with millisecond resolution |
-| `sleep(seconds)` | Pauses for at least the given number of seconds (`int` or `real`) and returns `nothing`; a negative or NaN value raises `DomainError` |
-| `elapsed(f, args…)` | Calls `f(args…)` once and returns the seconds it took. The result of `f` is discarded, and an error inside `f` propagates |
-| `bench(f, args…)` | Times repeated calls of `f(args…)` and returns a record `{best, mean, worst, loops, runs}`. The number of calls per run, `loops`, doubles from 1 until a run lasts at least 0.2 s; then `runs` = 5 runs of `loops` calls are timed, the calibrating run counting as the first. `best`, `mean` and `worst` are seconds per call over those runs. A call that takes longer than 0.2 s is therefore made 5 times |
-| `format(seconds)` | The time as text with three significant digits in the largest unit that keeps it at 1 or above: `"1.50 s"`, `"12.3 ms"`, `"45.6 µs"`, `"7.00 ns"`. Rounding happens before the unit is chosen, so `0.99996` gives `"1.00 s"`; zero gives `"0 s"` |
+| `sleep(seconds: real)` | Pauses for at least the given number of seconds (`int` or `real`) and returns `nothing`; a negative or NaN value raises `DomainError` |
+| `elapsed(f: function, args…)` | Calls `f(args…)` once and returns the seconds it took. The result of `f` is discarded, and an error inside `f` propagates |
+| `bench(f: function, args…)` | Times repeated calls of `f(args…)` and returns a record `{best, mean, worst, loops, runs}`. The number of calls per run, `loops`, doubles from 1 until a run lasts at least 0.2 s; then `runs` = 5 runs of `loops` calls are timed, the calibrating run counting as the first. `best`, `mean` and `worst` are seconds per call over those runs. A call that takes longer than 0.2 s is therefore made 5 times |
+| `format(seconds: real)` | The time as text with three significant digits in the largest unit that keeps it at 1 or above: `"1.50 s"`, `"12.3 ms"`, `"45.6 µs"`, `"7.00 ns"`. Rounding happens before the unit is chosen, so `0.99996` gives `"1.00 s"`; zero gives `"0 s"` |
 
 `elapsed` and `bench` call `f` from the interpreter itself, so the timings include no loop overhead from Axon code. `f` may be any function value, including a built-in or a lambda: `time.bench(function() return A * A end)`. Report `best` when comparing implementations; it is the measurement least disturbed by other activity on the machine.
 
@@ -851,12 +852,12 @@ Each distribution takes its parameters first, then an optional shape: no shape g
 
 | Function | Result |
 | --- | --- |
-| `seed(n)` | Seeds the generator with the `int` n and returns `nothing` |
-| `rand()`, `rand(n)`, `rand(m, n)` | Uniform reals in [0, 1), multiples of 2^-53 |
-| `randn()`, `randn(n)`, `randn(m, n)` | Standard normal reals (mean 0, standard deviation 1) |
-| `uniform(a, b)`, `uniform(a, b, n)`, `uniform(a, b, m, n)` | Uniform reals `a + (b - a)*u` with `u` from `rand`, so in [a, b) up to rounding; `a == b` gives `a` |
-| `normal(mu, sigma)`, `normal(mu, sigma, n)`, `normal(mu, sigma, m, n)` | Normal reals with mean `mu` and standard deviation `sigma`: `mu + sigma*z` with `z` from `randn` |
-| `randint(lo, hi)`, `randint(lo, hi, n)`, `randint(lo, hi, m, n)` | `int`s from `lo` to `hi` inclusive, each equally likely; arrays have element type `int` |
+| `seed(n: int)` | Seeds the generator with the `int` n and returns `nothing` |
+| `rand()`, `rand(n: int)`, `rand(m: int, n: int)` | Uniform reals in [0, 1), multiples of 2^-53 |
+| `randn()`, `randn(n: int)`, `randn(m: int, n: int)` | Standard normal reals (mean 0, standard deviation 1) |
+| `uniform(a: real, b: real)`, `uniform(a: real, b: real, n: int)`, `uniform(a: real, b: real, m: int, n: int)` | Uniform reals `a + (b - a)*u` with `u` from `rand`, so in [a, b) up to rounding; `a == b` gives `a` |
+| `normal(mu: real, sigma: real)`, `normal(mu: real, sigma: real, n: int)`, `normal(mu: real, sigma: real, m: int, n: int)` | Normal reals with mean `mu` and standard deviation `sigma`: `mu + sigma*z` with `z` from `randn` |
+| `randint(lo: int, hi: int)`, `randint(lo: int, hi: int, n: int)`, `randint(lo: int, hi: int, m: int, n: int)` | `int`s from `lo` to `hi` inclusive, each equally likely; arrays have element type `int` |
 
 ```axon
 import random
@@ -873,9 +874,9 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 
 `graphics` is a core module that renders a scene to a file through the Skia library. It is the drawing layer under `plot`. Skia loads at the first call that needs it; when it cannot be loaded, that call raises `ForeignError` and the rest of the language is unaffected. On Windows Skia is the shipped `sk4d.dll`; on macOS it is linked into the interpreter.
 
-- **`save(scene, path)`** writes the scene to `path`, whose extension chooses the format: `.png` (raster), `.svg` or `.pdf` (vector, with text kept as text). Any other extension raises `ArgumentError`, and a file that cannot be written raises `IOError`.
-- **`show(scene)`** and **`show(scene, data)`** render the scene to a PNG and show it, and return the file's path. With `data`, a front end also gets the value as JSON next to the PNG, under the same name with the extension `.json`; `plot.show` passes the figure record, which the IDE draws in its interactive chart. When the environment variable `AXON_SHOW_DIR` is set, as it is for programs run from the IDE, the file is written there and a line holding U+0003, `show `, and the path is written to standard error, so the front end can display it while the program runs. Otherwise the file goes to a temporary folder and opens in the system's image viewer; if no viewer can be started, it raises `ForeignError`.
-- **`text_width(text, size)`** and **`text_width(text, size, font)`** return the width in points of the text as drawn, for layout.
+- **`save(scene: record, path: string)`** writes the scene to `path`, whose extension chooses the format: `.png` (raster), `.svg` or `.pdf` (vector, with text kept as text). Any other extension raises `ArgumentError`, and a file that cannot be written raises `IOError`.
+- **`show(scene: record)`** and **`show(scene: record, data)`** render the scene to a PNG and show it, and return the file's path. With `data`, a front end also gets the value as JSON next to the PNG, under the same name with the extension `.json`; `plot.show` passes the figure record, which the IDE draws in its interactive chart. When the environment variable `AXON_SHOW_DIR` is set, as it is for programs run from the IDE, the file is written there and a line holding U+0003, `show `, and the path is written to standard error, so the front end can display it while the program runs. Otherwise the file goes to a temporary folder and opens in the system's image viewer; if no viewer can be started, it raises `ForeignError`.
+- **`text_width(text: string, size: real)`** and **`text_width(text: string, size: real, font: string)`** return the width in points of the text as drawn, for layout.
 - **Scenes.** A scene is a record with `width` and `height` in points (1/72 inch; default 640 by 480), `background` (a colour, default `"white"`), `scale` (pixels per point for PNG, default 1) and `items`, a list of item records drawn in order. Coordinates run from the top-left corner with y pointing down.
 - **Items.** Each item has a `kind`:
 
@@ -893,7 +894,7 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 
 ### The ode module
 
-`ode` is a standard-library module. Its interface is written in Axon, and its stepping loops run natively in the interpreter's core module `odecore`. `ode.solve(f, y0, tspan; …)` solves y' = f(t, y) from `tspan[1]` to `tspan[2]` with y(`tspan[1]`) = `y0` and returns a result record.
+`ode` is a standard-library module. Its interface is written in Axon, and its stepping loops run natively in the interpreter's core module `odecore`. `ode.solve(f: function, y0, tspan; method: string = "rk45", …)` solves y' = f(t, y) from `tspan[1]` to `tspan[2]` with y(`tspan[1]`) = `y0` and returns a result record.
 
 - **Problem.** `f(t, y)` receives a real `t` and a real vector `y` and returns the derivative as a real vector of the same length (a scalar for one equation). `y0` is a real scalar or vector. `tspan` holds two different times; integration may run backwards.
 - **Methods.** `method = "rk45"` (the default) is the explicit Dormand–Prince 5(4) pair with step-size control and its fourth-order dense output. `method = "bdf"` uses the variable-order BDF method of SUNDIALS CVODE with a dense direct linear solver, for stiff problems. `f` and the event functions are called as ordinary Axon functions, so a right-hand side that compiles (see Compilation) runs as native code.
@@ -901,15 +902,15 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 
 | Keyword | Meaning (default) |
 | --- | --- |
-| `rtol`, `atol` | Relative and absolute error tolerances (`1e-6`, `1e-9`) |
+| `rtol: real`, `atol: real` | Relative and absolute error tolerances (`1e-6`, `1e-9`) |
 | `t_eval` | Times at which to report the solution, within `tspan` and strictly increasing in the direction of integration; by default every step is reported, starting with `tspan[1]` |
 | `events` | An event function `g(t, y)` returning a real number, or a list of them (`nothing`) |
 | `terminal` | Whether an event stops the integration: a `bool` for all, or a list with one per event (`false`) |
 | `direction` | Which zero crossings count: `0` both, `1` rising, `-1` falling; a number or a list (`0`) |
-| `names` | The names of the components, a list of strings (`{"y1", "y2", …}`) |
-| `max_step` | The largest step (unlimited) |
-| `first_step` | The first step size (chosen automatically) |
-| `max_steps` | The most steps before giving up (`100000`) |
+| `names: list` | The names of the components, a list of strings (`{"y1", "y2", …}`) |
+| `max_step: real` | The largest step (unlimited) |
+| `first_step: real` | The first step size (chosen automatically) |
+| `max_steps: int` | The most steps before giving up (`100000`) |
 
 - **Result.** A record with fields `t` (a vector of the reported times), `y` (a matrix with one column per reported time, so `sol.y[1, :]` is the first component over time), `names`, `status` (`"success"`, or `"event"` when a terminal event stopped the integration), `t_events` and `y_events` (lists with one entry per event function: a vector of the times and a matrix of the states at which it occurred), `nfev` (right-hand-side evaluations), `nsteps` (accepted steps), `method`, and `at`, the dense output: `sol.at(t)` returns the state at any time in the solved range, and `sol.at(v)` for a vector of times returns a matrix with one column per time. A time outside the range raises `DomainError`.
 - **Events.** An event occurs where an event function changes sign in the counted direction; a function that starts at exactly zero does not trigger at the start. RK45 locates the crossing on the dense output; BDF uses CVODE's root finding. A terminal event ends the solution at the event time, which becomes the last reported time when `t_eval` is not given.
@@ -921,24 +922,24 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 
 | Function | Effect |
 | --- | --- |
-| `figure(; width = 640, height = 480, title)` | Starts a new current figure, sized in points. The figure it replaces is shown first if it has changed since it was last shown or saved |
-| `subplot(rows, cols, k)` | Divides the figure into a grid of `rows` by `cols` cells and makes cell `k` current, so the plotting calls that follow (series, titles, labels, limits, legend, view) go to it. Cells are numbered along each row from the top left, as in MATLAB; selecting a cell again returns to what is plotted there |
-| `line(x, y; label, color, width = 1.5, style = "-", marker, marker_size = 5)` | Adds a line; `style` is `"-"`, `"--"`, `":"` or `"-."`, and `marker` draws a marker of that shape at each point |
-| `scatter(x, y; label, color, size = 6, marker = "circle")` | Adds markers at the points |
-| `bar(x, heights; width = 0.8, label, color)`, `bar(heights; …)` | Adds a bar of height `heights[k]` centred on `x[k]`, `width` wide in x units, rising from 0 (falling for a negative height). `x` may instead be a list of strings: the bars go at 1, 2, … and the x axis is labelled with those names. With the heights alone, the bars go at 1, 2, … |
-| `hist(x; bins = 10, label, color)` | Adds a histogram of the values `x`: one bar per bin, as high as the number of values in it. Returns `{counts, edges, heights}` |
-| `hist_density(x; bins = 10, label, color)` | As `hist`, with heights scaled so the bars' total area is 1, for comparison with a probability density |
-| `surface(x, y, Z; label, colormap = "viridis", edges = true, elev = 30, azim = -60)` | Adds the surface with height `Z[i, j]` over `(x[j], y[i])`, coloured by height (`"viridis"` or `"gray"`), seen from the given elevation and azimuth in degrees |
-| `line3(x, y, z; label, color, width = 1.5, marker, marker_size = 5)` | Adds a curve through the points `(x[k], y[k], z[k])` in 3D, such as a trajectory; a NaN in any coordinate leaves a gap |
-| `scatter3(x, y, z; label, color, size = 6, marker = "circle")` | Adds markers at the points in 3D |
-| `view(azim, elev)` | Sets the viewing direction of a 3D figure, azimuth and elevation in degrees (as MATLAB's `view`; default `-60, 30`) |
-| `title(s)`, `xlabel(s)`, `ylabel(s)`, `zlabel(s)` | Set the title and axis labels |
-| `xticks(positions, labels)` | Labels the x axis with the strings `labels` at the given positions, in place of round numbers and bar categories; ticks outside the axis range are not drawn |
-| `xlim(lo, hi)`, `ylim(lo, hi)` | Fix an axis range; otherwise it is the data range padded by 5% |
-| `grid(on)`, `legend(on)` | Show or hide the grid and the legend (both shown by default) |
-| `legend_position(where)` | Places the legend: `"best"` (the default), `"top right"`, `"top left"`, `"bottom right"`, `"bottom left"`, or `"outside"`, to the right of the plot area, which is narrowed to make room |
-| `save(path; scale = 2, figure)` | Writes the current figure as PNG, SVG or PDF, chosen by the extension; `scale` sets PNG pixels per point. With `figure`, a figure record such as `gcf()` returns (or one read back with `io.read_json`), it writes that figure instead and leaves the current one unchanged; a `figure` that is not a record raises `TypeError` |
-| `show(; scale = 2)` | Shows the current figure through `graphics.show`: in the IDE's plot pane, or in the system's image viewer. In the IDE, a figure is drawn in an interactive chart: a 2-D figure (lines, scatter, bars, histograms, named ticks) can be zoomed, panned and edited, and a 3D figure (surfaces, `line3`, `scatter3`) rotated, zoomed, panned and edited |
+| `figure(; width: real = 640, height: real = 480, title: string)` | Starts a new current figure, sized in points, with `title` above it (no title when not set). The figure it replaces is shown first if it has changed since it was last shown or saved |
+| `subplot(rows: int, cols: int, k: int)` | Divides the figure into a grid of `rows` by `cols` cells and makes cell `k` current, so the plotting calls that follow (series, titles, labels, limits, legend, view) go to it. Cells are numbered along each row from the top left, as in MATLAB; selecting a cell again returns to what is plotted there |
+| `line(x, y; label: string, color, width: real = 1.5, style: string = "-", marker: string, marker_size: real = 5)` | Adds a line; `style` is `"-"`, `"--"`, `":"` or `"-."`, and `marker` draws a marker of that shape at each point |
+| `scatter(x, y; label: string, color, size: real = 6, marker: string = "circle")` | Adds markers at the points |
+| `bar(x, heights; width: real = 0.8, label: string, color)`, `bar(heights; …)` | Adds a bar of height `heights[k]` centred on `x[k]`, `width` wide in x units, rising from 0 (falling for a negative height). `x` may instead be a list of strings: the bars go at 1, 2, … and the x axis is labelled with those names. With the heights alone, the bars go at 1, 2, … |
+| `hist(x; bins = 10, label: string, color)` | Adds a histogram of the values `x`: one bar per bin, as high as the number of values in it. Returns `{counts, edges, heights}` |
+| `hist_density(x; bins = 10, label: string, color)` | As `hist`, with heights scaled so the bars' total area is 1, for comparison with a probability density |
+| `surface(x, y, Z; label: string, colormap: string = "viridis", edges: bool = true, elev: real = 30, azim: real = -60)` | Adds the surface with height `Z[i, j]` over `(x[j], y[i])`, coloured by height (`"viridis"` or `"gray"`), seen from the given elevation and azimuth in degrees |
+| `line3(x, y, z; label: string, color, width: real = 1.5, marker: string, marker_size: real = 5)` | Adds a curve through the points `(x[k], y[k], z[k])` in 3D, such as a trajectory; a NaN in any coordinate leaves a gap |
+| `scatter3(x, y, z; label: string, color, size: real = 6, marker: string = "circle")` | Adds markers at the points in 3D |
+| `view(azim: real, elev: real)` | Sets the viewing direction of a 3D figure, azimuth and elevation in degrees (as MATLAB's `view`; default `-60, 30`) |
+| `title(s: string)`, `xlabel(s: string)`, `ylabel(s: string)`, `zlabel(s: string)` | Set the title and axis labels |
+| `xticks(positions, labels: list)` | Labels the x axis with the strings `labels` at the given positions, in place of round numbers and bar categories; ticks outside the axis range are not drawn |
+| `xlim(lo: real, hi: real)`, `ylim(lo: real, hi: real)` | Fix an axis range; otherwise it is the data range padded by 5% |
+| `grid(on: bool)`, `legend(on: bool)` | Show or hide the grid and the legend (both shown by default) |
+| `legend_position(where: string)` | Places the legend: `"best"` (the default), `"top right"`, `"top left"`, `"bottom right"`, `"bottom left"`, or `"outside"`, to the right of the plot area, which is narrowed to make room |
+| `save(path: string; scale: real = 2, figure: record)` | Writes the current figure as PNG, SVG or PDF, chosen by the extension; `scale` sets PNG pixels per point. With `figure`, a figure record such as `gcf()` returns (or one read back with `io.read_json`), it writes that figure instead and leaves the current one unchanged; a `figure` that is not a record raises `TypeError` |
+| `show(; scale: real = 2)` | Shows the current figure through `graphics.show`: in the IDE's plot pane, or in the system's image viewer. In the IDE, a figure is drawn in an interactive chart: a 2-D figure (lines, scatter, bars, histograms, named ticks) can be zoomed, panned and edited, and a 3D figure (surfaces, `line3`, `scatter3`) rotated, zoomed, panned and edited |
 | `gcf()` | The current figure as a record, or `nothing` before the first plotting call. For a figure with subplots, a record of the grid: `width`, `height`, `title`, `rows`, `cols`, `cells` (a list of figure records, `nothing` for cells never selected) and `index`, the current cell |
 
 - **Bar charts.** Bars of several series at the same positions overlap; to place them side by side, offset `x` and narrow `width`, as in `plot.bar(x - 0.2, a, width = 0.4)` and `plot.bar(x + 0.2, b, width = 0.4)`, and name the groups with `plot.xticks(x, names)`. Every series with categories in one figure must use the same list.
