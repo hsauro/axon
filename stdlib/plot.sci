@@ -179,7 +179,7 @@ export function subplot(rows, cols, k)
   end
   layout.index = k
   if typeof(layout.cells[k]) == "nothing"
-    [x, y, w, h] = cell_box(k)
+    [x, y, w, h] = cell_box(layout, k)
     current = new_figure(w, h, nothing)
   else
     current = layout.cells[k]
@@ -187,14 +187,14 @@ export function subplot(rows, cols, k)
   changed = true
 end
 
-# The position and size of cell k of the grid, in points.
-function cell_box(k)
+# The position and size of cell k of the grid g, in points.
+function cell_box(g, k)
   top = 0.0
-  if typeof(layout.title) != "nothing" top = TITLE_SIZE * 2.2 end
-  w = layout.width / layout.cols
-  h = (layout.height - top) / layout.rows
-  row = div(k - 1, layout.cols)
-  col = mod(k - 1, layout.cols)
+  if typeof(g.title) != "nothing" top = TITLE_SIZE * 2.2 end
+  w = g.width / g.cols
+  h = (g.height - top) / g.rows
+  row = div(k - 1, g.cols)
+  col = mod(k - 1, g.cols)
   return col * w, top + row * h, w, h
 end
 
@@ -209,13 +209,28 @@ function whole_figure()
   return g
 end
 
-# The scene of the whole figure: each cell drawn as a figure of its own size
-# and moved into place.
+# The scene of the whole current figure.
 function figure_scene()
-  if typeof(layout) == "nothing"
-    return render(current)
+  return scene_of(whole_figure())
+end
+
+# Whether a figure record is a grid (it has cells).
+function is_grid(fig)
+  try
+    c = fig.cells
+    return true
+  catch err
+    return false
   end
-  g = whole_figure()
+end
+
+# The scene of a figure record: a figure, or a grid whose cells are each
+# drawn as a figure of their own size and moved into place.
+function scene_of(fig)
+  if not is_grid(fig)
+    return render(fig)
+  end
+  g = fig
   items = {}
   if typeof(g.title) != "nothing"
     items = append(items, {kind: "text", x: g.width / 2, y: TITLE_SIZE * 1.1, text: g.title,
@@ -226,7 +241,7 @@ function figure_scene()
     c = g.cells[k]
     if typeof(c) != "nothing"
       if length(c.series) > 0 or typeof(c.title) != "nothing"
-        [x, y, w, h] = cell_box(k)
+        [x, y, w, h] = cell_box(g, k)
         sc = render(c)
         items = append(items, {kind: "group", dx: x, dy: y, clip: {x: 0.0, y: 0.0, w: w, h: h},
                                items: sc.items})
@@ -616,7 +631,10 @@ export function show(; scale = 2.0)
   end
   scene = figure_scene()
   scene.scale = scale + 0.0
-  if typeof(layout) == "nothing" and interactive(current)
+  if typeof(layout) != "nothing"
+    # A grid: the IDE draws each cell in an interactive chart of its own.
+    graphics.show(scene, whole_figure())
+  elseif interactive(current)
     # The IDE also gets the figure itself, which it draws in its interactive
     # chart (zoom, pan, editing) instead of the image.
     graphics.show(scene, current)
@@ -628,7 +646,7 @@ end
 
 # Whether the IDE's interactive charts can draw the figure: every 2-D figure
 # goes to the 2-D chart and every 3-D figure (surfaces, line3, scatter3) to
-# the 3-D chart. A figure with subplots is shown as its image.
+# the 3-D chart. A figure with subplots goes to a grid of such charts.
 function interactive(fig)
   return length(fig.series) > 0
 end
@@ -642,9 +660,20 @@ export function gcf()
 end
 
 ## Writes the current figure to a .png, .svg or .pdf file. scale sets the
-## pixels per point of a PNG.
-export function save(path; scale = 2.0)
+## pixels per point of a PNG. figure, a figure record such as plot.gcf()
+## returns (or one read back with io.read_json from a figure written as
+## JSON), is saved instead of the current figure when given.
+export function save(path; scale = 2.0, figure = nothing)
   global changed
+  if typeof(figure) != "nothing"
+    if typeof(figure) != "record"
+      fail("TypeError", "plot.save: figure must be a figure record, got " + typeof(figure))
+    end
+    scene = scene_of(figure)
+    scene.scale = scale + 0.0
+    graphics.save(scene, path)
+    return
+  end
   if typeof(current) == "nothing"
     fail("ArgumentError", "plot.save: there is no figure; plot something first")
   end

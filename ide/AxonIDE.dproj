@@ -102,6 +102,8 @@
         <DCCReference Include="uRefSections.pas"/>
         <DCCReference Include="uFigureChart.pas"/>
         <DCCReference Include="uFigureChart3D.pas"/>
+        <DCCReference Include="uFigureGrid.pas"/>
+        <DCCReference Include="uFigureExport.pas"/>
         <DCCReference Include="..\src\Axon.Version.pas"/>
         <RcCompile Include="AxonIDEStyles.rc">
             <Form>AxonIDEStyles.res</Form>

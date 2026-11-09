@@ -23,6 +23,8 @@ uses
   uRefSections in 'uRefSections.pas',
   uFigureChart in 'uFigureChart.pas',
   uFigureChart3D in 'uFigureChart3D.pas',
+  uFigureGrid in 'uFigureGrid.pas',
+  uFigureExport in 'uFigureExport.pas',
   Axon.Version in '..\src\Axon.Version.pas';
 
 // The build's resources (AxonIDE.res: icon, version information and the

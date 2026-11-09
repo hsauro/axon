@@ -25,6 +25,11 @@ uses
 // the chart unchanged) when the file cannot be read as a 2-D figure (a 3-D
 // figure goes to uFigureChart3D).
 function LoadFigure(Plot: TSkPlotPaintBox; const FileName: string): Boolean;
+// The same from a parsed figure record (a cell of a grid, see uFigureGrid).
+function LoadFigureObj(Plot: TSkPlotPaintBox; Fig: TJSONObject): Boolean;
+
+// The JSON in FileName, or nil when it cannot be read; the caller frees it.
+function ReadJson(const FileName: string): TJSONValue;
 
 // Reading the figure JSON, shared with uFigureChart3D.
 function ParseColor(J: TJSONValue; Default: TAlphaColor): TAlphaColor;
@@ -35,7 +40,7 @@ function Bool(J: TJSONValue; Default: Boolean): Boolean;
 implementation
 
 uses
-  System.SysUtils, System.Math, System.IOUtils, System.UIConsts,
+  System.SysUtils, System.Math, System.IOUtils, System.UIConsts, System.Generics.Collections,
   uPlotSeries, uPlotMapper;
 
 function ByteOf(V: Double): Cardinal;
@@ -219,10 +224,29 @@ begin
   T.Visible := T.Text <> '';
 end;
 
+function ReadJson(const FileName: string): TJSONValue;
+begin
+  try
+    Result := TJSONObject.ParseJSONValue(TEncoding.UTF8.GetString(TFile.ReadAllBytes(FileName)));
+  except
+    Result := nil;
+  end;
+end;
+
 function LoadFigure(Plot: TSkPlotPaintBox; const FileName: string): Boolean;
 var
   Root: TJSONValue;
-  Fig: TJSONObject;
+begin
+  Root := ReadJson(FileName);
+  try
+    Result := (Root is TJSONObject) and LoadFigureObj(Plot, TJSONObject(Root));
+  finally
+    Root.Free;
+  end;
+end;
+
+function LoadFigureObj(Plot: TSkPlotPaintBox; Fig: TJSONObject): Boolean;
+var
   Series: TJSONArray;
   Lim, Names: TJSONArray;
   K: Integer;
@@ -231,15 +255,7 @@ var
   Labels: TArray<string>;
 begin
   Result := False;
-  try
-    Root := TJSONObject.ParseJSONValue(TEncoding.UTF8.GetString(TFile.ReadAllBytes(FileName)));
-  except
-    Exit;
-  end;
-  try
-    if not (Root is TJSONObject) then
-      Exit;
-    Fig := TJSONObject(Root);
+  begin
     if not (Fig.GetValue('series') is TJSONArray) or Bool(Fig.GetValue('three_d'), False) then
       Exit;
     Series := TJSONArray(Fig.GetValue('series'));
@@ -319,8 +335,6 @@ begin
     Plot.LegendStyle.Location := LegendLocationOf(Str(Fig.GetValue('legend_position')));
     Plot.Redraw;
     Result := True;
-  finally
-    Root.Free;
   end;
 end;
 

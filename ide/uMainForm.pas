@@ -56,7 +56,7 @@ uses
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
   uSkiaCodeEditor, uCodeEditorTypes, uFindBar, uProcessRunner, uRunReport,
   uRhoMarkdownViewer, uPreferences, uRefSections, Axon.Version, SkPlotPaintBox,
-  uFigureChart, Rho3DPlot, uFigureChart3D;
+  uFigureChart, Rho3DPlot, uFigureChart3D, uFigureGrid, uFigureExport;
 
 type
   { Text colours of the output panes, per theme. }
@@ -86,12 +86,13 @@ type
     FPlotImage: TImage;
     FPlotChart: TSkPlotPaintBox;   // 2-D figures, interactive
     FPlot3D: TRho3DPlot;           // 3-D figures, interactive
+    FPlotGrid: TControl;           // figures with subplots: a grid of charts, or nil
     FPlotCaption: TLabel;
     // Figure history: every figure shown or picked up, oldest first; the
     // pane shows FFigureIndex, which the arrow buttons move.
     FFigures: TStringList;
     FFigureIndex: Integer;
-    FFigurePrev, FFigureNext, FFigureClear: TSpeedButton;
+    FFigurePrev, FFigureNext, FFigureClear, FFigureSave, FFigureCopy: TSpeedButton;
     FFigurePos: TLabel;
     FStatus: TLabel;
     FCaretInfo: TLabel;
@@ -195,6 +196,10 @@ type
     procedure FigurePrevClick(Sender: TObject);
     procedure FigureNextClick(Sender: TObject);
     procedure FigureClearClick(Sender: TObject);
+    procedure FigureSaveClick(Sender: TObject);
+    procedure FigureCopyClick(Sender: TObject);
+    function FigureViewBitmap: FMX.Graphics.TBitmap;
+    function FigureView: TControl;
     procedure ScrollToEnd(List: TListBox);
     function WordAtCaret(Doc: TDocument): string;
     function LocalHelp(Doc: TDocument; const Name: string; out Text: string): Boolean;
@@ -662,10 +667,28 @@ begin
   FFigureClear.Hint := 'Forget all figures';
   FFigureClear.ShowHint := True;
   FFigureClear.OnClick := FigureClearClick;
+  FFigureSave := TSpeedButton.Create(Self);
+  FFigureSave.Parent := FigBar;
+  FFigureSave.Align := TAlignLayout.Right;
+  FFigureSave.Position.X := 0;          // left of Clear
+  FFigureSave.Width := 48;
+  FFigureSave.Text := 'Save' + #$2026;
+  FFigureSave.Hint := 'Save this figure, all of it, as PNG, PDF or SVG';
+  FFigureSave.ShowHint := True;
+  FFigureSave.OnClick := FigureSaveClick;
+  FFigureCopy := TSpeedButton.Create(Self);
+  FFigureCopy.Parent := FigBar;
+  FFigureCopy.Align := TAlignLayout.Right;
+  FFigureCopy.Position.X := 0;          // left of Save
+  FFigureCopy.Width := 44;
+  FFigureCopy.Text := 'Copy';
+  FFigureCopy.Hint := 'Copy this figure, all of it, as an image';
+  FFigureCopy.ShowHint := True;
+  FFigureCopy.OnClick := FigureCopyClick;
   FFigureNext := TSpeedButton.Create(Self);
   FFigureNext.Parent := FigBar;
   FFigureNext.Align := TAlignLayout.Right;
-  FFigureNext.Position.X := 0;          // left of Clear
+  FFigureNext.Position.X := 0;          // left of Copy
   FFigureNext.Width := 26;
   FFigureNext.Text := #$25B6;
   FFigureNext.Hint := 'Next figure';
@@ -1718,7 +1741,17 @@ begin
     Exit;
   Path := FFigures[Index];
   Json := TPath.ChangeExtension(Path, '.json');
-  if TFile.Exists(Json) and LoadFigure3D(FPlot3D, Json) then
+  FreeAndNil(FPlotGrid);
+  if TFile.Exists(Json) then
+    FPlotGrid := LoadFigureGrid(Self, FPlotPane, Json);
+  if FPlotGrid <> nil then
+  begin
+    FPlotImage.Visible := False;
+    FPlotChart.Visible := False;
+    FPlot3D.Visible := False;
+    What := 'subplots: wheel zooms, drag pans (rotates in 3D), double-click edits';
+  end
+  else if TFile.Exists(Json) and LoadFigure3D(FPlot3D, Json) then
   begin
     FPlotImage.Visible := False;
     FPlotChart.Visible := False;
@@ -1758,6 +1791,122 @@ begin
   FFigurePrev.Enabled := FFigureIndex > 0;
   FFigureNext.Enabled := FFigureIndex < FFigures.Count - 1;
   FFigureClear.Enabled := FFigures.Count > 0;
+  FFigureSave.Enabled := (FFigureIndex >= 0) and (FFigureIndex < FFigures.Count);
+  FFigureCopy.Enabled := FFigureSave.Enabled;
+end;
+
+{ The control showing the current figure: a chart or a grid of charts, or
+  nil for a figure shown as an image. }
+function TfrmMain.FigureView: TControl;
+begin
+  Result := nil;
+  if FPlotGrid <> nil then
+    Result := FPlotGrid
+  else if FPlotChart.Visible then
+    Result := FPlotChart
+  else if FPlot3D.Visible then
+    Result := FPlot3D;
+  if not CanExportView(Result) then
+    Result := nil;
+end;
+
+{ The figure as it is on screen, with any zooming, panning, rotating and
+  editing done in its charts (every cell of a grid), drawn at 2 pixels per
+  point; for a figure shown as an image, that image. The caller frees it. }
+function TfrmMain.FigureViewBitmap: FMX.Graphics.TBitmap;
+begin
+  if FigureView <> nil then
+    Exit(ViewBitmap(FigureView, 2));
+  Result := FMX.Graphics.TBitmap.Create;
+  try
+    Result.LoadFromFile(FFigures[FFigureIndex]);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+{ Copy: the figure on screen, all of it (every cell of a grid), as it looks
+  now. }
+procedure TfrmMain.FigureCopyClick(Sender: TObject);
+var
+  Bmp: FMX.Graphics.TBitmap;
+  Svc: IFMXClipboardService;
+begin
+  if (FFigureIndex < 0) or (FFigureIndex >= FFigures.Count) then
+    Exit;
+  if not TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Svc) then
+    Exit;
+  Bmp := nil;
+  try
+    try
+      Bmp := FigureViewBitmap;
+      Svc.SetClipboard(Bmp);
+      FPlotCaption.Text := 'Copied figure ' + IntToStr(FFigureIndex + 1);
+    except
+      on E: Exception do
+        FPlotCaption.Text := 'Cannot copy: ' + E.Message;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
+{ Save...: the figure on screen, all of it (every cell of a grid), as it looks
+  now, to a PNG (2 pixels per point), PDF or SVG (vectors) the user picks;
+  see uFigureExport. A figure shown as an image is saved as that PNG. }
+procedure TfrmMain.FigureSaveClick(Sender: TObject);
+var
+  Dlg: TSaveDialog;
+  Target, Ext: string;
+  View: TControl;
+begin
+  if (FFigureIndex < 0) or (FFigureIndex >= FFigures.Count) then
+    Exit;
+  View := FigureView;
+  Dlg := TSaveDialog.Create(nil);
+  try
+    if View <> nil then
+      Dlg.Filter := 'PNG image (*.png)|*.png|PDF document (*.pdf)|*.pdf|SVG image (*.svg)|*.svg'
+    else
+      Dlg.Filter := 'PNG image (*.png)|*.png';
+    Dlg.DefaultExt := 'png';
+    Dlg.FileName := 'figure';
+    if FRunDir <> '' then
+      Dlg.InitialDir := FRunDir;
+    if not Dlg.Execute then
+      Exit;
+    Target := Dlg.FileName;
+    Ext := LowerCase(ExtractFileExt(Target));
+    if Ext = '' then
+    begin
+      case Dlg.FilterIndex of
+        2: Ext := '.pdf';
+        3: Ext := '.svg';
+      else
+        Ext := '.png';
+      end;
+      Target := Target + Ext;
+    end;
+  finally
+    Dlg.Free;
+  end;
+  if (View = nil) or ((Ext <> '.pdf') and (Ext <> '.svg')) then
+    Target := TPath.ChangeExtension(Target, '.png');
+  try
+    if View = nil then
+      TFile.Copy(FFigures[FFigureIndex], Target, True)
+    else if Ext = '.pdf' then
+      SaveViewPdf(View, Target)
+    else if Ext = '.svg' then
+      SaveViewSvg(View, Target)
+    else
+      SaveViewPng(View, Target, 2);
+    FPlotCaption.Text := 'Saved ' + ExtractFileName(Target);
+  except
+    on E: Exception do
+      FPlotCaption.Text := 'Cannot save: ' + E.Message;
+  end;
 end;
 
 procedure TfrmMain.FigurePrevClick(Sender: TObject);
@@ -1774,6 +1923,7 @@ end;
 
 procedure TfrmMain.FigureClearClick(Sender: TObject);
 begin
+  FreeAndNil(FPlotGrid);
   FFigures.Clear;
   FFigureIndex := -1;
   UpdateFigureBar;

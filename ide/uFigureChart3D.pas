@@ -18,16 +18,18 @@ unit uFigureChart3D;
 interface
 
 uses
-  Rho3DPlot;
+  System.JSON, Rho3DPlot;
 
 // Replaces the chart's contents with the 3-D figure in FileName. False (with
 // the chart unchanged) when the file cannot be read as a 3-D figure.
 function LoadFigure3D(Plot: TRho3DPlot; const FileName: string): Boolean;
+// The same from a parsed figure record (a cell of a grid, see uFigureGrid).
+function LoadFigure3DObj(Plot: TRho3DPlot; Fig: TJSONObject): Boolean;
 
 implementation
 
 uses
-  System.SysUtils, System.Math, System.JSON, System.IOUtils, System.UITypes,
+  System.SysUtils, System.Math, System.IOUtils, System.UITypes,
   System.Generics.Collections, uFigureChart;
 
 function Vector(J: TJSONValue): TArray<Double>;
@@ -127,21 +129,23 @@ end;
 function LoadFigure3D(Plot: TRho3DPlot; const FileName: string): Boolean;
 var
   Root: TJSONValue;
-  Fig: TJSONObject;
+begin
+  Root := ReadJson(FileName);
+  try
+    Result := (Root is TJSONObject) and LoadFigure3DObj(Plot, TJSONObject(Root));
+  finally
+    Root.Free;
+  end;
+end;
+
+function LoadFigure3DObj(Plot: TRho3DPlot; Fig: TJSONObject): Boolean;
+var
   Series, Lim: TJSONArray;
   K: Integer;
   HasSurface: Boolean;
 begin
   Result := False;
-  try
-    Root := TJSONObject.ParseJSONValue(TEncoding.UTF8.GetString(TFile.ReadAllBytes(FileName)));
-  except
-    Exit;
-  end;
-  try
-    if not (Root is TJSONObject) then
-      Exit;
-    Fig := TJSONObject(Root);
+  begin
     if not Bool(Fig.GetValue('three_d'), False) or not (Fig.GetValue('series') is TJSONArray) then
       Exit;
     Series := TJSONArray(Fig.GetValue('series'));
@@ -178,8 +182,6 @@ begin
     Plot.ResetView;
     Plot.SetView(Num(Fig.GetValue('azim'), -60), Num(Fig.GetValue('elev'), 30));
     Result := True;
-  finally
-    Root.Free;
   end;
 end;
 

@@ -98,11 +98,18 @@ shown too, when the program ends, if the run showed no figure.
 
 The plot pane keeps every figure shown since the IDE started (the newest 50).
 **◀** and **▶** in its header step through them, the count shows which one you
-are looking at, and **Clear** forgets them all. Changes made in a chart (zoom,
+are looking at, **Copy** puts the figure you are looking at on the
+clipboard as an image and **Save…** writes it as PNG, PDF or SVG (both take all
+of it, every cell of a grid), and **Clear** forgets them all. Both take the figure
+as it looks now, with your zooming, panning, rotating and edits; a PDF or SVG
+is drawn as vectors. Changes made in a chart (zoom,
 edits) are not kept when you step to another figure.
 
-A figure divided with `plot.subplot` is shown as a picture, not an interactive
-chart.
+A figure divided with `plot.subplot` is shown as a grid of charts, one per
+cell, each of which can be zoomed, panned (or rotated) and edited on its own.
+Widen the plot pane, by dragging its left edge, to give the cells more room.
+A chart's own right-click menu copies or exports just that cell; **Copy** and
+**Save…** in the header take the whole grid.
 
 Line, scatter, bar and histogram plots are shown in an interactive chart:
 
