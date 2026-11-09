@@ -935,6 +935,11 @@ numbers and arrays with more options (Section~\ref{sec:fmt}):
 \item \code{fmt.set_header(false)} leaves out the header line of displayed
   arrays, such as \code|2x3 matrix{int}|, so only the rows are
   printed; \code{fmt.set_header()} brings it back.
+\item \code{fmt.set_sci(small, large)} sets when reals switch to scientific
+  notation: below \code{small} or from \code{large} in size, instead of below
+  \code{1e-4} or from \code{1e15}. \code{fmt.set_sci(1e-6, 1e9)} keeps
+  \code{0.00001} as it is but writes \code{2e9} as \code{2.0e9};
+  \code{fmt.set_sci()} restores the defaults.
 \end{itemize}
 
 \begin{axon}

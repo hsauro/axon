@@ -202,6 +202,12 @@ function TypeName(const V: TAxValue): string;
   point, exponent form below 1e-4 or from 1e15 in magnitude. Arrays use
   Digits = 6 for their elements. }
 function FormatReal(X: Double; Digits: Integer = 15): string;
+{ The same with the limits of exponent form given: below Small or from Large
+  in magnitude (after rounding to Digits). FormatReal uses 1e-4 and 1e15. }
+function FormatRealLimits(X: Double; Digits: Integer; Small, Large: Double): string;
+{ A real as displayed with Digits significant digits: FormatRealLimits with
+  the limits set by fmt.set_sci. }
+function DisplayReal(X: Double; Digits: Integer = 15): string;
 
 const
   DefaultDisplayRows = 10;
@@ -218,6 +224,14 @@ var
   { Whether displayed arrays start with their header line (fmt.set_header);
     without it the rows start at the left margin. }
   DisplayHeader: Boolean = True;
+  { The limits of exponent form in displayed reals (fmt.set_sci): below
+    SciSmall or from SciLarge in magnitude. }
+  SciSmall: Double = 1e-4;
+  SciLarge: Double = 1e15;
+
+const
+  DefaultSciSmall = 1e-4;
+  DefaultSciLarge = 1e15;
 
 var
   { Number of array copies made by copy-on-write (the __copies() test hook). }
@@ -776,10 +790,21 @@ begin
 end;
 
 function FormatReal(X: Double; Digits: Integer): string;
+begin
+  Result := FormatRealLimits(X, Digits, DefaultSciSmall, DefaultSciLarge);
+end;
+
+function DisplayReal(X: Double; Digits: Integer): string;
+begin
+  Result := FormatRealLimits(X, Digits, SciSmall, SciLarge);
+end;
+
+function FormatRealLimits(X: Double; Digits: Integer; Small, Large: Double): string;
 var
   S, Mantissa, Ds: string;
   P, E: Integer;
   Neg: Boolean;
+  Rounded: Double;
 begin
   if IsNan(X) then
     Exit('NaN');
@@ -800,6 +825,9 @@ begin
     Mantissa := Copy(S, 1, P - 1);
     E := StrToInt(Copy(S, P + 1, MaxInt));
     Ds := Mantissa.Replace('.', '');
+    // The magnitude after rounding, which the limits are compared with (so
+    // 9.99999e-5 rounding to 1.0e-4 is shown in fixed form).
+    Rounded := StrToFloat(S, TFormatSettings.Invariant);
     // Drop trailing zeros, keeping at least one digit.
     while (Length(Ds) > 1) and (Ds[Length(Ds)] = '0') do
       Delete(Ds, Length(Ds), 1);
@@ -807,7 +835,7 @@ begin
 
   if X = 0 then
     Result := '0.0'
-  else if (E < -4) or (E >= 15) then
+  else if (Rounded < Small) or (Rounded >= Large) then
   begin
     Result := Ds[1] + '.';
     if Length(Ds) > 1 then
@@ -837,8 +865,9 @@ end;
 function ShownReal(X: Double; Digits: Integer = 15): string;
 begin
   if DisplayDecimals < 0 then
-    Exit(FormatReal(X, Digits));
-  if not IsNan(X) and not IsInfinite(X) and (Abs(X) >= 1e15) then
+    Exit(DisplayReal(X, Digits));
+  // Fixed decimals: only the upper limit of fmt.set_sci applies.
+  if not IsNan(X) and not IsInfinite(X) and (Abs(X) >= SciLarge) then
     Result := FormatExponent(X, DisplayDecimals)
   else
     Result := FormatFixed(X, DisplayDecimals);

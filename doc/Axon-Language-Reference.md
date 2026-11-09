@@ -333,7 +333,7 @@ Output tests compare text exactly, so every value has one display form.
 | Value | Display | Examples |
 | --- | --- | --- |
 | `int` | Plain digits | `5`, `-42` |
-| `real` | Up to 15 significant digits, always with a decimal point; exponent form below 1e-4 or from 1e15 in magnitude | `5.0`, `0.1`, `2.5`, `1.0e-10`, `6.02e23` |
+| `real` | Up to 15 significant digits, always with a decimal point; exponent form below 1e-4 or from 1e15 in magnitude (after rounding; `fmt.set_sci` changes these limits) | `5.0`, `0.1`, `2.5`, `1.0e-10`, `6.02e23` |
 | Special reals | Words | `NaN`, `Inf`, `-Inf` |
 | `complex` | Each part as a `real`, joined by `+` or `-` | `3.0 + 4.0i`, `0.0 - 2.0i` |
 | `bool` | Words | `true`, `false` |
@@ -793,12 +793,13 @@ Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `s
 | Function | Effect |
 | --- | --- |
 | `set_size(rows: int, cols: int)` | Arrays with at most `rows` rows and `cols` columns are displayed in full. A larger dimension n shows its first `(n + 1) div 2` and last `n div 2` rows or columns, around the `⋮` line or `…` column. `set_size()` restores 10 rows and 8 columns |
-| `set_decimals(n: int)` | Every displayed `real` (scalars, array entries, the parts of complex numbers, range bounds) shows exactly `n` decimals, 1 to 15, instead of significant digits; magnitudes from 1e15 keep the exponent form, as in `1.000e20`. `int` values are unaffected. `set_decimals()` restores significant digits |
+| `set_decimals(n: int)` | Every displayed `real` (scalars, array entries, the parts of complex numbers, range bounds) shows exactly `n` decimals, 1 to 15, instead of significant digits; magnitudes from the upper limit of `set_sci` (1e15) keep the exponent form, as in `1.000e20`. `int` values are unaffected. `set_decimals()` restores significant digits |
+| `set_sci(small: real, large: real)` | Displayed reals use exponent form when their magnitude, after rounding to the digits shown, is below `small` or at least `large`, instead of below 1e-4 or from 1e15: `set_sci(1e-6, 1e9)`. It applies wherever reals are displayed, and to `number` and `matrix` when no `decimals` or `sci` is given; with `set_decimals`, only `large` applies. `set_sci(1, 1)` always uses exponent form, and `set_sci(0, 1.0 / 0.0)` never does (so very small and very large numbers are written out in full). `set_sci()` restores 1e-4 and 1e15. Limits other than `0 <= small <= large` with `large` above 0 raise `ArgumentError` |
 | `set_header(on: bool = true)` | Whether displayed arrays start with their header line (`2×3 matrix{int}`). With `set_header(false)` only the rows are shown, starting at the left margin, an empty array shows as `[]`, and at the REPL an assignment shows `A =` on a line of its own above the rows. `set_header()` turns the header back on |
 | `number(x; decimals: int, digits: int, sci: bool = false, width: int = 0)` | The number `x` as text: with `decimals`, exactly that many digits after the point (as `format`); with `digits`, up to that many significant digits (1 to 17); with `sci = true`, scientific notation with `decimals` digits after the point (6 by default), as in `1.23e4`; padded on the left with spaces to `width` characters. With none of these, an `int` in full and a `real` with up to 15 significant digits. `bool` and `complex` values give their display form |
 | `matrix(A; decimals: int, digits: int = 6, sci: bool = false, header: bool = false, sep: string = "  ", align: bool = true)` | The vector or matrix `A` as text: one line per row (a vector is a column), its elements formatted as by `number` and separated by `sep`, each column right-aligned to its widest entry when `align` is true. `header = true` puts the header line first. Every row and column is included, whatever `set_size` says; there is no line break at the end. A range or a number is taken as a vector |
 
-The settings return `nothing` and last until changed: for the rest of a program, or of a REPL session. They change every display form, including `string(x)`, but not `number`, `matrix`, `format`, or the text of error messages. `set_size` and `set_decimals` raise `ArgumentError` for a count out of range, and every function raises `TypeError` for arguments of the wrong type.
+The settings return `nothing` and last until changed: for the rest of a program, or of a REPL session. They change every display form, including `string(x)`, but not `format` or the interpreter's own error messages; `number` and `matrix` follow only `set_sci`. `set_size` and `set_decimals` raise `ArgumentError` for a count out of range, and every function raises `TypeError` for arguments of the wrong type.
 
 ```axon
 import fmt

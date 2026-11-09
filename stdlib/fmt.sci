@@ -29,6 +29,19 @@ export function set_decimals(n = nothing)
   end
 end
 
+## Displayed reals use scientific notation when their magnitude is below
+## small or at least large: fmt.set_sci(1e-6, 1e9). set_sci() restores 1e-4
+## and 1e15. set_sci(0, 1.0 / 0.0) never uses it; set_sci(1, 1) always does.
+export function set_sci(small = nothing, large = nothing)
+  if typeof(small) == "nothing" and typeof(large) == "nothing"
+    fmtcore.set_sci()
+  elseif typeof(small) == "nothing" or typeof(large) == "nothing"
+    error("ArgumentError", "fmt.set_sci takes both limits, or neither")
+  else
+    fmtcore.set_sci(small, large)
+  end
+end
+
 ## Whether displayed arrays start with their header line, such as
 ## "2x3 matrix{int}". set_header(false) leaves just the rows, starting at
 ## the left margin; set_header() turns the header back on.
@@ -43,7 +56,8 @@ end
 ## notation, with decimals digits after the point, 6 by default) and width
 ## (padded on the left with spaces to at least that many characters). With
 ## none of them, an int is written in full and a real with up to 15
-## significant digits, whatever the display settings.
+## significant digits, in scientific notation outside the limits of set_sci;
+## the other display settings do not apply.
 export function number(x; decimals = nothing, digits = nothing, sci = false, width = 0)
   t = typeof(x)
   if t == "bool" or t == "complex"

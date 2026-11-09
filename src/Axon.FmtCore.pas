@@ -10,7 +10,7 @@ interface
 implementation
 
 uses
-  System.SysUtils,
+  System.SysUtils, System.Math,
   Axon.Errors, Axon.Values, Axon.Ops, Axon.NativeModules, Axon.FloatParse;
 
 function DisplayCount(const Fn, What: string; const V: TAxValue): Integer;
@@ -91,13 +91,38 @@ begin
 end;
 
 { digits(x, n): a real with up to n significant digits (1 to 17), as arrays
-  display their elements (6) and scalars (15); an int as it is. }
+  display their elements (6) and scalars (15), exponent form outside the
+  limits of set_sci; an int as it is. }
 function BDigits(const Args: TAxValues): TAxValue;
 begin
   if Args[0].Kind = vkInt then
     Exit(StringValue(IntToStr(Args[0].I)));
-  Result := StringValue(FormatReal(RealArg('fmt digits', Args[0]),
+  Result := StringValue(DisplayReal(RealArg('fmt digits', Args[0]),
     IntArg('fmt', 'digits', Args[1], 1, 17)));
+end;
+
+{ set_sci(small, large): displayed reals use exponent form below small or
+  from large in magnitude; set_sci() restores 1e-4 and 1e15. }
+function BSetSci(const Args: TAxValues): TAxValue;
+var
+  Small, Large: Double;
+begin
+  if Length(Args) = 0 then
+  begin
+    SciSmall := DefaultSciSmall;
+    SciLarge := DefaultSciLarge;
+    Exit(NothingValue);
+  end;
+  if Length(Args) <> 2 then
+    RaiseError(ArgumentError, 'fmt.set_sci takes the small and large limits, or nothing to ' +
+      'restore the default');
+  Small := RealArg('fmt.set_sci', Args[0]);
+  Large := RealArg('fmt.set_sci', Args[1]);
+  if IsNan(Small) or IsNan(Large) or (Small < 0) or (Large <= 0) or (Small > Large) then
+    RaiseError(ArgumentError, 'fmt.set_sci needs 0 <= small <= large, with large above 0');
+  SciSmall := Small;
+  SciLarge := Large;
+  Result := NothingValue;
 end;
 
 { sci(x, n): x in scientific notation with n digits after the point:
@@ -113,6 +138,7 @@ begin
   Define('set_size', BuiltinValue('fmt.set_size', BSetSize, 0, 2));
   Define('set_decimals', BuiltinValue('fmt.set_decimals', BSetDecimals, 0, 1));
   Define('set_header', BuiltinValue('fmt.set_header', BSetHeader, 1, 1));
+  Define('set_sci', BuiltinValue('fmt.set_sci', BSetSci, 0, 2));
   Define('digits', BuiltinValue('fmtcore.digits', BDigits, 2, 2));
   Define('sci', BuiltinValue('fmtcore.sci', BSci, 2, 2));
 end;
