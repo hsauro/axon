@@ -4,8 +4,14 @@
 
 import graphics
 
-# The figure that plotting calls add to (nothing until the first call).
+# The figure that plotting calls add to (nothing until the first call). In a
+# figure divided by plot.subplot, it is the current cell, a record of the same
+# shape sized to the cell.
 current = nothing
+# The grid of a figure divided by plot.subplot, or nothing: its size, overall
+# title, rows and columns, the cells (nothing where never selected) and the
+# number of the current cell, which is kept in current while it is selected.
+layout = nothing
 # Whether it has changed since plot.show or plot.save last drew it.
 changed = false
 
@@ -77,11 +83,27 @@ end
 # saved is shown when the program ends, and when plot.figure replaces it, so
 # plot.show() can be left out.
 function show_unshown()
-  if changed and typeof(current) != "nothing"
-    if length(current.series) > 0
-      show()
+  if changed and has_plots()
+    show()
+  end
+end
+
+# Whether the figure (any of its cells) has something plotted.
+function has_plots()
+  if typeof(current) == "nothing"
+    return false
+  end
+  if length(current.series) > 0
+    return true
+  end
+  if typeof(layout) != "nothing"
+    for c in layout.cells
+      if typeof(c) != "nothing"
+        if length(c.series) > 0 return true end
+      end
     end
   end
+  return false
 end
 atexit(show_unshown)
 
@@ -107,12 +129,111 @@ end
 export function figure(; width = 640, height = 480, title = nothing)
   global current
   global changed
+  global layout
   if not (width > 0 and height > 0)
     fail("ArgumentError", "plot.figure: width and height must be positive")
   end
   show_unshown()
   current = new_figure(width, height, title)
+  layout = nothing
   changed = true
+end
+
+## Divides the figure into a grid of rows by cols cells and makes cell k the
+## current one, so later plotting calls (lines, titles, limits, ...) go to
+## it. Cells are numbered along each row, from the top left. Selecting a cell
+## again goes back to what is plotted there. A title given to plot.figure
+## goes above the whole grid.
+export function subplot(rows, cols, k)
+  global current
+  global layout
+  global changed
+  for v in {rows, cols, k}
+    if typeof(v) != "int"
+      fail("TypeError", "plot.subplot: rows, cols and k must be ints, got " + typeof(v))
+    end
+  end
+  if rows < 1 or cols < 1
+    fail("ArgumentError", "plot.subplot: rows and cols must be at least 1")
+  end
+  if k < 1 or k > rows * cols
+    fail("ArgumentError", "plot.subplot: cell " + string(k) + " is outside a " + string(rows) +
+      " by " + string(cols) + " grid (1 to " + string(rows * cols) + ")")
+  end
+  figure_now()
+  if typeof(layout) == "nothing"
+    if length(current.series) > 0
+      fail("ArgumentError", "plot.subplot: the figure already has plots outside a grid; " +
+        "start a new one with plot.figure()")
+    end
+    cells = {}
+    for j in 1:rows * cols cells = append(cells, nothing) end
+    layout = {width: current.width, height: current.height, title: current.title,
+              rows: rows, cols: cols, cells: cells, index: k}
+  else
+    if rows != layout.rows or cols != layout.cols
+      fail("ArgumentError", "plot.subplot: this figure is a " + string(layout.rows) + " by " +
+        string(layout.cols) + " grid; start a new figure for another grid")
+    end
+    layout.cells[layout.index] = current
+  end
+  layout.index = k
+  if typeof(layout.cells[k]) == "nothing"
+    [x, y, w, h] = cell_box(k)
+    current = new_figure(w, h, nothing)
+  else
+    current = layout.cells[k]
+  end
+  changed = true
+end
+
+# The position and size of cell k of the grid, in points.
+function cell_box(k)
+  top = 0.0
+  if typeof(layout.title) != "nothing" top = TITLE_SIZE * 2.2 end
+  w = layout.width / layout.cols
+  h = (layout.height - top) / layout.rows
+  row = div(k - 1, layout.cols)
+  col = mod(k - 1, layout.cols)
+  return col * w, top + row * h, w, h
+end
+
+# The whole figure: the current figure, or the grid with the current cell in
+# place.
+function whole_figure()
+  if typeof(layout) == "nothing"
+    return current
+  end
+  g = layout
+  g.cells[g.index] = current
+  return g
+end
+
+# The scene of the whole figure: each cell drawn as a figure of its own size
+# and moved into place.
+function figure_scene()
+  if typeof(layout) == "nothing"
+    return render(current)
+  end
+  g = whole_figure()
+  items = {}
+  if typeof(g.title) != "nothing"
+    items = append(items, {kind: "text", x: g.width / 2, y: TITLE_SIZE * 1.1, text: g.title,
+                           size: TITLE_SIZE, anchor: "middle", baseline: "middle",
+                           bold: true, color: "black"})
+  end
+  for k in 1:length(g.cells)
+    c = g.cells[k]
+    if typeof(c) != "nothing"
+      if length(c.series) > 0 or typeof(c.title) != "nothing"
+        [x, y, w, h] = cell_box(k)
+        sc = render(c)
+        items = append(items, {kind: "group", dx: x, dy: y, clip: {x: 0.0, y: 0.0, w: w, h: h},
+                               items: sc.items})
+      end
+    end
+  end
+  return {width: g.width, height: g.height, background: "white", items: items}
 end
 
 ## Adds a line through the points (x[k], y[k]). Keywords: label, color,
@@ -493,9 +614,9 @@ export function show(; scale = 2.0)
   if typeof(current) == "nothing"
     fail("ArgumentError", "plot.show: there is no figure; plot something first")
   end
-  scene = render(current)
+  scene = figure_scene()
   scene.scale = scale + 0.0
-  if interactive(current)
+  if typeof(layout) == "nothing" and interactive(current)
     # The IDE also gets the figure itself, which it draws in its interactive
     # chart (zoom, pan, editing) instead of the image.
     graphics.show(scene, current)
@@ -507,14 +628,17 @@ end
 
 # Whether the IDE's interactive charts can draw the figure: every 2-D figure
 # goes to the 2-D chart and every 3-D figure (surfaces, line3, scatter3) to
-# the 3-D chart.
+# the 3-D chart. A figure with subplots is shown as its image.
 function interactive(fig)
   return length(fig.series) > 0
 end
 
 ## The current figure, as a record (nothing before the first plotting call).
+## For a figure divided by plot.subplot, a record of the grid: width, height,
+## title, rows, cols, cells (each a figure record, or nothing) and index, the
+## number of the current cell.
 export function gcf()
-  return current
+  return whole_figure()
 end
 
 ## Writes the current figure to a .png, .svg or .pdf file. scale sets the
@@ -524,7 +648,7 @@ export function save(path; scale = 2.0)
   if typeof(current) == "nothing"
     fail("ArgumentError", "plot.save: there is no figure; plot something first")
   end
-  scene = render(current)
+  scene = figure_scene()
   scene.scale = scale + 0.0
   graphics.save(scene, path)
   changed = false
@@ -602,6 +726,20 @@ function has_bars(series)
   return false
 end
 
+# Whether the figure has bars and every series is bars centred on whole
+# numbers.
+function bars_on_integers(series)
+  if length(series) == 0 return false end
+  for s in series
+    if s.type != "bars" return false end
+    c = (s.left + s.right) / 2
+    for v in c
+      if abs(v - round(v)) > 1e-9 return false end
+    end
+  end
+  return true
+end
+
 function all_x(series)
   v = zeros(0)
   for s in series
@@ -650,7 +788,10 @@ function render_2d(fig)
     if min(all_y(fig.series)) >= 0 y0 = 0.0 end
     if max(all_y(fig.series)) <= 0 y1 = 0.0 end
   end
-  [yt, ystep] = nice_ticks(y0, y1, 6)
+  # Fewer ticks in a small figure (a subplot cell); 7 and 6 from about 500 by 420.
+  nx = min(7, max(3, round(W / 70)))
+  ny = min(6, max(3, round(H / 70)))
+  [yt, ystep] = nice_ticks(y0, y1, ny)
   # Ticks set by xticks (those inside the range), category names at 1, 2, ...,
   # or round numbers.
   if typeof(fig.xticks) != "nothing"
@@ -668,7 +809,13 @@ function render_2d(fig)
     for k in 1:length(xt) xt[k] = k end
     xlabels = fig.xcategories
   else
-    [xt, xstep] = nice_ticks(x0, x1, 7)
+    [xt, xstep] = nice_ticks(x0, x1, nx)
+    # Bars that all stand on whole numbers (plot.bar(y)) get whole-number ticks.
+    if xstep < 1 and bars_on_integers(fig.series)
+      xt = zeros(0)
+      for v in ceil(x0):floor(x1) xt = [xt; v + 0.0] end
+      xstep = 1.0
+    end
     xlabels = {}
     for v in xt xlabels = append(xlabels, tick_label(v, xstep)) end
   end

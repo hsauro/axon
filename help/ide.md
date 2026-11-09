@@ -12,6 +12,10 @@
 | REPL | An interactive session that keeps its variables. |
 | Help | Help on the word under the caret (<kbd>F1</kbd>). |
 
+To copy from the Output or REPL pane, click a line (Shift- or Ctrl-click for
+more) and press <kbd>Ctrl+C</kbd> (<kbd>Cmd+C</kbd> on a Mac), or right-click for
+**Copy** and **Copy All**; with no line selected, Copy takes the whole pane.
+
 The panes can be resized by dragging their edges. The IDE remembers the window
 and pane sizes, and the recent files, between sessions.
 
@@ -96,6 +100,9 @@ The plot pane keeps every figure shown since the IDE started (the newest 50).
 **◀** and **▶** in its header step through them, the count shows which one you
 are looking at, and **Clear** forgets them all. Changes made in a chart (zoom,
 edits) are not kept when you step to another figure.
+
+A figure divided with `plot.subplot` is shown as a picture, not an interactive
+chart.
 
 Line, scatter, bar and histogram plots are shown in an interactive chart:
 

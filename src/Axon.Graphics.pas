@@ -541,6 +541,8 @@ var
 begin
   sk4d_canvas_save(C);
   try
+    // dx, dy shift the group; its clip and items are in the shifted coordinates.
+    sk4d_canvas_translate(C, NumField(R, 'dx', 0, Ctx), NumField(R, 'dy', 0, Ctx));
     if Field(R, 'clip', V) and (V.Kind <> vkNothing) then
     begin
       if V.Kind <> vkRecord then

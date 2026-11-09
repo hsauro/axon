@@ -183,6 +183,12 @@ type
     procedure ReplEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
       Shift: TShiftState);
     procedure ShowNewestPlotIn(const Dir: string; Since: TDateTime);
+    procedure MakeCopyable(List: TListBox);
+    procedure CopyPaneLines(List: TListBox; All: Boolean);
+    procedure PaneKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+      Shift: TShiftState);
+    procedure PaneCopyClick(Sender: TObject);
+    procedure PaneCopyAllClick(Sender: TObject);
     procedure AddFigure(const Path: string);
     procedure DisplayFigure(Index: Integer);
     procedure UpdateFigureBar;
@@ -741,6 +747,7 @@ begin
   FOutput.Align := TAlignLayout.Client;
   FOutput.ItemHeight := 18;
   FOutput.OnItemClick := OutputClick;
+  MakeCopyable(FOutput);
   BuildReplPane(FReplTab);
   FBottomTabs.ActiveTab := FOutputTab;
   Split := TSplitter.Create(Self);
@@ -1835,6 +1842,78 @@ begin
   FReplList.Parent := Parent;
   FReplList.Align := TAlignLayout.Client;
   FReplList.ItemHeight := 18;
+  MakeCopyable(FReplList);
+end;
+
+{ The Output and REPL panes are lists of lines: a click selects one, Shift-
+  and Ctrl-click select more, and Ctrl+C (Cmd+C) or the right-click menu
+  copies them; with nothing selected, Copy takes every line. }
+procedure TfrmMain.MakeCopyable(List: TListBox);
+var
+  Menu: TPopupMenu;
+  Item: TMenuItem;
+begin
+  List.MultiSelectStyle := TMultiSelectStyle.Extended;
+  List.OnKeyDown := PaneKeyDown;
+  Menu := TPopupMenu.Create(Self);
+  Menu.Parent := Self;
+  Item := TMenuItem.Create(Self);
+  Item.Text := 'Copy';
+  Item.TagObject := List;
+  Item.OnClick := PaneCopyClick;
+  Menu.AddObject(Item);
+  Item := TMenuItem.Create(Self);
+  Item.Text := 'Copy All';
+  Item.TagObject := List;
+  Item.OnClick := PaneCopyAllClick;
+  Menu.AddObject(Item);
+  List.PopupMenu := Menu;
+end;
+
+procedure TfrmMain.CopyPaneLines(List: TListBox; All: Boolean);
+var
+  Lines: TStringList;
+  K: Integer;
+  Any: Boolean;
+  Svc: IFMXClipboardService;
+begin
+  Any := False;
+  if not All then
+    for K := 0 to List.Count - 1 do
+      if List.ListItems[K].IsSelected then
+        Any := True;
+  Lines := TStringList.Create;
+  try
+    for K := 0 to List.Count - 1 do
+      if not Any or List.ListItems[K].IsSelected then
+        Lines.Add(List.ListItems[K].Text);
+    if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Svc) then
+      Svc.SetClipboard(Lines.Text.TrimRight);
+  finally
+    Lines.Free;
+  end;
+end;
+
+procedure TfrmMain.PaneKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+  Shift: TShiftState);
+begin
+  if ((Key = vkC) or (KeyChar = 'c') or (KeyChar = 'C')) and
+    ((ssCtrl in Shift) or (ssCommand in Shift)) then
+  begin
+    CopyPaneLines(Sender as TListBox, False);
+    Key := 0;
+    KeyChar := #0;
+  end;
+end;
+
+procedure TfrmMain.PaneCopyClick(Sender: TObject);
+begin
+  CopyPaneLines((Sender as TMenuItem).TagObject as TListBox, False);
+end;
+
+procedure TfrmMain.PaneCopyAllClick(Sender: TObject);
+begin
+  CopyPaneLines((Sender as TMenuItem).TagObject as TListBox, True);
 end;
 
 function TfrmMain.ReplWorkDir: string;

@@ -58,3 +58,4 @@ Each example opens as your own copy, so you can change it and run it with
 - [Scatter plots with least-squares lines](../examples/12_scatter.sci)
 - [Line plots: sin(x) and its Taylor polynomials](../examples/13_line_plots.sci)
 - [The Lorenz attractor in 3D](../examples/14_lorenz.sci)
+- [Subplots: four views of a damped oscillator](../examples/15_subplots.sci)
