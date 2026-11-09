@@ -1122,6 +1122,9 @@ begin
 end;
 
 procedure DefineBuiltins(const Define: TProc<string, TAxValue>);
+const
+  PiBits: UInt64 = $400921FB54442D18;
+  EBits: UInt64 = $4005BF0A8B145769;
 
   procedure AddMulti(const Name: string; Fn: TBuiltinMultiFn; MinArgs, MaxArgs: Integer);
   var
@@ -1224,6 +1227,10 @@ begin
   Add('min', BMin, 1, 2);
   Add('max', BMax, 1, 2);
   Add('factorial', BFactorial, 1, 1);
+  // Constants: the doubles nearest to pi and e, given by their bits so that
+  // no conversion can be off by one unit in the last place.
+  Define('pi', RealValue(PDouble(@PiBits)^));
+  Define('e', RealValue(PDouble(@EBits)^));
 end;
 
 end.

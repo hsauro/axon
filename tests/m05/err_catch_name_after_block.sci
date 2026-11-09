@@ -1,6 +1,6 @@
 #! error: NameError
 try
   error("x")
-catch e
+catch err
 end
-println(e)
+println(err)

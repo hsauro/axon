@@ -944,8 +944,8 @@ function render_3d(fig)
   if zmax == zmin zmax = zmin + 1 end
 
   # Orthographic view of the cube [-1, 1]^3 (z squashed a little).
-  az = fig.azim * 3.141592653589793 / 180
-  el = fig.elev * 3.141592653589793 / 180
+  az = fig.azim * pi / 180
+  el = fig.elev * pi / 180
   ca = cos(az)
   sa = sin(az)
   ce = cos(el)

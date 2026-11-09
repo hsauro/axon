@@ -19,3 +19,13 @@ line(x, y; label = nothing, color = nothing, width = 1.5, style = "-", marker = 
   Adds a line through the points (x[k], y[k]). Keywords: label, color,
   width (points), style ("-", "--", ":" or "-.") and marker (a marker shape
   drawn at each point, with marker_size).
+> help pi
+pi
+  The ratio of a circle's circumference to its diameter, 3.14159265358979
+> help e
+e
+  The base of the natural logarithm, 2.71828182845905
+> e = 2
+e = 2
+> help e
+e is an int

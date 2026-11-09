@@ -15,11 +15,11 @@ function taylor_sin(x, order)
   return total
 end
 
-x = linspace(-2 * 3.141592653589793, 2 * 3.141592653589793, 400)
+x = linspace(-2 * pi, 2 * pi, 400)
 exact = sin(x)
 
 # How far each polynomial is from sin over one period, [-pi, pi].
-p = linspace(-3.141592653589793, 3.141592653589793, 200)
+p = linspace(-pi, pi, 200)
 println("order  largest error on [-pi, pi]")
 for order in 1:2:9
   err = max(abs(taylor_sin(p, order) - sin(p)))
@@ -27,7 +27,7 @@ for order in 1:2:9
 end
 
 # Every line style, plus markers on the order-9 curve at 25 points.
-x9 = linspace(-2 * 3.141592653589793, 2 * 3.141592653589793, 25)
+x9 = linspace(-2 * pi, 2 * pi, 25)
 plot.figure(title = "sin(x) and its Taylor polynomials", width = 720)
 plot.line(x, exact, label = "sin(x)", color = "black", width = 2.5)
 plot.line(x, taylor_sin(x, 1), label = "order 1", style = "--")

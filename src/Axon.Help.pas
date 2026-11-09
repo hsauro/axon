@@ -27,7 +27,7 @@ function HelpUsage: TArray<string>;
 implementation
 
 uses
-  System.SysUtils,
+  System.SysUtils, System.Math,
   Axon.Ast, Axon.Interp, Axon.Ffi;
 
 type
@@ -270,6 +270,17 @@ function HelpText(const Name: string; const V: TAxValue): TArray<string>;
 var
   T: string;
 begin
+  // The prelude's constants, unless the name has been reassigned.
+  if (V.Kind = vkReal) and (Name = 'pi') and (V.R = Pi) then
+  begin
+    Result := ['pi', '  The ratio of a circle''s circumference to its diameter, 3.14159265358979'];
+    Exit;
+  end;
+  if (V.Kind = vkReal) and (Name = 'e') and (V.R = Exp(1.0)) then
+  begin
+    Result := ['e', '  The base of the natural logarithm, 2.71828182845905'];
+    Exit;
+  end;
   case V.Kind of
     vkFunction:   Result := FunctionHelp(TFunctionObj(V.Obj));
     vkBuiltin:    Result := BuiltinHelp(TCallableObj(V.Obj).Name);

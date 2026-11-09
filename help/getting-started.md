@@ -46,13 +46,15 @@ Running `axon` with no file starts the same REPL in a terminal.
 - In the REPL, `help name` does the same, and `help` alone lists the commands.
 - **Help > Documentation** opens these pages, and **Help > Language Reference**
   the complete description of the language.
+- **Help > Built-in Functions** lists every function you can use without an
+  `import`, such as `zeros`, `sum`, `sqrt` and `println`.
 
 Documentation comments start with `##` and sit directly above a function:
 
 ```axon
 ## The area of a circle of radius r.
 function area(r)
-  return 3.141592653589793 * r^2
+  return pi * r^2
 end
 println(area(2.0))
 ```

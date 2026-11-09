@@ -57,6 +57,7 @@ Nov 7, 2026 · Herbert Sauro
   - [Output and text functions](#output-and-text-functions)
   - [Lists and dictionaries](#lists-and-dictionaries)
   - [Other built-in functions](#other-built-in-functions)
+  - [Constants](#constants)
 - [Standard modules](#standard-modules)
   - [The linalg module](#the-linalg-module)
   - [The io module](#the-io-module)
@@ -603,7 +604,7 @@ The first line is `Kind: message`. Each further line is one trace frame, innermo
 
 ## Built-in functions
 
-These functions are always available, without an `import`. Each table links to the section that gives the full rules. Functions of the standard modules (`random.randn`, `io.read_file`, `plot.line` and so on) are listed under [Standard modules](#standard-modules). At the REPL, `help name` shows a one-line description of any of them, and in the IDE <kbd>F1</kbd> does the same.
+These functions, and the constants `pi` and `e`, are always available, without an `import`. Each table links to the section that gives the full rules. Functions of the standard modules (`random.randn`, `io.read_file`, `plot.line` and so on) are listed under [Standard modules](#standard-modules). At the REPL, `help name` shows a one-line description of any of them, and in the IDE <kbd>F1</kbd> does the same.
 
 ### Array functions
 
@@ -707,6 +708,15 @@ See [Lists, records and dictionaries](#lists-records-and-dictionaries).
 | `isequal(a, b)` | Whether two values are equal as whole values (see [Comparison](#comparison)) |
 | `error(message)`, `error(kind, message)` | Raises an error (see [Errors](#errors)) |
 | `keep(f)` | Keeps a callback valid after the `extern` call that received it (see [Foreign functions](#foreign-functions)) |
+
+### Constants
+
+| Name | Value |
+| --- | --- |
+| `pi` | π, the ratio of a circle's circumference to its diameter: the `real` nearest to it, 3.141592653589793 |
+| `e` | The base of the natural logarithm: the `real` nearest to it, 2.718281828459045 |
+
+Like the built-in functions, they are names in the prelude, so a program can assign `e = 0.5` (or `pi`) to a variable of its own, which hides the constant in that scope.
 
 ## Standard modules
 

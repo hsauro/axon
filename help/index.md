@@ -8,6 +8,7 @@ solvers and plots, with a small core and readable code.
 - [Getting started](getting-started.md): run your first program, use the REPL, find help.
 - [Using the IDE](ide.md): running, the output and REPL panes, plots, help and shortcuts.
 - [A tour of Axon](tour.md): the language in one page, with examples you can run.
+- [Built-in functions](Axon-Language-Reference.md#built-in-functions): every function you can use without an `import`, and the constants `pi` and `e`.
 
 ## Reference
 
@@ -16,6 +17,7 @@ description of Axon. Some sections you may want often:
 
 | Topic | Section |
 | --- | --- |
+| Every built-in function, and `pi` and `e` | [Built-in functions](Axon-Language-Reference.md#built-in-functions) |
 | How values are displayed | [Display](Axon-Language-Reference.md#display) |
 | Printing: `print` and `println` | [Printing](Axon-Language-Reference.md#printing) |
 | Matrix product, solving `A \ b`, powers, broadcasting | [Linear-algebra operators](Axon-Language-Reference.md#linear-algebra-operators) |
@@ -49,3 +51,10 @@ Each example opens as your own copy, so you can change it and run it with
 - [Stiff equations and events](../examples/05_stiff_and_events.sci)
 - [Sparse matrices](../examples/06_sparse.sci)
 - [A surface plot](../examples/07_surface.sci)
+- [Timing code with the time module](../examples/08_timing.sci)
+- [JIT: the same code compiled and interpreted](../examples/09_jit.sci)
+- [Random numbers: dice, Monte Carlo pi and a normal histogram](../examples/10_random.sci)
+- [Bar charts](../examples/11_bar_charts.sci)
+- [Scatter plots with least-squares lines](../examples/12_scatter.sci)
+- [Line plots: sin(x) and its Taylor polynomials](../examples/13_line_plots.sci)
+- [The Lorenz attractor in 3D](../examples/14_lorenz.sci)

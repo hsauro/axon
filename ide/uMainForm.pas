@@ -208,6 +208,7 @@ type
     procedure ShowHelpFor(const RefName, Text: string);
     procedure OpenExternal(const Target: string);
     procedure CmdDocs(Sender: TObject);
+    procedure CmdBuiltins(Sender: TObject);
     procedure CmdReference(Sender: TObject);
     procedure CmdDocsBack(Sender: TObject);
     procedure CmdDocsHome(Sender: TObject);
@@ -789,6 +790,7 @@ begin
   M := AddMenuItem(Menu, '&Help', '', nil);
   AddMenuItem(M, '&Documentation', 'Ctrl+F1', CmdDocs);
   AddMenuItem(M, '&Language Reference', '', CmdReference);
+  AddMenuItem(M, '&Built-in Functions', '', CmdBuiltins);
   AddMenuItem(M, '&Welcome', '', CmdWelcome);
   AddMenuItem(M, '&Help on Word', 'F1', CmdHelpWord);
   AddMenuItem(M, '-', '', nil);
@@ -3043,6 +3045,12 @@ end;
 procedure TfrmMain.CmdReference(Sender: TObject);
 begin
   ShowDocs('Axon-Language-Reference.md');
+end;
+
+{ The reference's list of every built-in function and constant. }
+procedure TfrmMain.CmdBuiltins(Sender: TObject);
+begin
+  ShowDocs('Axon-Language-Reference.md#built-in-functions');
 end;
 
 procedure TfrmMain.CmdDocsBack(Sender: TObject);

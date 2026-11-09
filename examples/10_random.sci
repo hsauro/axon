@@ -39,7 +39,7 @@ println("sample mean", round(m * 1000) / 1000, "sd", round(s * 1000) / 1000)
 
 # hist_density scales the bars so their total area is 1, like a density.
 t = linspace(-4.0, 4.0, 200)
-bell = exp(-t .* t / 2) / sqrt(2 * 3.141592653589793)
+bell = exp(-t .* t / 2) / sqrt(2 * pi)
 
 plot.figure(title = "20000 normal samples")
 plot.hist_density(z, bins = 40, label = "histogram")
