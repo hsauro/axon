@@ -64,6 +64,7 @@ println(area(2.0))
 `plot.line`, `plot.scatter` and `plot.surface` build a figure; `plot.show()`
 displays it in the IDE's **Plot** pane (or in your image viewer when you run
 from a terminal), and `plot.save("figure.pdf")` writes a PNG, SVG or PDF file.
+If a program ends without calling `plot.show()`, its figure is shown anyway.
 
 ```axon
 import plot

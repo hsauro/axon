@@ -165,7 +165,7 @@ type
   public
     Name: string;
     TypeRef: TTypeRef;   // nil if unannotated
-    Default: TExpr;      // keyword parameters only
+    Default: TExpr;      // keyword parameters, and optional positional ones; else nil
     IsKeyword: Boolean;
     destructor Destroy; override;
   end;

@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..93] of TBuiltinDoc = (
+  BuiltinDocs: array[0..94] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -54,6 +54,7 @@ const
     (Name: 'adjoint';  Params: '(A)';     Text: 'The conjugate transpose'),
     (Name: 'isequal';  Params: '(a, b)';  Text: 'True when two values are equal as whole values'),
     (Name: 'keep';     Params: '(f)';     Text: 'Keeps a callback valid after the extern call that received it'),
+    (Name: 'atexit';   Params: '(f)';     Text: 'Calls f() when the program ends normally; the last registered runs first'),
     (Name: 'eltype';   Params: '(A)';     Text: 'The element type of an array, as a string'),
     (Name: 'reshape';  Params: '(A, m, n)'; Text: 'The elements of A in column-major order, as an m' + #$00D7 + 'n matrix or an m-vector'),
     (Name: 'sparse';   Params: '(i, j, v, m, n)'; Text: 'A sparse matrix from index vectors and values, or sparse(A) from a dense matrix'),
@@ -181,6 +182,7 @@ begin
       First := False;
       Pos := Pos + P.Name;
       if P.TypeRef <> nil then Pos := Pos + ': ' + P.TypeRef.ToString;
+      if P.Default <> nil then Pos := Pos + ' = ' + #$2026;
     end;
   if Kw <> '' then
     Pos := Pos + '; ' + Kw;

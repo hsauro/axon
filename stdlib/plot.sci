@@ -6,6 +6,8 @@ import graphics
 
 # The figure that plotting calls add to (nothing until the first call).
 current = nothing
+# Whether it has changed since plot.show or plot.save last drew it.
+changed = false
 
 # matplotlib's "tab10" colours, used in turn for series without a colour.
 CYCLE = {"#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -59,13 +61,28 @@ function new_figure(width, height, title)
           xcategories: nothing, xticks: nothing, legend_position: "best"}
 end
 
+# Every plotting call goes through here (or plot.figure), so the figure is
+# marked as changed.
 function figure_now()
   global current
+  global changed
   if typeof(current) == "nothing"
     current = new_figure(640, 480, nothing)
   end
+  changed = true
   return current
 end
+
+# When the program ends, a figure with something in it that has changed since
+# it was last shown or saved is shown, so plot.show() can be left out.
+function show_unshown()
+  if changed and typeof(current) != "nothing"
+    if length(current.series) > 0
+      show()
+    end
+  end
+end
+atexit(show_unshown)
 
 function next_color(fig)
   return CYCLE[mod(length(fig.series), length(CYCLE)) + 1]
@@ -86,10 +103,12 @@ end
 ## Starts a new current figure of the given size in points (1/72 inch).
 export function figure(; width = 640, height = 480, title = nothing)
   global current
+  global changed
   if not (width > 0 and height > 0)
     fail("ArgumentError", "plot.figure: width and height must be positive")
   end
   current = new_figure(width, height, title)
+  changed = true
 end
 
 ## Adds a line through the points (x[k], y[k]). Keywords: label, color,
@@ -206,12 +225,19 @@ end
 
 ## Adds a bar chart: a bar of the given height at each position of x. x is a
 ## real vector of bar centres, or a list of strings naming categories, which
-## places the bars at 1, 2, ... and labels the x axis with the names. Bars
-## rise from 0, or fall for negative heights. Keywords: width (of each bar,
-## in x units), label, color.
-export function bar(x, heights; width = 0.8, label = nothing, color = nothing)
+## places the bars at 1, 2, ... and labels the x axis with the names; bar(y)
+## alone places the bars at 1, 2, ... Bars rise from 0, or fall for negative
+## heights. Keywords: width (of each bar, in x units), label, color.
+export function bar(x, heights = nothing; width = 0.8, label = nothing, color = nothing)
   global current
   categories = nothing
+  if typeof(heights) == "nothing"
+    if typeof(x) == "list"
+      fail("TypeError", "plot.bar: give the heights after the category names")
+    end
+    heights = x
+    x = 1:length(real_vector(heights, "plot.bar: heights"))
+  end
   if typeof(x) == "list"
     for c in x
       if typeof(c) != "string"
@@ -459,6 +485,7 @@ end
 ## Shows the current figure: in the IDE's plot pane when run from the IDE,
 ## otherwise in the system's image viewer. scale sets the pixels per point.
 export function show(; scale = 2.0)
+  global changed
   if typeof(current) == "nothing"
     fail("ArgumentError", "plot.show: there is no figure; plot something first")
   end
@@ -471,6 +498,7 @@ export function show(; scale = 2.0)
   else
     graphics.show(scene)
   end
+  changed = false
 end
 
 # Whether the IDE's interactive charts can draw the figure: every 2-D figure
@@ -488,12 +516,14 @@ end
 ## Writes the current figure to a .png, .svg or .pdf file. scale sets the
 ## pixels per point of a PNG.
 export function save(path; scale = 2.0)
+  global changed
   if typeof(current) == "nothing"
     fail("ArgumentError", "plot.save: there is no figure; plot something first")
   end
   scene = render(current)
   scene.scale = scale + 0.0
   graphics.save(scene, path)
+  changed = false
 end
 
 # ---------------------------------------------------------------- ticks

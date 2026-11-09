@@ -521,6 +521,7 @@ end;
 
 destructor TInterpreter.Destroy;
 begin
+  ClearAtExit;
   CallAxon := nil;
   FHoisted.Free;
   FHoistedRecords.Free;
@@ -1336,7 +1337,7 @@ var
   D: TFunctionDecl;
   P: TParam;
   Fn: string;
-  NPos, I, J, K: Integer;
+  NPos, NReq, I, J, K: Integer;
   Found: Boolean;
   Supplied: TArray<Integer>;   // per keyword parameter: index into KwValues, or -1
   Root: TScope;
@@ -1376,14 +1377,23 @@ begin
       RaiseFmt(ArgumentError, '%s has no keyword parameter "%s"', [Fn, KwNames[K]]);
   end;
 
-  // 1. Positional arguments.
+  // 1. Positional arguments; optional ones (with a default) may be left out.
   NPos := 0;
+  NReq := 0;
   for P in D.Params do
     if not P.IsKeyword then
+    begin
       Inc(NPos);
-  if Length(Pos) <> NPos then
-    RaiseFmt(ArgumentError, '%s takes %d positional argument(s), got %d',
-      [Fn, NPos, Length(Pos)]);
+      if P.Default = nil then
+        Inc(NReq);
+    end;
+  if (Length(Pos) < NReq) or (Length(Pos) > NPos) then
+    if NReq = NPos then
+      RaiseFmt(ArgumentError, '%s takes %d positional argument(s), got %d',
+        [Fn, NPos, Length(Pos)])
+    else
+      RaiseFmt(ArgumentError, '%s takes %d to %d positional arguments, got %d',
+        [Fn, NReq, NPos, Length(Pos)]);
 
   Inc(FCallDepth);
   SavedFile := FFile;
@@ -1406,11 +1416,13 @@ begin
       for I := 0 to D.Params.Count - 1 do
       begin
         P := D.Params[I];
-        if not P.IsKeyword then
+        if not P.IsKeyword and (J < Length(Pos)) then
         begin
           V := Pos[J];
           Inc(J);
         end
+        else if not P.IsKeyword then
+          V := Eval(P.Default, Root)
         else if Supplied[I] >= 0 then
           V := KwValues[Supplied[I]]
         else
@@ -3037,6 +3049,8 @@ begin
   for S in P.Body do
     ExecStmt(S, FGlobals);
   M.Loading := False;
+  // The program ran to its end: the functions registered with atexit.
+  RunAtExit;
 end;
 
 procedure TInterpreter.RunInSession(P: TProgram; const FileName: string);

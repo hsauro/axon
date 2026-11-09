@@ -1041,12 +1041,12 @@ begin
   Why := '';
   Positional := True;
   for P in R.Decl.Params do
-    if P.IsKeyword then
+    if P.IsKeyword or (P.Default <> nil) then
       Positional := False;
   if R.IsClosure then
     Why := 'it is a closure'
   else if not Positional then
-    Why := 'it has keyword parameters'
+    Why := 'it has keyword or optional parameters'
   else if not SignatureFor(R.Decl, ArgTypesOf(Args), Params, Why) then
     // through the interpreter, with the reason
   else

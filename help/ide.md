@@ -87,7 +87,8 @@ At the prompt, `run "file.sci"` does the same for any file.
 ## Plots
 
 `plot.show()` displays the current figure in the plot pane at once, even while
-the program is still running. Figures saved with `plot.save("name.png")` are
+the program is still running. Without it, the figure is shown when the program
+ends. Figures saved with `plot.save("name.png")` are
 shown too, when the program ends.
 
 Line, scatter, bar and histogram plots are shown in an interactive chart:

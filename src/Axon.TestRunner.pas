@@ -415,6 +415,14 @@ begin
     end;
   end;
 
+  // Figures from earlier runs (RunCase points AXON_SHOW_DIR here).
+  try
+    if TDirectory.Exists(TPath.Combine(TPath.GetTempPath, 'axon-test-figures')) then
+      TDirectory.Delete(TPath.Combine(TPath.GetTempPath, 'axon-test-figures'), True);
+  except
+    on Exception do ;       // in use by another run: leave it
+  end;
+
   TotalPassed := 0;
   TotalFailed := 0;
   TotalFixtures := 0;

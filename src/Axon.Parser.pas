@@ -648,18 +648,39 @@ var
       Result.TypeRef := ParseType;
   end;
 
+  // A positional parameter with "= default" is optional; every positional
+  // parameter after it must be optional too.
+  procedure Positional(var Optional: Boolean);
+  var
+    P: TParam;
+    T: TToken;
+  begin
+    T := Cur;
+    P := NewParam(False);
+    if Accept(tkAssign) then
+    begin
+      P.Default := ParseExpression;
+      Optional := True;
+    end
+    else if Optional then
+      Error(Format('parameter "%s" needs a default value, because a parameter before it ' +
+        'has one', [P.Name]), T);
+  end;
+
 var
   P: TParam;
+  Optional: Boolean;
 begin
   Names := TList<string>.Create;
   try
     if CurKind = tkRParen then
       Exit;
+    Optional := False;
     if CurKind <> tkSemicolon then
     begin
-      NewParam(False);
+      Positional(Optional);
       while Accept(tkComma) do
-        NewParam(False);
+        Positional(Optional);
     end;
     if Accept(tkSemicolon) then
     begin

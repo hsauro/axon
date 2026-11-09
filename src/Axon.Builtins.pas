@@ -15,6 +15,14 @@ uses
 { Calls Define once for every prelude function. }
 procedure DefineBuiltins(const Define: TProc<string, TAxValue>);
 
+{ Runs the functions registered with atexit, last registered first (and any
+  they register in turn), through CallAxon. The interpreter calls it when the
+  main program has run to its end. }
+procedure RunAtExit;
+
+{ Forgets the registered functions without running them. }
+procedure ClearAtExit;
+
 { print leaves its line open; println, and anything that writes a whole line
   of its own (the REPL's prompts and results, an error report), ends an open
   line first with EndOpenLine. }
@@ -34,7 +42,7 @@ implementation
 uses
   System.Math, System.Character,
   Axon.Errors, Axon.Complex, Axon.Ops, Axon.Arrays, Axon.Tokens, Axon.Ffi, Axon.Sparse,
-  Axon.Random, Axon.FloatParse;
+  Axon.Random, Axon.FloatParse, Axon.NativeModules;
 
 type
   TRealFn = function(X: Double): Double;
@@ -1333,6 +1341,38 @@ begin
   Result := KeepCallback(Args[0]);
 end;
 
+{ ---- atexit ---- }
+
+var
+  AtExitFns: TAxValues;
+
+{ atexit(f): f() runs when the program ends normally (not after an uncaught
+  error), after everything else; the last registered runs first. }
+function BAtExit(const Args: TAxValues): TAxValue;
+begin
+  if not (Args[0].Kind in [vkFunction, vkBuiltin, vkExtern]) then
+    RaiseFmt(TypeError, 'atexit needs a function, got %s', [TypeName(Args[0])]);
+  AtExitFns := AtExitFns + [Args[0]];
+  Result := NothingValue;
+end;
+
+procedure RunAtExit;
+var
+  F: TAxValue;
+begin
+  while Length(AtExitFns) > 0 do
+  begin
+    F := AtExitFns[High(AtExitFns)];
+    SetLength(AtExitFns, Length(AtExitFns) - 1);
+    CallAxon(F, []);
+  end;
+end;
+
+procedure ClearAtExit;
+begin
+  AtExitFns := nil;
+end;
+
 { Test hook: the number of copy-on-write array copies made so far. }
 function BCopies(const Args: TAxValues): TAxValue;
 begin
@@ -1447,6 +1487,7 @@ begin
   Add('min', BMin, 1, 2);
   Add('max', BMax, 1, 2);
   Add('factorial', BFactorial, 1, 1);
+  Add('atexit', BAtExit, 1, 1);
   // Constants: the doubles nearest to pi and e, given by their bits so that
   // no conversion can be off by one unit in the last place.
   Define('pi', RealValue(PDouble(@PiBits)^));

@@ -24,7 +24,7 @@ uses
 const
   // Anchor, then the built-ins it documents. Keep in step with the
   // reference's headings: a stale anchor only means no section is shown.
-  Sections: array[0..13] of string = (
+  Sections: array[0..14] of string = (
     'printing: print println display_size display_decimals format',
     'strings-1: string',
     'vectors-and-matrices: zeros ones eye rand linspace size length reshape ' +
@@ -35,6 +35,7 @@ const
     'complex-number-functions: imag conj arg',
     'constants: pi e',
     'array-functions: sort sortperm',
+    'other-built-in-functions: atexit',
     'sparse-operands: sparse speye nnz full splu',
     'lists-records-and-dictionaries: append get keys haskey dict typeof',
     'comparison: isequal',

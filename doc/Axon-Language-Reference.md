@@ -176,7 +176,7 @@ try_stmt     = "try" block "catch" [ IDENT ] terminator block "end" ;
 function_def = [ "export" ] "function" IDENT "(" params ")" [ ":" type ] block "end" ;
 lambda       = "function" "(" params ")" [ ":" type ] block "end" ;
 params       = [ param { "," param } ] [ ";" kwparam { "," kwparam } ] ;
-param        = IDENT [ ":" type ] ;
+param        = IDENT [ ":" type ] [ "=" expression ] ;
 kwparam      = IDENT [ ":" type ] "=" expression ;
 
 record_def   = [ "export" ] "record" IDENT terminator { field_decl terminator } "end" ;
@@ -529,12 +529,14 @@ count              # 2
 
 A call binds arguments in four steps:
 
-1. Positional arguments bind to positional parameters left to right. Too many or too few raises `ArgumentError`.
+1. Positional arguments bind to positional parameters left to right. Too many, or too few for the parameters without a default, raises `ArgumentError`.
 2. Keyword arguments bind by name to keyword parameters. An unknown name, or a name given twice, raises `ArgumentError`.
-3. Keyword parameters not supplied take their default. Defaults are evaluated at each call, in the function's defining scope, left to right, and may refer to earlier parameters.
+3. Optional positional parameters and keyword parameters not supplied take their default. Defaults are evaluated at each call, in the function's defining scope, left to right, and may refer to earlier parameters.
 4. Annotated parameters are checked against their types, and a mismatch raises `TypeError` naming the parameter.
 
 Positional parameters cannot be passed by keyword, and keyword parameters cannot be passed by position.
+
+A positional parameter with a default (`function bar(x, heights = nothing)`) is optional: a call may leave it out, and leaves out those after it as well, since arguments bind left to right. Once one positional parameter has a default, every later one must have one too, or the definition is a `SyntaxError`. A default of `nothing`, tested in the body, gives one function two call forms, as `plot.bar(y)` and `plot.bar(x, y)` do.
 
 ### Argument passing and returns
 
@@ -712,6 +714,7 @@ See [Lists, records and dictionaries](#lists-records-and-dictionaries).
 | `isequal(a, b)` | Whether two values are equal as whole values (see [Comparison](#comparison)) |
 | `error(message)`, `error(kind, message)` | Raises an error (see [Errors](#errors)) |
 | `keep(f)` | Keeps a callback valid after the `extern` call that received it (see [Foreign functions](#foreign-functions)) |
+| `atexit(f)` | Registers the function `f` to be called with no arguments when the program ends: after its last statement, the most recently registered first. It is not called when the program stops with an uncaught error, nor at the REPL. A function that is not a function raises `TypeError` |
 
 ### Constants
 
@@ -853,14 +856,14 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 
 ### The plot module
 
-`plot` is a standard-library module written in Axon over `graphics`. Plotting calls add to the current figure, which `plot.save` writes. A script can therefore build a figure without writing anything, as the white paper's worked example does.
+`plot` is a standard-library module written in Axon over `graphics`. Plotting calls add to the current figure, which `plot.save` writes and `plot.show` shows. When the program ends, a figure that has changed since it was last shown or saved is shown as if by `plot.show()` (through `atexit`), so a script that only plots needs no `show` call; one that calls `plot.save` last, and only writes files, opens nothing.
 
 | Function | Effect |
 | --- | --- |
 | `figure(; width = 640, height = 480, title)` | Starts a new current figure, sized in points |
 | `line(x, y; label, color, width = 1.5, style = "-", marker, marker_size = 5)` | Adds a line; `style` is `"-"`, `"--"`, `":"` or `"-."`, and `marker` draws a marker of that shape at each point |
 | `scatter(x, y; label, color, size = 6, marker = "circle")` | Adds markers at the points |
-| `bar(x, heights; width = 0.8, label, color)` | Adds a bar of height `heights[k]` centred on `x[k]`, `width` wide in x units, rising from 0 (falling for a negative height). `x` may instead be a list of strings: the bars go at 1, 2, … and the x axis is labelled with those names |
+| `bar(x, heights; width = 0.8, label, color)`, `bar(heights; …)` | Adds a bar of height `heights[k]` centred on `x[k]`, `width` wide in x units, rising from 0 (falling for a negative height). `x` may instead be a list of strings: the bars go at 1, 2, … and the x axis is labelled with those names. With the heights alone, the bars go at 1, 2, … |
 | `hist(x; bins = 10, label, color)` | Adds a histogram of the values `x`: one bar per bin, as high as the number of values in it. Returns `{counts, edges, heights}` |
 | `hist_density(x; bins = 10, label, color)` | As `hist`, with heights scaled so the bars' total area is 1, for comparison with a probability density |
 | `surface(x, y, Z; label, colormap = "viridis", edges = true, elev = 30, azim = -60)` | Adds the surface with height `Z[i, j]` over `(x[j], y[i])`, coloured by height (`"viridis"` or `"gray"`), seen from the given elevation and azimuth in degrees |
