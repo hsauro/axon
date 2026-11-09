@@ -267,8 +267,31 @@ export function solve(f, y0, tspan; method = "rk45", rtol = 1e-6, atol = 1e-9,
   if t0 == t1 fail("ArgumentError", "tspan must have t0 != t1") end
   s = 1.0
   if t1 < t0 s = -1.0 end
-  if not (rtol > 0 and atol >= 0)
-    fail("ArgumentError", "rtol must be positive and atol non-negative")
+  if typeof(rtol) != "int" and typeof(rtol) != "real"
+    fail("TypeError", "rtol must be a number, got " + typeof(rtol))
+  end
+  if not (rtol > 0)
+    fail("ArgumentError", "rtol must be positive")
+  end
+  # atol: one number for every component, or a vector with one per component.
+  if typeof(atol) == "int" or typeof(atol) == "real"
+    if not (atol >= 0)
+      fail("ArgumentError", "atol must be non-negative")
+    end
+    atol = atol + 0.0
+  elseif typeof(atol) == "vector" or typeof(atol) == "range" or typeof(atol) == "matrix"
+    atol = real_vector(atol)
+    if length(atol) != n
+      fail("DimensionError", "atol has " + string(length(atol)) + " values but y0 has " +
+        string(n) + " components")
+    end
+    for a in atol
+      if not (a >= 0)
+        fail("ArgumentError", "atol must be non-negative, got " + string(a))
+      end
+    end
+  else
+    fail("TypeError", "atol must be a number or a vector, got " + typeof(atol))
   end
   if typeof(max_step) == "nothing" max_step = 1.0 / 0.0 end
   if max_step <= 0 fail("ArgumentError", "max_step must be positive") end
@@ -312,7 +335,7 @@ export function solve(f, y0, tspan; method = "rk45", rtol = 1e-6, atol = 1e-9,
     fail("ArgumentError", "names must be a list of " + string(n) + " strings")
   end
 
-  o = {rtol: rtol + 0.0, atol: atol + 0.0, t_eval: t_eval, events: events, terminal: terminal,
+  o = {rtol: rtol + 0.0, atol: atol, t_eval: t_eval, events: events, terminal: terminal,
        direction: direction, max_step: max_step + 0.0, first_step: first_step, max_steps: max_steps}
   if method == "rk45"
     [out, status, te, ye, nfev, nsteps, at] = rk45(f, t0, t1, y0, o)

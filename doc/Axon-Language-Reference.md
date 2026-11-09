@@ -902,7 +902,7 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 
 | Keyword | Meaning (default) |
 | --- | --- |
-| `rtol: real`, `atol: real` | Relative and absolute error tolerances (`1e-6`, `1e-9`) |
+| `rtol: real`, `atol` | Relative and absolute error tolerances (`1e-6`, `1e-9`). `atol` is one number for every component, or a vector with one tolerance per component, for states whose components differ greatly in size; a vector of the wrong length raises `DimensionError`, and a negative tolerance `ArgumentError`. One number and a vector holding that number everywhere give the same solution |
 | `t_eval` | Times at which to report the solution, within `tspan` and strictly increasing in the direction of integration; by default every step is reported, starting with `tspan[1]` |
 | `events` | An event function `g(t, y)` returning a real number, or a list of them (`nothing`) |
 | `terminal` | Whether an event stops the integration: a `bool` for all, or a list with one per event (`false`) |

@@ -388,10 +388,11 @@ type
 
 function TRk45.Run(const Args: TAxValues): TAxValues;
 var
-  O, TEvalV, FirstStep: TAxValue;
-  T0, T1, T, H, H0, H1, D0, D1, D2, Hs_, TNew, Err, Facmax, Fac, Rtol, Atol, MaxStep,
+  O, TEvalV, FirstStep, AtolV: TAxValue;
+  T0, T1, T, H, H0, H1, D0, D1, D2, Hs_, TNew, Err, Facmax, Fac, Rtol, MaxStep,
     TStop, Te, Ga: Double;
   Y, K1, K2, K3, K4, K5, K6, K7, YNew, ErrV, Sk, Y1, F1, Tmp, YDiff, Bspl, Col, YStop, Ye: TVec;
+  AtolK: TVec;   // the absolute tolerance of each component
   TEval: TVec;
   HasTEval, Last, Done: Boolean;
   MaxSteps, NSteps: Int64;
@@ -441,7 +442,16 @@ begin
   Y := RealsOf(Args[3]);
   O := Args[4];
   Rtol := ToReal(Field(O, 'rtol'));
-  Atol := ToReal(Field(O, 'atol'));
+  // atol: one number for every component, or one each (ode.sci checked it).
+  AtolV := Field(O, 'atol');
+  if AtolV.Kind = vkArray then
+    AtolK := RealsOf(AtolV)
+  else
+  begin
+    SetLength(AtolK, Length(Y));
+    for I := 0 to High(AtolK) do
+      AtolK[I] := ToReal(AtolV);
+  end;
   MaxStep := ToReal(Field(O, 'max_step'));
   MaxSteps := Field(O, 'max_steps').I;
   FirstStep := Field(O, 'first_step');
@@ -487,7 +497,7 @@ begin
     if FirstStep.Kind = vkNothing then
     begin
       for I := 0 to N - 1 do
-        Sk[I] := Atol + Rtol * Abs(Y[I]);
+        Sk[I] := AtolK[I] + Rtol * Abs(Y[I]);
       D0 := Wrms(Y, Sk);
       D1 := Wrms(K1, Sk);
       if (D0 < 1e-5) or (D1 < 1e-5) then
@@ -569,7 +579,7 @@ begin
       begin
         ErrV[I] := Hs_ * (71 / 57600 * K1[I] - 71 / 16695 * K3[I] + 71 / 1920 * K4[I] -
           17253 / 339200 * K5[I] + 22 / 525 * K6[I] - 1 / 40 * K7[I]);
-        Sk[I] := Atol + Rtol * RMax(Abs(Y[I]), Abs(YNew[I]));
+        Sk[I] := AtolK[I] + Rtol * RMax(Abs(Y[I]), Abs(YNew[I]));
       end;
       Err := Wrms(ErrV, Sk);
       if Err <> Err then
@@ -810,9 +820,10 @@ end;
 
 function TBdf.Run(const Args: TAxValues): TAxValues;
 var
-  O, TEvalV, FirstStep: TAxValue;
-  T0, T1, T, TRet, Rtol, Atol, MaxStep: Double;
-  Y, Dy, YNew, DNew: TVec;
+  O, TEvalV, FirstStep, AtolV: TAxValue;
+  T0, T1, T, TRet, Rtol, MaxStep: Double;
+  Y, Dy, YNew, DNew, AtolK: TVec;
+  AtolN: Pointer;     // CVODE's vector of per-component tolerances, or nil
   TEval: TVec;
   HasTEval: Boolean;
   MaxSteps, NSteps: Int64;
@@ -862,7 +873,7 @@ begin
   Y := RealsOf(Args[3]);
   O := Args[4];
   Rtol := ToReal(Field(O, 'rtol'));
-  Atol := ToReal(Field(O, 'atol'));
+  AtolV := Field(O, 'atol');
   MaxStep := ToReal(Field(O, 'max_step'));
   MaxSteps := Field(O, 'max_steps').I;
   FirstStep := Field(O, 'first_step');
@@ -879,6 +890,7 @@ begin
 
   Ctx := nil;
   Mem := nil;
+  AtolN := nil;
   Yv := nil;
   Dky := nil;
   A := nil;
@@ -904,7 +916,16 @@ begin
     Mem := CVodeCreate(CV_BDF, Ctx);
     Check(CVodeInit(Mem, CvRhs, T0, Yv), 'CVodeInit');
     Check(CVodeSetUserData(Mem, Self), 'CVodeSetUserData');
-    Check(CVodeSStolerances(Mem, Rtol, Atol), 'CVodeSStolerances');
+    // One absolute tolerance, or one per component (CVodeSVtolerances).
+    if AtolV.Kind = vkArray then
+    begin
+      AtolK := RealsOf(AtolV);
+      AtolN := N_VNew_Serial(N, Ctx);
+      Move(AtolK[0], N_VGetArrayPointer(AtolN)^, N * SizeOf(Double));
+      Check(CVodeSVtolerances(Mem, Rtol, AtolN), 'CVodeSVtolerances');
+    end
+    else
+      Check(CVodeSStolerances(Mem, Rtol, ToReal(AtolV)), 'CVodeSStolerances');
     Check(CVodeSetLinearSolver(Mem, LS, A), 'CVodeSetLinearSolver');
     Check(CVodeSetMaxNumSteps(Mem, MaxSteps), 'CVodeSetMaxNumSteps');
     Check(CVodeSetStopTime(Mem, T1), 'CVodeSetStopTime');
@@ -994,6 +1015,7 @@ begin
     if LS <> nil then SUNLinSolFree(LS);
     if A <> nil then SUNMatDestroy(A);
     if Yv <> nil then N_VDestroy(Yv);
+    if AtolN <> nil then N_VDestroy(AtolN);
     if Dky <> nil then N_VDestroy(Dky);
     if Ctx <> nil then SUNContext_Free(Ctx);
     Pending.Free;

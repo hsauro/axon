@@ -43,6 +43,7 @@ var
   CVodeCreate: function(Lmm: Integer; Ctx: Pointer): Pointer; cdecl;
   CVodeInit: function(Mem: Pointer; F: TCvRhsFn; T0: Double; Y0: Pointer): Integer; cdecl;
   CVodeSStolerances: function(Mem: Pointer; RTol, ATol: Double): Integer; cdecl;
+  CVodeSVtolerances: function(Mem: Pointer; RTol: Double; ATol: Pointer): Integer; cdecl;
   CVodeSetLinearSolver: function(Mem, LS, A: Pointer): Integer; cdecl;
   CVodeSetMaxNumSteps: function(Mem: Pointer; MxSteps: LongInt): Integer; cdecl;
   CVodeSetMaxStep: function(Mem: Pointer; HMax: Double): Integer; cdecl;
@@ -134,6 +135,7 @@ begin
         Bind(CVodeCreate, 'CVodeCreate') and
         Bind(CVodeInit, 'CVodeInit') and
         Bind(CVodeSStolerances, 'CVodeSStolerances') and
+        Bind(CVodeSVtolerances, 'CVodeSVtolerances') and
         Bind(CVodeSetLinearSolver, 'CVodeSetLinearSolver') and
         Bind(CVodeSetMaxNumSteps, 'CVodeSetMaxNumSteps') and
         Bind(CVodeSetMaxStep, 'CVodeSetMaxStep') and

@@ -1444,7 +1444,8 @@ Keyword & Meaning (default) \\
 \code{method} & \code{"rk45"}, explicit Dormand--Prince (default), or
   \code{"bdf"} for stiff problems \\
 \code{rtol}, \code{atol} & Relative and absolute tolerances (\code{1e-6},
-  \code{1e-9}) \\
+  \code{1e-9}); \code{atol} may be a vector, one tolerance per
+  component, when the components differ greatly in size \\
 \code{t_eval} & The times at which to report the solution \\
 \code{events} & An event function \code{g(t, y)}, or a list of them \\
 \code{terminal} & Whether an event stops the integration (\code{false}) \\
