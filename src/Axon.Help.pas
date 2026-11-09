@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..91] of TBuiltinDoc = (
+  BuiltinDocs: array[0..93] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -62,6 +62,8 @@ const
     (Name: 'full';     Params: '(S)';     Text: 'A sparse matrix as a dense matrix'),
     (Name: 'splu';     Params: '(S)';     Text: 'Two sparse values L, U with S = L*U'),
     (Name: 'append';   Params: '(l, x)';  Text: 'A new list or vector with x added at the end'),
+    (Name: 'sort';     Params: '(x, order)'; Text: 'A vector or list in order, smallest first; sort(x, "descend") largest first'),
+    (Name: 'sortperm'; Params: '(x, order)'; Text: 'The positions p that put x in order, so x[p] is sorted; order "ascend" or "descend"'),
     (Name: 'get';      Params: '(d, key, default)'; Text: 'd[key], or default when the key is missing'),
     (Name: 'keys';     Params: '(d)';     Text: 'The keys of a dictionary, as a list in insertion order'),
     (Name: 'haskey';   Params: '(d, key)'; Text: 'True when the dictionary has the key'),

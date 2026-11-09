@@ -627,6 +627,10 @@ These functions, and the constants `pi` and `e`, are always available, without a
 | `all(A)`, `any(A)` | Whether every, or some, element of a `bool` array is `true` |
 | `dot(u, v)` | The inner product, with `u` conjugated |
 | `adjoint(A)` | The conjugate transpose, the same as `A'` |
+| `sort(x)`, `sort(x, "descend")` | The elements in order, smallest first (or largest first), as a new vector, row or list of the same kind |
+| `sortperm(x)`, `sortperm(x, "descend")` | The `int` vector of positions `p` that puts `x` in order, so `x[p]` is sorted |
+
+`sort` and `sortperm` take a vector, a single row or column, or a list. Their elements must all be numbers (`bool`, `int` or `real`; complex numbers have no order, `TypeError`), or, in a list, all strings, which are ordered by character code (`"B"` before `"a"`). A matrix with more than one row and column raises `TypeError`; sort a column with `sort(A[:, j])`. The sort is stable, so equal elements keep their order, and NaN goes last in both orders. An order other than `"ascend"` or `"descend"` raises `ArgumentError`. `sortperm` sorts one array by another: `names[sortperm(ages)]`.
 
 See [Vectors and matrices](#vectors-and-matrices) and [Linear-algebra operators](#linear-algebra-operators).
 

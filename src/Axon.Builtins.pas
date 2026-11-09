@@ -1035,6 +1035,224 @@ begin
     R.Put(K, A.Get(K));
 end;
 
+{ ---- sorting ---- }
+
+type
+  // What sort and sortperm order: the items of a vector or a list, all
+  // numbers (bool, int, real) or all strings.
+  TSortItems = record
+    Values: TAxValues;
+    Strings: Boolean;
+  end;
+
+function SortItems(const Fn: string; const X: TAxValue): TSortItems;
+var
+  A: TArrayObj;
+  Holder: TAxValue;
+  K: Integer;
+  Nums, Strs: Boolean;
+begin
+  Result := Default(TSortItems);
+  if X.Kind = vkList then
+  begin
+    Result.Values := Copy(AsList(X).Items);
+    Nums := False;
+    Strs := False;
+    for K := 0 to High(Result.Values) do
+      case Result.Values[K].Kind of
+        vkBool, vkInt, vkReal: Nums := True;
+        vkString: Strs := True;
+      else
+        RaiseFmt(TypeError, '%s: cannot order a list holding %s; its items must be all ' +
+          'numbers or all strings', [Fn, TypeName(Result.Values[K])]);
+      end;
+    if Nums and Strs then
+      RaiseFmt(TypeError, '%s: cannot order a list that mixes numbers and strings', [Fn]);
+    Result.Strings := Strs;
+    Exit;
+  end;
+  if not IsArrayLike(X) then
+    RaiseFmt(TypeError, '%s needs a vector or a list, got %s', [Fn, TypeName(X)]);
+  A := ToArray(X);
+  Holder := ArrayValue(A);
+  if not (A.IsVector or (A.Rows <= 1) or (A.Cols <= 1)) then
+    RaiseFmt(TypeError, '%s works on vectors, single rows or columns, and lists, not ' +
+      'matrices; sort a column with ' +
+      '%s(A[:, j])', [Fn, Fn]);
+  if A.ElemType = etComplex then
+    RaiseFmt(TypeError, '%s: complex numbers have no order', [Fn]);
+  SetLength(Result.Values, A.Count);
+  for K := 0 to A.Count - 1 do
+    Result.Values[K] := A.Get(K);
+end;
+
+{ True for "descend", False for "ascend" (the default). }
+function SortDescending(const Fn: string; const Args: TAxValues): Boolean;
+var
+  S: string;
+begin
+  if Length(Args) < 2 then
+    Exit(False);
+  if Args[1].Kind <> vkString then
+    RaiseFmt(TypeError, '%s: the order must be "ascend" or "descend", got %s',
+      [Fn, TypeName(Args[1])]);
+  S := AsString(Args[1]);
+  Result := S = 'descend';
+  if not Result and (S <> 'ascend') then
+    RaiseFmt(ArgumentError, '%s: the order must be "ascend" or "descend", got "%s"', [Fn, S]);
+end;
+
+function SortIsNaN(const V: TAxValue): Boolean; inline;
+begin
+  Result := (V.Kind = vkReal) and IsNan(V.R);
+end;
+
+function SortInt(const V: TAxValue): Int64; inline;
+begin
+  if V.Kind = vkBool then Result := Ord(V.B) else Result := V.I;
+end;
+
+function SortReal(const V: TAxValue): Double; inline;
+begin
+  if V.Kind = vkReal then Result := V.R else Result := SortInt(V);
+end;
+
+{ The order of two items, -1, 0 or 1, ascending; NaN after every number. }
+function SortCompare(const A, B: TAxValue; Strings: Boolean): Integer;
+var
+  X, Y: Double;
+  NA, NB: Boolean;
+begin
+  if Strings then
+    Exit(CompareStr(AsString(A), AsString(B)));
+  NA := SortIsNaN(A);
+  NB := SortIsNaN(B);
+  if NA or NB then
+    Exit(Ord(NA) - Ord(NB));
+  if (A.Kind <> vkReal) and (B.Kind <> vkReal) then
+  begin
+    if SortInt(A) < SortInt(B) then Exit(-1);
+    if SortInt(A) > SortInt(B) then Exit(1);
+    Exit(0);
+  end;
+  X := SortReal(A);
+  Y := SortReal(B);
+  if X < Y then Result := -1 else if X > Y then Result := 1 else Result := 0;
+end;
+
+{ The 0-based positions of the items in sorted order: a stable merge sort,
+  so equal items keep their order. NaN stays last when descending too. }
+function SortOrder(const Items: TSortItems; Descending: Boolean): TArray<Integer>;
+var
+  Tmp: TArray<Integer>;
+
+  function Before(P, Q: Integer): Boolean;  // item P strictly before item Q
+  var
+    C: Integer;
+  begin
+    if Descending and not Items.Strings and
+      (SortIsNaN(Items.Values[P]) or SortIsNaN(Items.Values[Q])) then
+      C := SortCompare(Items.Values[P], Items.Values[Q], False)
+    else
+    begin
+      C := SortCompare(Items.Values[P], Items.Values[Q], Items.Strings);
+      if Descending then C := -C;
+    end;
+    Result := C < 0;
+  end;
+
+  procedure MergeSort(Lo, Hi: Integer);    // sorts Result[Lo..Hi-1]
+  var
+    Mid, I, J, K: Integer;
+  begin
+    if Hi - Lo < 2 then
+      Exit;
+    Mid := (Lo + Hi) div 2;
+    MergeSort(Lo, Mid);
+    MergeSort(Mid, Hi);
+    I := Lo;
+    J := Mid;
+    K := Lo;
+    while (I < Mid) and (J < Hi) do
+    begin
+      if Before(Result[J], Result[I]) then
+      begin
+        Tmp[K] := Result[J];
+        Inc(J);
+      end
+      else
+      begin
+        Tmp[K] := Result[I];
+        Inc(I);
+      end;
+      Inc(K);
+    end;
+    while I < Mid do
+    begin
+      Tmp[K] := Result[I];
+      Inc(I);
+      Inc(K);
+    end;
+    while J < Hi do
+    begin
+      Tmp[K] := Result[J];
+      Inc(J);
+      Inc(K);
+    end;
+    for K := Lo to Hi - 1 do
+      Result[K] := Tmp[K];
+  end;
+
+var
+  K: Integer;
+begin
+  SetLength(Result, Length(Items.Values));
+  for K := 0 to High(Result) do
+    Result[K] := K;
+  SetLength(Tmp, Length(Result));
+  MergeSort(0, Length(Result));
+end;
+
+{ sort(x) and sort(x, "descend"): a vector or list in order, as a new value
+  of the same kind, shape and element type. }
+function BSort(const Args: TAxValues): TAxValue;
+var
+  Items: TSortItems;
+  Order: TArray<Integer>;
+  Sorted: TAxValues;
+  A, R: TArrayObj;
+  K: Integer;
+begin
+  Items := SortItems('sort', Args[0]);
+  Order := SortOrder(Items, SortDescending('sort', Args));
+  SetLength(Sorted, Length(Order));
+  for K := 0 to High(Order) do
+    Sorted[K] := Items.Values[Order[K]];
+  if Args[0].Kind = vkList then
+    Exit(ListValue(Sorted));
+  A := ToArray(Args[0]);
+  Result := ArrayValue(A);    // holds A while its element type is read
+  R := TArrayObj.Create(A.ElemType, A.Rows, A.Cols, A.IsVector);
+  Result := ArrayValue(R);
+  for K := 0 to High(Sorted) do
+    R.Put(K, Sorted[K]);
+end;
+
+{ sortperm(x) and sortperm(x, "descend"): the int vector of 1-based
+  positions p with x[p] in order. }
+function BSortperm(const Args: TAxValues): TAxValue;
+var
+  Order: TArray<Integer>;
+  R: TArrayObj;
+  K: Integer;
+begin
+  Order := SortOrder(SortItems('sortperm', Args[0]), SortDescending('sortperm', Args));
+  R := TArrayObj.Create(etInt, Length(Order), 1, True);
+  Result := ArrayValue(R);
+  for K := 0 to High(Order) do
+    R.Put(K, IntValue(Order[K] + 1));
+end;
+
 { ---- collections (M7) ---- }
 
 { append(list, x) and append(vector, x): a new value with x added. }
@@ -1184,6 +1402,8 @@ begin
   Add('full', BFull, 1, 1);
   AddMulti('splu', BSplu, 1, 1);
   Add('append', BAppend, 2, 2);
+  Add('sort', BSort, 1, 2);
+  Add('sortperm', BSortperm, 1, 2);
   Add('get', BGet, 3, 3);
   Add('keys', BKeys, 1, 1);
   Add('haskey', BHaskey, 2, 2);
