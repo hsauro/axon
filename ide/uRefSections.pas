@@ -25,7 +25,7 @@ const
   // Anchor, then the built-ins it documents. Keep in step with the
   // reference's headings: a stale anchor only means no section is shown.
   Sections: array[0..16] of string = (
-    'printing: print println display_size display_decimals format',
+    'printing: print println format',
     'output-and-text-functions: split join trim ltrim rtrim upper lower contains ' +
       'startswith endswith find replace repeat',
     'strings-1: string',

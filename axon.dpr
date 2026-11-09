@@ -33,6 +33,7 @@ uses
   Axon.FloatParse in 'src\Axon.FloatParse.pas',
   Axon.Json in 'src\Axon.Json.pas',
   Axon.OdeCore in 'src\Axon.OdeCore.pas',
+  Axon.FmtCore in 'src\Axon.FmtCore.pas',
   Axon.Native.Cvode in 'src\native\Axon.Native.Cvode.pas',
   Axon.Graphics in 'src\Axon.Graphics.pas',
   Axon.Packages in 'src\Axon.Packages.pas',

@@ -1,2 +1,3 @@
 #! error: ArgumentError
-display_decimals(0)
+import fmt
+fmt.set_decimals(0)

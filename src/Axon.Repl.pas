@@ -268,7 +268,10 @@ begin
       if FInterp.ExecTopLevel(S, Shown, Names) and not S.Silent then
         if Names <> nil then
           for K := 0 to High(Names) do
-            Show(Names[K] + ' = ' + Display(Shown[K], True))
+            if not DisplayHeader and (Shown[K].Kind = vkArray) and (AsArray(Shown[K]).Count > 0) then
+              Show(Names[K] + ' =' + sLineBreak + Display(Shown[K], True))
+            else
+              Show(Names[K] + ' = ' + Display(Shown[K], True))
         else
           for K := 0 to High(Shown) do
             Show(Display(Shown[K], True));

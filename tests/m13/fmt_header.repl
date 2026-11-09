@@ -1,0 +1,14 @@
+> import fmt
+> fmt.set_header(false)
+> A = [1, 2; 3, 4]
+A =
+1  2
+3  4
+> A'
+1  3
+2  4
+> fmt.set_header()
+> A
+2×2 matrix{int}
+  1  2
+  3  4

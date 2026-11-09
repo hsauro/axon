@@ -202,56 +202,6 @@ end;
 { println(a, b, ...): the values, then a newline. }
 { ---- display settings and number formatting ---- }
 
-function DisplayCount(const Fn, What: string; const V: TAxValue): Integer;
-begin
-  if V.Kind <> vkInt then
-    RaiseFmt(TypeError, '%s needs an int for %s, got %s', [Fn, What, TypeName(V)]);
-  if (V.I < 1) or (V.I > MaxInt div 2) then
-    RaiseFmt(ArgumentError, '%s: %s must be at least 1, got %d', [Fn, What, V.I]);
-  Result := V.I;
-end;
-
-{ display_size(rows, cols): arrays up to this size are shown in full;
-  display_size() restores 10 rows and 8 columns. }
-function BDisplaySize(const Args: TAxValues): TAxValue;
-var
-  R, C: Integer;
-begin
-  if Length(Args) = 0 then
-  begin
-    DisplayRows := DefaultDisplayRows;
-    DisplayCols := DefaultDisplayCols;
-  end
-  else if Length(Args) = 2 then
-  begin
-    R := DisplayCount('display_size', 'the rows', Args[0]);
-    C := DisplayCount('display_size', 'the columns', Args[1]);
-    DisplayRows := R;
-    DisplayCols := C;
-  end
-  else
-    RaiseFmt(ArgumentError, 'display_size takes rows and columns, or nothing to restore ' +
-      'the default, got %d arguments', [Length(Args)]);
-  Result := NothingValue;
-end;
-
-{ display_decimals(n): displayed reals show n decimals (1 to 15);
-  display_decimals() restores significant digits. }
-function BDisplayDecimals(const Args: TAxValues): TAxValue;
-begin
-  if Length(Args) = 0 then
-    DisplayDecimals := -1
-  else
-  begin
-    if Args[0].Kind <> vkInt then
-      RaiseFmt(TypeError, 'display_decimals needs an int, got %s', [TypeName(Args[0])]);
-    if (Args[0].I < 1) or (Args[0].I > 15) then
-      RaiseFmt(ArgumentError, 'display_decimals needs 1 to 15 decimals, got %d', [Args[0].I]);
-    DisplayDecimals := Args[0].I;
-  end;
-  Result := NothingValue;
-end;
-
 { format(x, decimals): x as text with exactly that many decimals. }
 function BFormat(const Args: TAxValues): TAxValue;
 var
@@ -1891,8 +1841,6 @@ begin
   Add('dict', BDictEmpty, 0, 0);
   Add('print', BPrint, 0, -1);
   Add('println', BPrintln, 0, -1);
-  Add('display_size', BDisplaySize, 0, 2);
-  Add('display_decimals', BDisplayDecimals, 0, 1);
   Add('format', BFormat, 2, 2);
   Add('error', BError, 1, 2);
   Add('string', BString, 1, 1);

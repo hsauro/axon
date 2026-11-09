@@ -208,13 +208,16 @@ const
   DefaultDisplayCols = 8;
 
 var
-  { Display settings (display_size, display_decimals), per process: an array
+  { Display settings (fmt.set_size, fmt.set_decimals), per process: an array
     with more rows or columns than these shows its first and last ones;
     DisplayDecimals >= 0 shows every displayed real with that many decimals
     instead of its significant digits. }
   DisplayRows: Integer = DefaultDisplayRows;
   DisplayCols: Integer = DefaultDisplayCols;
   DisplayDecimals: Integer = -1;
+  { Whether displayed arrays start with their header line (fmt.set_header);
+    without it the rows start at the left margin. }
+  DisplayHeader: Boolean = True;
 
 var
   { Number of array copies made by copy-on-write (the __copies() test hook). }
@@ -829,7 +832,7 @@ begin
 end;
 
 { A real as displayed: Digits significant digits, or the decimals set by
-  display_decimals (exponent form from 1e15 in magnitude). Error messages
+  fmt.set_decimals (exponent form from 1e15 in magnitude). Error messages
   use FormatReal, unaffected by the setting. }
 function ShownReal(X: Double; Digits: Integer = 15): string;
 begin
@@ -924,7 +927,12 @@ var
 begin
   Result := ArrayHeader(A);
   if A.Count = 0 then
+  begin
+    // An empty array is only its header; without the header, the literal.
+    if not DisplayHeader then
+      Result := '[]';
     Exit;
+  end;
   RowIdx := ShownIndices(A.Rows, DisplayRows);
   ColIdx := ShownIndices(A.Cols, DisplayCols);
   SetLength(Cells, Length(RowIdx), Length(ColIdx));
@@ -942,20 +950,27 @@ begin
     end;
   SB := TStringBuilder.Create;
   try
-    SB.Append(Result);
+    if DisplayHeader then
+      SB.Append(Result);
     for RI := 0 to High(RowIdx) do
     begin
-      SB.Append(sLineBreak);
+      if DisplayHeader or (RI > 0) then
+        SB.Append(sLineBreak);
       if RowIdx[RI] < 0 then
       begin
-        SB.Append('  ' + #$22EE + '');
+        if DisplayHeader then SB.Append('  ');
+        SB.Append(#$22EE);
         Continue;
       end;
       for CI := 0 to High(ColIdx) do
       begin
         W := Widths[CI];
         S := Cells[RI][CI];
-        SB.Append('  ').Append(StringOfChar(' ', W - Length(S))).Append(S);
+        // Two spaces before each column; without the header, none before the
+        // first, so rows start at the left margin.
+        if DisplayHeader or (CI > 0) then
+          SB.Append('  ');
+        SB.Append(StringOfChar(' ', W - Length(S))).Append(S);
       end;
     end;
     Result := SB.ToString;

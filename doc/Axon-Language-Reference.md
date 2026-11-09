@@ -60,6 +60,7 @@ Nov 7, 2026 · Herbert Sauro
   - [Constants](#constants)
 - [Standard modules](#standard-modules)
   - [The linalg module](#the-linalg-module)
+  - [The fmt module](#the-fmt-module)
   - [The io module](#the-io-module)
   - [The time module](#the-time-module)
   - [The random module](#the-random-module)
@@ -346,7 +347,7 @@ Output tests compare text exactly, so every value has one display form.
 
 Because reals are rounded to 15 significant digits, `0.1 + 0.2` displays as `0.3`. `print` and `println` write values in these forms; see [Printing](#printing). Inside a list or record, strings are always quoted, so `{"a b"}` and `{"a", "b"}` stay distinguishable. A dictionary displays as the call that builds it, `dict("Km" => 0.5, "Vm" => 10.0)`, with entries in insertion order; an empty one is `dict()`.
 
-Arrays display as a header line, then one line per row with each entry right-aligned in its column and preceded by two spaces. The header is `R×C matrix{T}` or `N-vector{T}`. Elements show up to 6 significant digits, following the same rules as scalars, and complex elements show both parts that way. Above 10 rows, only the first and last 5 are shown, with a `  ⋮` line between; above 8 columns, only the first and last 4, with a `…` column between. `display_size` and `display_decimals` change these limits and the digits shown (see Printing). An empty array shows only its header. At the REPL an assignment shows `A = ` before the header:
+Arrays display as a header line, then one line per row with each entry right-aligned in its column and preceded by two spaces. The header is `R×C matrix{T}` or `N-vector{T}`. Elements show up to 6 significant digits, following the same rules as scalars, and complex elements show both parts that way. Above 10 rows, only the first and last 5 are shown, with a `  ⋮` line between; above 8 columns, only the first and last 4, with a `…` column between. `fmt.set_size`, `fmt.set_decimals` and `fmt.set_header` change these limits, the digits shown and whether the header appears (see [The fmt module](#the-fmt-module)). An empty array shows only its header. At the REPL an assignment shows `A = ` before the header:
 
 ```
 A = 2×2 matrix{int}
@@ -379,22 +380,17 @@ println("Total: " + string(42))       # Total: 42
 
 To control spacing exactly, build one string with `+` and `string(x)` (or `format`, below) and print that. An array argument is written in its full display form, header and rows, starting where the line is; inside a list or record it is written inline. At the REPL, and before an error report, a line that `print` left open is ended first, so prompts and messages always start on a new line. Error reports go to standard error, not standard output.
 
-Three prelude functions control how numbers appear:
-
-| Call | Effect |
-| --- | --- |
-| `display_size(rows, cols)` | Arrays with at most `rows` rows and `cols` columns are displayed in full. A larger dimension n shows its first `(n + 1) div 2` and last `n div 2` rows or columns, around the `⋮` line or `…` column. `display_size()` restores 10 rows and 8 columns |
-| `display_decimals(n)` | Every displayed `real` (scalars, array entries, the parts of complex numbers, range bounds) shows exactly `n` decimals, 1 to 15, instead of significant digits; magnitudes from 1e15 keep the exponent form, as in `1.000e20`. `int` values are unaffected. `display_decimals()` restores significant digits |
-| `format(x, decimals)` | The `int` or `real` `x` as a string with exactly `decimals` digits after the point (0 to 100; no point for 0), whatever the display settings |
+Numbers appear with up to 15 significant digits, and array entries with 6. The built-in `format(x, decimals)` gives the `int` or `real` `x` as a string with exactly `decimals` digits after the point (0 to 100; no point for 0), whatever the display settings. The display settings themselves, and formatting with more options, are in the `fmt` module (see [The fmt module](#the-fmt-module)):
 
 ```axon
-display_decimals(3)
+import fmt
+fmt.set_decimals(3)
 println(1 / 3, [1.0, 22.5])         # 0.333, then the matrix as 1.000  22.500
-display_decimals()
+fmt.set_decimals()
 println("pi is about " + format(3.14159265, 2))   # pi is about 3.14
 ```
 
-The settings return `nothing` and last until changed: for the rest of a program, or of a REPL session. They change every display form, including `string(x)`, but not the text of error messages. `format` rounds the exact binary value of `x` to the nearest, ties to even, so `format(0.125, 2)` is `"0.12"`, and `format(2.675, 2)` is `"2.67"` because the double nearest 2.675 is slightly below it. A result whose digits are all zero has no minus sign, in `format` and in the display alike. Invalid counts raise `ArgumentError`, and arguments of the wrong type `TypeError`.
+`format` rounds the exact binary value of `x` to the nearest, ties to even, so `format(0.125, 2)` is `"0.12"`, and `format(2.675, 2)` is `"2.67"` because the double nearest 2.675 is slightly below it. A result whose digits are all zero has no minus sign, in `format` and in the display alike. An invalid count raises `ArgumentError`, and arguments of the wrong type `TypeError`.
 
 ## Arithmetic, broadcasting and comparison
 
@@ -727,8 +723,6 @@ See [Numeric promotion](#numeric-promotion).
 | `replace(s, old, new)` | `s` with every occurrence of `old` replaced by `new`; an empty `old` raises `ArgumentError` |
 | `repeat(s, n)` | `s` repeated `n` times: `repeat("-", 40)`; a negative `n` raises `ArgumentError` |
 | `int(s)`, `real(s)` | A number read from text: `int("42")`, `real("2.5e-3")`. Spaces around the number are ignored; `real` reads a decimal number correctly rounded, and `NaN`, `Inf` and `-Inf`. Text that is not a number of that kind raises `ArgumentError` |
-| `display_size(rows, cols)` | Arrays up to rows×cols are displayed in full; `display_size()` restores 10×8 |
-| `display_decimals(n)` | Displayed reals show n decimals (1 to 15); `display_decimals()` restores the default |
 
 See [Printing](#printing) and [Display](#display).
 
@@ -767,7 +761,7 @@ Like the built-in functions, they are names in the prelude, so a program can ass
 
 ## Standard modules
 
-These modules come with Axon and are imported by name (`import linalg`, `from ode import solve`). `io`, `time` and `graphics` are core modules written in the interpreter; `linalg`, `ode` and `plot` are standard-library modules written in Axon.
+These modules come with Axon and are imported by name (`import linalg`, `from ode import solve`). `io`, `time`, `random` and `graphics` are core modules written in the interpreter; `linalg`, `fmt`, `ode` and `plot` are standard-library modules written in Axon.
 
 ### The linalg module
 
@@ -790,6 +784,28 @@ These modules come with Axon and are imported by name (`import linalg`, `from od
 | `expm(A)` | The matrix exponential, by scaling and squaring with a degree-13 Padé approximant |
 
 Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `solve`, the functions accept a sparse matrix by working on `full(A)`.
+
+### The fmt module
+
+`fmt` is a standard-library module, written in Axon over the core module `fmtcore`. It holds the display settings, which decide how `println`, `print`, `string` and the REPL show values from then on, and functions that format a number or an array as text with chosen options, without changing any setting.
+
+| Function | Effect |
+| --- | --- |
+| `set_size(rows, cols)` | Arrays with at most `rows` rows and `cols` columns are displayed in full. A larger dimension n shows its first `(n + 1) div 2` and last `n div 2` rows or columns, around the `⋮` line or `…` column. `set_size()` restores 10 rows and 8 columns |
+| `set_decimals(n)` | Every displayed `real` (scalars, array entries, the parts of complex numbers, range bounds) shows exactly `n` decimals, 1 to 15, instead of significant digits; magnitudes from 1e15 keep the exponent form, as in `1.000e20`. `int` values are unaffected. `set_decimals()` restores significant digits |
+| `set_header(on)` | Whether displayed arrays start with their header line (`2×3 matrix{int}`). With `set_header(false)` only the rows are shown, starting at the left margin, an empty array shows as `[]`, and at the REPL an assignment shows `A =` on a line of its own above the rows. `set_header()` turns the header back on |
+| `number(x; decimals, digits, sci = false, width = 0)` | The number `x` as text: with `decimals`, exactly that many digits after the point (as `format`); with `digits`, up to that many significant digits (1 to 17); with `sci = true`, scientific notation with `decimals` digits after the point (6 by default), as in `1.23e4`; padded on the left with spaces to `width` characters. With none of these, an `int` in full and a `real` with up to 15 significant digits. `bool` and `complex` values give their display form |
+| `matrix(A; decimals, digits = 6, sci = false, header = false, sep = "  ", align = true)` | The vector or matrix `A` as text: one line per row (a vector is a column), its elements formatted as by `number` and separated by `sep`, each column right-aligned to its widest entry when `align` is true. `header = true` puts the header line first. Every row and column is included, whatever `set_size` says; there is no line break at the end. A range or a number is taken as a vector |
+
+The settings return `nothing` and last until changed: for the rest of a program, or of a REPL session. They change every display form, including `string(x)`, but not `number`, `matrix`, `format`, or the text of error messages. `set_size` and `set_decimals` raise `ArgumentError` for a count out of range, and every function raises `TypeError` for arguments of the wrong type.
+
+```axon
+import fmt
+A = [1.5, -22.25; 3.0, 4.125]
+println(fmt.matrix(A, decimals = 2))      # 1.50  -22.25 / 3.00    4.12
+csv_row = fmt.matrix(A, sep = ",", align = false)
+println(fmt.number(pi, digits = 4), fmt.number(12345.678, sci = true, decimals = 2))   # 3.142 1.23e4
+```
 
 ### The io module
 

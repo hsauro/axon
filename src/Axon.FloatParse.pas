@@ -2,7 +2,7 @@ unit Axon.FloatParse;
 
 (* Decimal text to the nearest Double, correctly rounded (ties to even), for
    real and imaginary literals; and the reverse, a Double as text with a
-   fixed number of decimals (format, display_decimals), also exact. Delphi's TryStrToFloat is off by one unit in
+   fixed number of decimals (format, fmt.set_decimals), also exact. Delphi's TryStrToFloat is off by one unit in
    the last place for some 17-digit inputs, so a printed value read back could
    change.
 

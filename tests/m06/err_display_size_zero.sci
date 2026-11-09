@@ -1,2 +1,3 @@
 #! error: ArgumentError
-display_size(0, 5)
+import fmt
+fmt.set_size(0, 5)

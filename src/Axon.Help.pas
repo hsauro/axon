@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..115] of TBuiltinDoc = (
+  BuiltinDocs: array[0..113] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -76,8 +76,6 @@ const
     (Name: 'dict';     Params: '(key => value, ...)'; Text: 'A dictionary with the given entries'),
     (Name: 'print';    Params: '(a, b, ...)'; Text: 'Writes the values separated by spaces, without a newline'),
     (Name: 'println';  Params: '(a, b, ...)'; Text: 'Writes the values separated by spaces, then a newline'),
-    (Name: 'display_size'; Params: '(rows, cols)'; Text: 'Arrays up to rows' + #$00D7 + 'cols are displayed in full; display_size() restores 10' + #$00D7 + '8'),
-    (Name: 'display_decimals'; Params: '(n)'; Text: 'Displayed reals show n decimals (1 to 15); display_decimals() restores significant digits'),
     (Name: 'format';   Params: '(x, decimals)'; Text: 'x as text with exactly that many decimals, rounded: format(3.14159, 2) is "3.14"'),
     (Name: 'error';    Params: '(kind, message)'; Text: 'Raises an error; error("text") raises a UserError'),
     (Name: 'string';   Params: '(x)';     Text: 'The display form of a value, as a string'),

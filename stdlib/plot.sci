@@ -715,7 +715,7 @@ function tick_label(v, step)
   if step >= 1 and abs(v) < 1e15
     return string(round(v))
   end
-  # As many decimals as the step needs (format, so display_decimals does
+  # As many decimals as the step needs (format, so fmt.set_decimals does
   # not change the labels).
   d = -floor(log(step) / log(10.0) + 1e-9)
   if d <= 0
