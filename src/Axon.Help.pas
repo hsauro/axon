@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..114] of TBuiltinDoc = (
+  BuiltinDocs: array[0..115] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -58,6 +58,7 @@ const
     (Name: 'isequal';  Params: '(a, b)';  Text: 'True when two values are equal as whole values'),
     (Name: 'isa';      Params: '(x, T)';  Text: 'True when x is exactly of type T: a name such as "int" or "vector{real}", or a record type'),
     (Name: 'keep';     Params: '(f)';     Text: 'Keeps a callback valid after the extern call that received it'),
+    (Name: 'parse_function'; Params: '(params, expr)'; Text: 'A function made from text: parse_function("x, y", "2*sin(x) + y^2"), or parse_function("function(x) ... end")'),
     (Name: 'atexit';   Params: '(f)';     Text: 'Calls f() when the program ends normally; the last registered runs first'),
     (Name: 'eltype';   Params: '(A)';     Text: 'The element type of an array, as a string'),
     (Name: 'reshape';  Params: '(A, m, n)'; Text: 'The elements of A in column-major order, as an m' + #$00D7 + 'n matrix or an m-vector'),

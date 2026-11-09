@@ -132,6 +132,7 @@ type
     FHoistedExterns: TDictionary<TExternStmt, Boolean>;
     FEndStack: TList<Int64>;                  // values of `end` in nested indexing
     procedure NotYet(const What, Milestone: string; Node: TNode);
+    function ParseFunction(const Args: TAxValues): TAxValue;
     function FunctionValue(Decl: TFunctionDecl; Scope: TScope; IsClosure: Boolean): TAxValue;
     function FunctionRootOf(Scope: TScope): TScope;
     function Lookup(const Name: string; Scope: TScope; Node: TNode): TAxValue;
@@ -235,6 +236,12 @@ function StringChars(const S: string): TArray<string>; forward;
 function BJitCompiled(const Args: TAxValues): TAxValue; forward;
 function BJitReason(const Args: TAxValues): TAxValue; forward;
 function BJitMode(const Args: TAxValues): TAxValue; forward;
+function BParseFunction(const Args: TAxValues): TAxValue; forward;
+
+var
+  // The interpreter of this process, for built-ins that need it
+  // (parse_function); set when it is created.
+  GInterp: TInterpreter;
 
 { ===================== type annotations ===================== }
 
@@ -453,6 +460,8 @@ begin
   Prelude.Define('__jit_compiled').Value := BuiltinValue('__jit_compiled', BJitCompiled, 1, 1);
   Prelude.Define('__jit_reason').Value := BuiltinValue('__jit_reason', BJitReason, 1, 1);
   Prelude.Define('__jit_mode').Value := BuiltinValue('__jit_mode', BJitMode, 0, 1);
+  Prelude.Define('parse_function').Value := BuiltinValue('parse_function', BParseFunction, 1, 2);
+  GInterp := Self;
   FGlobals := TScope.Create(FPrelude, rkModule);
   FHoisted := TDictionary<TFunctionDecl, Boolean>.Create;
   FHoistedRecords := TDictionary<TRecordStmt, Boolean>.Create;
@@ -1249,6 +1258,168 @@ begin
 end;
 
 { __jit_compiled(f): true once f has compiled code. }
+function BParseFunction(const Args: TAxValues): TAxValue;
+begin
+  Result := GInterp.ParseFunction(Args);
+end;
+
+(* parse_function(params, expr) and parse_function(text): a function made
+   from text at run time. With two strings, params lists the parameter names
+   ("x, y") and expr is the expression it returns ("2*sin(x) + y^2"); with
+   one, text is a whole lambda, "function(x) ... end". The function sees only
+   its parameters and the prelude (built-in functions and constants): it gets
+   a module scope of its own, empty, so it reads no variable of the program
+   and can reach no module. For the expression form, every name is checked
+   when the function is made; a syntax error or unknown name is reported with
+   its position in the expression. *)
+function TInterpreter.ParseFunction(const Args: TAxValues): TAxValue;
+const
+  Src = '<parse_function>';
+var
+  Text, Params, Expr, Prefix: string;
+  IsExpr: Boolean;
+  Prog: TProgram;
+  Lambda: TLambdaExpr;
+  P: TParam;
+  Names: TList<string>;
+  Scope: TScope;
+
+  function Where(Col: Integer): string;
+  begin
+    if IsExpr and (Col > Length(Prefix)) and (Col <= Length(Prefix) + Length(Expr) + 1) then
+      Result := Format(' at character %d of "%s"', [Col - Length(Prefix), Expr])
+    else
+      Result := Format(' in "%s"', [Text]);
+  end;
+
+  // Every name the expression reads must be a parameter or a prelude name.
+  procedure CheckNames(E: TExpr);
+  var
+    K, J: Integer;
+  begin
+    if E = nil then
+      Exit;
+    if E is TNameExpr then
+    begin
+      if not Names.Contains(TNameExpr(E).Name) and
+        (FPrelude.Find(TNameExpr(E).Name) = nil) then
+        raise EAxonError.Create(NameError, Format('parse_function: unknown name "%s"%s',
+          [TNameExpr(E).Name, Where(E.Col)]));
+    end
+    else if E is TUnaryExpr then
+      CheckNames(TUnaryExpr(E).Operand)
+    else if E is TBinaryExpr then
+    begin
+      CheckNames(TBinaryExpr(E).Left);
+      CheckNames(TBinaryExpr(E).Right);
+    end
+    else if E is TRangeExpr then
+    begin
+      CheckNames(TRangeExpr(E).Start);
+      CheckNames(TRangeExpr(E).Step);
+      CheckNames(TRangeExpr(E).Stop);
+    end
+    else if E is TCallExpr then
+    begin
+      CheckNames(TCallExpr(E).Callee);
+      for K := 0 to TCallExpr(E).Args.Count - 1 do
+        CheckNames(TCallExpr(E).Args[K].Value);
+    end
+    else if E is TIndexExpr then
+    begin
+      CheckNames(TIndexExpr(E).Target);
+      for K := 0 to TIndexExpr(E).Items.Count - 1 do
+        CheckNames(TIndexExpr(E).Items[K]);
+    end
+    else if E is TFieldExpr then
+      CheckNames(TFieldExpr(E).Target)
+    else if E is TMatrixExpr then
+    begin
+      for K := 0 to TMatrixExpr(E).Rows.Count - 1 do
+        for J := 0 to TMatrixExpr(E).Rows[K].Count - 1 do
+          CheckNames(TMatrixExpr(E).Rows[K][J]);
+    end
+    else if E is TListExpr then
+    begin
+      for K := 0 to TListExpr(E).Items.Count - 1 do
+        CheckNames(TListExpr(E).Items[K]);
+    end
+    else if E is TRecordExpr then
+    begin
+      for K := 0 to TRecordExpr(E).Values.Count - 1 do
+        CheckNames(TRecordExpr(E).Values[K]);
+    end;
+    // Literals, end and : read no name; a nested lambda is checked when called.
+  end;
+
+begin
+  if Args[0].Kind <> vkString then
+    RaiseFmt(TypeError, 'parse_function needs a string, got %s', [TypeName(Args[0])]);
+  IsExpr := Length(Args) = 2;
+  if IsExpr then
+  begin
+    if Args[1].Kind <> vkString then
+      RaiseFmt(TypeError, 'parse_function: the expression must be a string, got %s',
+        [TypeName(Args[1])]);
+    Params := AsString(Args[0]);
+    Expr := AsString(Args[1]);
+    if (Expr.IndexOfAny([#10, #13]) >= 0) or (Params.IndexOfAny([#10, #13]) >= 0) then
+      RaiseError(ArgumentError, 'parse_function: the parameters and the expression must ' +
+        'each be one line; use parse_function("function(x) ... end") for more');
+    if Expr.Trim = '' then
+      RaiseError(ArgumentError, 'parse_function: the expression is empty');
+    Prefix := 'function(' + Params + ') return ';
+    Text := Prefix + Expr + ' end';
+  end
+  else
+  begin
+    Text := AsString(Args[0]);
+    Prefix := '';
+  end;
+
+  try
+    Prog := ParseSource(Text, Src);
+  except
+    on E: EAxonError do
+      // Past the expression, the parser meets the "end" added after it: the
+      // expression stopped too early, such as an unclosed bracket.
+      if IsExpr and (E.Col > Length(Prefix) + Length(Expr)) then
+        raise EAxonError.Create(E.Kind, Format('parse_function: the expression "%s" is ' +
+          'incomplete (an unclosed bracket, or an operator with nothing after it?)', [Expr]))
+      else
+        raise EAxonError.Create(E.Kind, 'parse_function: ' + E.Message + Where(E.Col));
+  end;
+  FPrograms.Add(Prog);    // the function's syntax tree lives as long as the run
+  if (Prog.Body.Count <> 1) or not (Prog.Body[0] is TExprStmt) or
+    not (TExprStmt(Prog.Body[0]).Expr is TLambdaExpr) then
+    RaiseError(ArgumentError, 'parse_function: the text must be one function, ' +
+      'function(x) ... end, or give the parameters and the expression separately');
+  Lambda := TLambdaExpr(TExprStmt(Prog.Body[0]).Expr);
+
+  if IsExpr then
+  begin
+    Names := TList<string>.Create;
+    try
+      for P in Lambda.Func.Params do
+        Names.Add(P.Name);
+      if (Lambda.Func.Body.Count = 1) and (Lambda.Func.Body[0] is TReturnStmt) and
+        (TReturnStmt(Lambda.Func.Body[0]).Values.Count = 1) then
+        CheckNames(TReturnStmt(Lambda.Func.Body[0]).Values[0]);
+    finally
+      Names.Free;
+    end;
+  end;
+
+  // A module scope of its own, empty, over the prelude.
+  Scope := TScope.Create(FPrelude, rkModule);
+  try
+    Result := FunctionValue(Lambda.Func, Scope, True);
+    TFunctionObj(Result.Obj).FileName := Src;
+  finally
+    Scope.Release;
+  end;
+end;
+
 function BJitCompiled(const Args: TAxValues): TAxValue;
 begin
   Result := BoolValue((Args[0].Kind = vkFunction) and

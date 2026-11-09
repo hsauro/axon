@@ -1,0 +1,10 @@
+function true
+3 8.0
+1.0 true
+true
+NameError - parse_function: unknown name "a" at character 5 of "x + a"
+NameError - parse_function: unknown name "sinn" at character 3 of "2*sinn(x)"
+SyntaxError - parse_function: the expression "2*sin(x" is incomplete (an unclosed bracket, or an operator with nothing after it?)
+SyntaxError - parse_function: expected end of line or ";", found identifier "x" at character 3 of "2 x"
+10.0
+5050.0 true

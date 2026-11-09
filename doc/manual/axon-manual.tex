@@ -1695,6 +1695,52 @@ println(int(trim(fields[1])) + 1, real(fields[2]) * 2)
 13 9.0
 \end{axonout}
 
+\section{Functions from text}\label{sec:parsefn}
+
+A formula can arrive as text: typed by the user, or read from a settings file.
+\code{parse_function} turns it into a function that can be called, passed to
+\code{ode.solve} or plotted like any other:
+
+\begin{axon}
+f = parse_function("x, y", "2*sin(x) + y^2")
+println(f(1.0, 2.0))
+g = parse_function("function(x)\n  if x < 0\n    return -x\n  end\n  return x^2\nend")
+println(g(-3), g(3))
+\end{axon}
+\begin{axonout}
+5.68294196961579
+3 9
+\end{axonout}
+
+The first form takes the parameter names and the expression the function
+returns; the second takes a whole \code{function(...) ... end}, for formulas
+that need more than one line. A few things to know:
+
+\begin{itemize}
+\item \textbf{What a formula can use.} Its parameters, and the built-in
+  functions and constants (\code{sin}, \code{exp}, \code{pi}, \ldots). It does
+  not see the program's own variables or any module, so a formula from a file
+  cannot reach, say, \code{io.delete_file}. Pass any other value in as a
+  parameter.
+\item \textbf{Mistakes are caught at once.} An unknown name raises
+  \code{NameError} and an expression that does not parse \code{SyntaxError},
+  both saying where in the formula the problem is, when
+  \code{parse_function} is called rather than later.
+\item \textbf{Whole vectors.} To evaluate a formula over a vector of points in
+  one call, as for a plot, write it with the elementwise operators: \code{.^},
+  \code{.*} and \code{./}.
+\item \textbf{Speed.} The result is compiled by the JIT at its first call,
+  like any other function.
+\end{itemize}
+
+\ex{formula_plot.sci}
+\begin{axonout}
+NameError: parse_function: unknown name "sinn" at character 5 of "2 * sinn(x)"
+SyntaxError: parse_function: the expression "(x + 1" is incomplete (an unclosed bracket, or an operator with nothing after it?)
+\end{axonout}
+
+\fig{formulas.pdf}{0.75}{Formulas given as text, from \texttt{formula\_plot.sci}.}
+
 \section{An example: tidying names and a report}
 
 Hand-typed data is rarely consistent. This program brings a list of messy
@@ -2470,6 +2516,8 @@ Function & Result \\
   or 0 \\
 \code{replace(s, old, new)} & s with every old replaced by new \\
 \code{repeat(s, n)} & s repeated n times \\
+\code{parse_function(params, expr)} & A function made from text
+  (Section~\ref{sec:parsefn}) \\
 \code{int(s)}, \code{real(s)} & The number written in the string s \\
 \code{display_size(rows, cols)} & Arrays up to that size are shown in full \\
 \code{display_decimals(n)} & Displayed reals show \code{n} decimals \\
