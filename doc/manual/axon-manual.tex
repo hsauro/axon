@@ -1689,9 +1689,7 @@ steps apply to any module of your own.
 \section{The module file}
 
 A module is named after its file, so the file \texttt{stats.sci} is the module
-\code{stats}. Put it in the same folder as the programs that use it;
-\code{import stats} looks there first (Section~\ref{sec:modules} gives the
-other places).
+\code{stats}. Here is the whole of \texttt{stats.sci}:
 
 \ex{stats.sci}
 
@@ -1724,6 +1722,76 @@ The file shows the parts every module has:
 A module may define names that also exist as built-in functions. Inside
 \texttt{stats.sci}, \code{mean} is the module's own function; programs reach it
 as \code{stats.mean}, and the built-in \code{mean} is unaffected.
+
+\section{Where to put the module file}\label{sec:modwhere}
+
+When a program runs \code{import stats}, Axon looks for \texttt{stats.sci}
+in three places, in this order, and uses the first it finds:
+
+\begin{enumerate}
+\item \textbf{In the same folder as your program.} This is the
+  simplest choice, and the one this chapter uses: \texttt{stats.sci} sits next
+  to \texttt{use\_stats.sci}. Nothing needs setting up, and the module stays
+  with the programs when you copy the folder.
+
+\begin{shell}
+analysis/
+  stats.sci           the module
+  use_stats.sci       import stats
+  experiment2.sci     import stats
+\end{shell}
+
+  The folder that counts is the one holding the \emph{importing file}, not
+  the folder you start \texttt{axon} from, so a program finds its modules
+  wherever it is run from. In the IDE, running a new program first asks
+  you where to save it. Save it in the same folder as \texttt{stats.sci}, or
+  \code{import stats} will not find the module.
+
+  A subfolder groups related modules under one name. The module
+  \texttt{models/kinetics.sci} is imported as \code{models.kinetics}, and
+  \code{import models.kinetics as kin} gives it a short name.
+
+\item \textbf{A shared folder listed in \texttt{package.toml}.} To use one copy
+  of a module from programs in different folders, keep it in a folder of its
+  own and name that folder in a file called \texttt{package.toml}, placed next
+  to the programs (or in any folder above them; Axon uses the nearest one it
+  finds going up). Paths are relative to the \texttt{package.toml} file.
+
+\begin{shell}
+shared/
+  mystats/
+    mystats.sci       import mystats
+    extra.sci         import mystats.extra
+project/
+  package.toml
+  main.sci
+\end{shell}
+
+  with \texttt{project/package.toml} containing
+
+\begin{shell}
+[dependencies]
+mystats = "../shared/mystats"
+\end{shell}
+
+  \code{import mystats} then loads \texttt{shared/mystats/mystats.sci}, the
+  folder's main module, and \code{import mystats.extra} loads
+  \texttt{shared/mystats/extra.sci}. Fix a bug there once and every project
+  that lists the folder gets the fix.
+
+\item \textbf{The standard library.} Last, Axon looks in the \texttt{stdlib}
+  folder next to the interpreter, where \code{plot}, \code{linalg} and
+  \code{ode} live. You could add your own module there, but a rebuild or a new
+  version of Axon replaces that folder, so it is better kept for modules that
+  ship with Axon.
+\end{enumerate}
+
+Because the program's own folder is searched first, a module there with the
+same name as a standard one (a \texttt{plot.sci} of your own, say) hides the
+standard module for that program. Give your modules names that the standard
+library does not use. If no place has the module, \code{import} raises
+\code{ImportError}. Section~\ref{sec:modules} and the Language Reference's
+``Modules'' section give the full rules.
 
 \section{Using the module}
 
@@ -1801,10 +1869,10 @@ TypeError - stats.variance: data must be a vector, got list
   \texttt{mystats/stats.sci} and \texttt{mystats/tests.sci} are imported as
   \code{mystats.stats} and \code{mystats.tests}
   (\code{import mystats.stats as stats} keeps calls short).
-\item \textbf{Sharing between projects.} Instead of copying the file, keep it
-  in one folder and list that folder in a \texttt{package.toml} file next to
-  your programs, under \texttt{[dependencies]}; the Language Reference describes
-  the format.
+\item \textbf{Sharing between projects.} Move the module to a folder of its
+  own and list it in \texttt{package.toml}
+  (Section~\ref{sec:modwhere}), rather than copying the file into each
+  project.
 \item \textbf{Speed.} Module functions are compiled by the JIT like any other
   (Chapter~\ref{ch:perf}).
 \end{itemize}
