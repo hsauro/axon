@@ -213,12 +213,18 @@ begin
   if AllSingle then
   begin
     Values := nil;
+    // The widest element type of the entries, counting the type of a vector
+    // with no elements too ([zeros(0); 5] is real), but not of a skipped
+    // empty [] block.
+    T := etBool;
     for RI := 0 to High(Entries) do
     begin
       V := Entries[RI][0];
       if V.Kind = vkArray then
       begin
         A := AsArray(V);
+        if not IsEmptyBlock(V) and (A.ElemType > T) then
+          T := A.ElemType;
         for K := 0 to A.Count - 1 do
           Values := Values + [A.Get(K)];
       end
@@ -228,7 +234,10 @@ begin
     // An all-empty literal such as [[]] stays the empty matrix.
     if (Length(Values) = 0) then
       Exit(ArrayValue(TArrayObj.Create(etReal, 0, 0, False)));
-    Exit(BuildArray(Length(Values), 1, True, Values));
+    Result := BuildArray(Length(Values), 1, True, Values);
+    if AsArray(Result).ElemType < T then
+      AsArray(Result).Widen(T);
+    Exit;
   end;
 
   // Block concatenation. Empty 0×0 blocks are skipped.
