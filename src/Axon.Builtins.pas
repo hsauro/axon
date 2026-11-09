@@ -1421,6 +1421,56 @@ begin
   end;
 end;
 
+{ ---- isa ---- }
+
+(* isa(x, T): whether x is exactly of type T (no widening: isa(1, "real") is
+  false). T is a declared record type, or a string: a built-in type name as
+  in annotations ("int", "vector", "vector{real}", "record", ...) or the
+  name of a declared record type. *)
+function BIsa(const Args: TAxValues): TAxValue;
+var
+  X: TAxValue;
+  T, Name, Elem: string;
+  P: Integer;
+  Ok: Boolean;
+begin
+  X := Args[0];
+  if Args[1].Kind = vkRecordType then
+    Exit(BoolValue((X.Kind = vkRecord) and
+      (AsRecord(X).DeclType = TRecordTypeObj(Args[1].Obj))));
+  if Args[1].Kind <> vkString then
+    RaiseFmt(TypeError, 'isa: the type must be a string such as "int" or a record type, ' +
+      'got %s', [TypeName(Args[1])]);
+  T := AsString(Args[1]).Trim;
+  Name := T;
+  Elem := '';
+  P := T.IndexOf('{');
+  if (P > 0) and T.EndsWith('}') then
+  begin
+    Name := T.Substring(0, P).Trim;
+    Elem := T.Substring(P + 1, T.Length - P - 2).Trim;
+  end;
+  if (Name = 'bool') or (Name = 'int') or (Name = 'real') or (Name = 'complex') or
+    (Name = 'string') or (Name = 'nothing') or (Name = 'range') or (Name = 'list') or
+    (Name = 'dict') or (Name = 'sparse') or (Name = 'pointer') then
+    Ok := TypeName(X) = Name
+  else if Name = 'function' then
+    Ok := X.Kind in [vkFunction, vkBuiltin, vkExtern]
+  else if Name = 'record' then
+    Ok := X.Kind = vkRecord
+  else if (Name = 'vector') or (Name = 'matrix') then
+  begin
+    Ok := (X.Kind = vkArray) and (AsArray(X).IsVector = (Name = 'vector'));
+    if Ok and (Elem <> '') then
+      Ok := ElemTypeName(AsArray(X).ElemType) = Elem;
+  end
+  else
+    // A declared record type, by name.
+    Ok := (X.Kind = vkRecord) and (AsRecord(X).DeclType <> nil) and
+      (AsRecord(X).DeclType.Name = T);
+  Result := BoolValue(Ok);
+end;
+
 { ---- atexit ---- }
 
 var
@@ -1569,6 +1619,7 @@ begin
   Add('factorial', BFactorial, 1, 1);
   Add('atexit', BAtExit, 1, 1);
   Add('range', BRange, 1, 3);
+  Add('isa', BIsa, 2, 2);
   // Constants: the doubles nearest to pi and e, given by their bits so that
   // no conversion can be off by one unit in the last place.
   Define('pi', RealValue(PDouble(@PiBits)^));

@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..95] of TBuiltinDoc = (
+  BuiltinDocs: array[0..96] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -54,6 +54,7 @@ const
     (Name: 'dot';      Params: '(u, v)';  Text: 'The inner product, with u conjugated'),
     (Name: 'adjoint';  Params: '(A)';     Text: 'The conjugate transpose'),
     (Name: 'isequal';  Params: '(a, b)';  Text: 'True when two values are equal as whole values'),
+    (Name: 'isa';      Params: '(x, T)';  Text: 'True when x is exactly of type T: a name such as "int" or "vector{real}", or a record type'),
     (Name: 'keep';     Params: '(f)';     Text: 'Keeps a callback valid after the extern call that received it'),
     (Name: 'atexit';   Params: '(f)';     Text: 'Calls f() when the program ends normally; the last registered runs first'),
     (Name: 'eltype';   Params: '(A)';     Text: 'The element type of an array, as a string'),

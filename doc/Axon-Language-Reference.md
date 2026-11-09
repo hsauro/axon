@@ -550,7 +550,7 @@ Arguments have value semantics (see Assignment, copy semantics and scoping), and
 
 ### Overloading
 
-Axon has no overloading by type. A name refers to one function, and redefining it in the same scope replaces it. Generic behaviour comes from functions that inspect argument types with `typeof(x)` or `isa(x, T)`.
+Axon has no overloading by type. A name refers to one function, and redefining it in the same scope replaces it. Generic behaviour comes from functions that inspect argument types with `typeof(x)` or `isa(x, T)` (see [Other built-in functions](#other-built-in-functions)).
 
 ### Recursion and evaluation order
 
@@ -595,11 +595,23 @@ end
 | `TypeError` | A value has the wrong type for an operation, annotation or condition |
 | `UserError` | Raised by `error("text")` |
 
-An uncaught error stops the program and prints its kind, message and trace to standard error, then exits with status 1:
+An uncaught error stops the program and prints its kind, message and trace to standard error, then exits with status 1. For this `prog.sci`:
+
+```axon
+## The k-th item of a list.
+function lookup(items, k)
+  return items[k]
+end
+
+names = {"a", "b", "c"}
+lookup(names, 5)
+```
+
+the report is:
 
 ```
-IndexError: index 5 is out of bounds for a list of length 3
-  at prog.sci:3:10 in lookup
+IndexError: index 5 is out of bounds for a dimension of length 3
+  at prog.sci:3:16 in lookup
   at prog.sci:7:1
 ```
 
@@ -714,6 +726,7 @@ See [Lists, records and dictionaries](#lists-records-and-dictionaries).
 | --- | --- |
 | `typeof(x)` | The type of a value, as a string: `"int"`, `"real"`, `"vector"`, `"matrix"`, `"string"`, `"dict"` and so on |
 | `isequal(a, b)` | Whether two values are equal as whole values (see [Comparison](#comparison)) |
+| `isa(x, T)` | Whether `x` is exactly of type `T`, with no widening (`isa(1, "real")` is `false`). `T` is a declared record type, or a string: a type name as in annotations (`"int"`, `"real"`, `"string"`, `"vector"`, `"vector{real}"`, `"matrix{int}"`, `"list"`, `"record"`, `"dict"`, `"function"`, `"nothing"`, …) or a declared record type's name. Any record is a `"record"`; built-in and extern functions are `"function"`s. A `T` that is neither raises `TypeError` |
 | `error(message)`, `error(kind, message)` | Raises an error (see [Errors](#errors)) |
 | `keep(f)` | Keeps a callback valid after the `extern` call that received it (see [Foreign functions](#foreign-functions)) |
 | `atexit(f)` | Registers the function `f` to be called with no arguments when the program ends: after its last statement, the most recently registered first. It is not called when the program stops with an uncaught error, nor at the REPL. A function that is not a function raises `TypeError` |

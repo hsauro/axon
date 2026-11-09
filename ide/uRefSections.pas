@@ -36,7 +36,7 @@ const
     'constants: pi e',
     'ranges: range',
     'array-functions: sort sortperm',
-    'other-built-in-functions: atexit',
+    'other-built-in-functions: atexit isa',
     'sparse-operands: sparse speye nnz full splu',
     'lists-records-and-dictionaries: append get keys haskey dict typeof',
     'comparison: isequal',
