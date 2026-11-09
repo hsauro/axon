@@ -1581,6 +1581,22 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
+                <DeployFile LocalName="..\examples\16_four_views.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <RemoteName>16_four_views.sci</RemoteName>
+                        <Operation>0</Operation>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\16_four_views.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <RemoteName>16_four_views.sci</RemoteName>
+                        <Operation>0</Operation>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployFile LocalName="..\help\getting-started.md" Configuration="Debug" Class="File">
                     <Platform Name="OSXARM64">
                         <RemoteDir>Contents\MacOS\help\</RemoteDir>

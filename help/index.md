@@ -59,3 +59,4 @@ Each example opens as your own copy, so you can change it and run it with
 - [Line plots: sin(x) and its Taylor polynomials](../examples/13_line_plots.sci)
 - [The Lorenz attractor in 3D](../examples/14_lorenz.sci)
 - [Subplots: four views of a damped oscillator](../examples/15_subplots.sci)
+- [Four views: line, bars, histogram and 3D surface in one figure](../examples/16_four_views.sci)
