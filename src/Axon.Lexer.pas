@@ -23,7 +23,7 @@ function Tokenize(const Source, FileName: string): TArray<TToken>;
 implementation
 
 uses
-  System.SysUtils, System.Character, System.Generics.Collections,
+  System.SysUtils, System.Character, System.Generics.Collections, System.Math,
   Axon.Errors, Axon.FloatParse;
 
 type
@@ -49,6 +49,8 @@ type
     procedure LexNumber;
     procedure LexIdent;
     procedure LexString;
+    procedure LexTripleString;
+    function Unescape(const S: string; ALine, ACol: Integer): string;
     procedure LexOperator;
   public
     constructor Create(const Source, FileName: string);
@@ -325,12 +327,165 @@ begin
     Add(tkIdent, Word, FLine, StartCol);
 end;
 
+(* A triple-quoted string, three double quotes ... three double quotes: its
+   text runs across lines up to the next three quotes and is taken as
+   written, with three adjustments. A line break right after the opening
+   quotes is dropped; the indentation shared by its lines (counting the line
+   of the closing quotes when only spaces precede them, and not counting blank
+   lines) is removed; then escapes are read as in other strings. Line breaks
+   are kept as LF. *)
+procedure TLexer.LexTripleString;
+var
+  StartLine, StartCol, K, Indent, Lead, Last: Integer;
+  Raw: TStringBuilder;
+  Text: string;
+  Lines: TArray<string>;
+  Closed: Boolean;
+
+  function LeadingSpace(const S: string): Integer;
+  begin
+    Result := 0;
+    while (Result < Length(S)) and CharInSet(S[Result + 1], [' ', #9]) do
+      Inc(Result);
+  end;
+
+begin
+  StartLine := FLine;
+  StartCol := FCol;
+  Advance;
+  Advance;
+  Advance;   // the opening quotes
+  Raw := TStringBuilder.Create;
+  try
+    Closed := False;
+    while not AtEnd do
+    begin
+      if (Peek = '"') and (Peek(1) = '"') and (Peek(2) = '"') then
+      begin
+        Advance;
+        Advance;
+        Advance;
+        Closed := True;
+        Break;
+      end;
+      if (Peek = #10) or (Peek = #13) then
+      begin
+        Raw.Append(#10);
+        if (Peek = #13) and (Peek(1) = #10) then
+          Inc(FPos, 2)
+        else
+          Inc(FPos);
+        Inc(FLine);
+        FCol := 1;
+        Continue;
+      end;
+      if (Peek = '\') and (Peek(1) <> #10) and (Peek(1) <> #13) and (Peek(1) <> #0) then
+      begin
+        // An escape is kept for later, so that \" does not end the string.
+        Raw.Append('\');
+        Advance;
+      end;
+      Raw.Append(FSrc, FPos - 1, CharLen);
+      Advance;
+    end;
+    if not Closed then
+      Error('unterminated triple-quoted string (no closing """)', StartLine, StartCol);
+    Text := Raw.ToString;
+  finally
+    Raw.Free;
+  end;
+
+  if Text.StartsWith(#10) then
+    Delete(Text, 1, 1);
+  Lines := Text.Split([#10]);
+  // The shared indentation.
+  Indent := MaxInt;
+  Last := High(Lines);
+  for K := 0 to Last do
+    if (Lines[K].Trim([' ', #9]) <> '') or ((K = Last) and (K > 0)) then
+    begin
+      Lead := LeadingSpace(Lines[K]);
+      if Lead < Indent then
+        Indent := Lead;
+    end;
+  if Indent = MaxInt then
+    Indent := 0;
+  for K := 0 to Last do
+    Lines[K] := Copy(Lines[K], Min(Indent, LeadingSpace(Lines[K])) + 1, MaxInt);
+  Text := string.Join(#10, Lines);
+  Add(tkString, Unescape(Text, StartLine, StartCol), StartLine, StartCol);
+end;
+
+(* The escapes in a triple-quoted string's text, as in other strings. Errors
+   are reported at the string's start. *)
+function TLexer.Unescape(const S: string; ALine, ACol: Integer): string;
+var
+  SB: TStringBuilder;
+  I, Digits: Integer;
+  Code: Cardinal;
+begin
+  SB := TStringBuilder.Create;
+  try
+    I := 1;
+    while I <= Length(S) do
+    begin
+      if (S[I] = '\') and (I < Length(S)) then
+      begin
+        Inc(I);
+        case S[I] of
+          'n': SB.Append(#10);
+          't': SB.Append(#9);
+          '"': SB.Append('"');
+          '\': SB.Append('\');
+          'u':
+            begin
+              if (I >= Length(S)) or (S[I + 1] <> '{') then
+                Error('\u must be followed by {hex digits}', ALine, ACol);
+              Inc(I, 2);
+              Code := 0;
+              Digits := 0;
+              while (I <= Length(S)) and IsHexDigit(S[I]) do
+              begin
+                if Digits = 6 then
+                  Error('\u{...} takes at most 6 hex digits', ALine, ACol);
+                Code := Code * 16 + Cardinal(StrToInt('$' + S[I]));
+                Inc(Digits);
+                Inc(I);
+              end;
+              if (Digits = 0) or (I > Length(S)) or (S[I] <> '}') then
+                Error('\u{...} needs 1 to 6 hex digits and a closing }', ALine, ACol);
+              if (Code > $10FFFF) or ((Code >= $D800) and (Code <= $DFFF)) then
+                Error(Format('\u{%X} is not a valid Unicode code point', [Code]), ALine, ACol);
+              SB.Append(Char.ConvertFromUtf32(Code));
+            end;
+        else
+          Error(Format('unknown escape \%s in string', [S[I]]), ALine, ACol);
+        end;
+        Inc(I);
+      end
+      else
+      begin
+        SB.Append(S[I]);
+        Inc(I);
+      end;
+    end;
+    Result := SB.ToString;
+  finally
+    SB.Free;
+  end;
+end;
+
 procedure TLexer.LexString;
 var
   StartLine, StartCol, EscLine, EscCol, Digits: Integer;
   SB: TStringBuilder;
   Code: Cardinal;
 begin
+  if (Peek(1) = '"') and (Peek(2) = '"') then
+  begin
+    LexTripleString;
+    Exit;
+  end;
   StartLine := FLine;
   StartCol := FCol;
   Advance;  // opening quote

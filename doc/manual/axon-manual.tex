@@ -1526,8 +1526,8 @@ Escape & Character \\
 \end{longtable}
 
 There are no single-quoted strings, because \code{'} is the transpose
-operator. A string cannot run across a line break in the program; join pieces
-with \code{+} instead, which may end a line:
+operator. A string in ordinary double quotes cannot run across a line break in
+the program; join pieces with \code{+}, which may end a line:
 
 \begin{axon}
 note = "First line\n\tthen an indented one, " +
@@ -1538,6 +1538,38 @@ println(note)
 First line
 	then an indented one, and "quotes" and (*@$\alpha$@*) too
 \end{axonout}
+
+\paragraph{Text across lines.} For longer text, such as a model definition or a
+block of data, use a triple-quoted string: it starts with three double quotes,
+runs across as many lines as needed, and ends at the next three double quotes.
+The text is taken as written, line breaks included, and a \code{"} inside needs
+no escape.
+
+\begin{axon}
+source = """
+    2 A + 3 B -> C; k1*A*B;
+    C -> A + B; k2*C;
+    k1 = 0.1;
+    k2 = 0.05;
+    """
+print(source)
+println(length(split(source, "\n")), "pieces")
+\end{axon}
+\begin{axonout}
+2 A + 3 B -> C; k1*A*B;
+C -> A + B; k2*C;
+k1 = 0.1;
+k2 = 0.05;
+5 pieces
+\end{axonout}
+
+Two adjustments keep such strings tidy in a program. A line break straight
+after the opening quotes is dropped, so the text can start on its own line;
+and the indentation the lines share is removed, so the string can be indented
+along with the code around it. In the example every line, including the one
+with the closing quotes, starts with four spaces, and none of them is in the
+string; the string ends with a line break, because the closing quotes are on a
+line of their own. Escapes such as \code{\n} and \code|\u{3B1}| still work.
 
 \section{Characters, length and slices}
 

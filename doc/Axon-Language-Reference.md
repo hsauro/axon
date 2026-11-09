@@ -114,7 +114,20 @@ IMAG   = ( INT | REAL ) "i" ;
 
 ### Strings
 
-Strings are enclosed in double quotes, with the escapes `\n`, `\t`, `\"`, `\\` and `\u{X…}`, where `X…` is one to six hex digits naming a Unicode code point. Any other escape is a `SyntaxError`, and so is a line break before the closing quote: a string cannot span lines. There is no single-quoted string form, so `'` is always the transpose operator.
+Strings are enclosed in double quotes, with the escapes `\n`, `\t`, `\"`, `\\` and `\u{X…}`, where `X…` is one to six hex digits naming a Unicode code point. Any other escape is a `SyntaxError`, and so is a line break before the closing quote: a string in single double quotes cannot span lines. There is no single-quoted string form, so `'` is always the transpose operator.
+
+A **triple-quoted string**, `"""…"""`, may span lines and runs to the next `"""`; a `"` inside needs no escape. Its text is taken as written, with these adjustments, in order: a line break right after the opening `"""` is dropped; the indentation (spaces and tabs) that its lines share is removed, where lines holding only spaces and tabs do not count, except the last line when only spaces precede the closing `"""`; line breaks become LF; and escapes are then read as above. A string with no closing `"""` is a `SyntaxError` at its start, and so is a bad escape inside one. So
+
+```axon
+function model()
+  return """
+    A -> B; k1*A;
+    k1 = 0.1;
+    """
+end
+```
+
+returns `"A -> B; k1*A;\nk1 = 0.1;\n"`.
 
 ### Comments
 

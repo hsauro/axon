@@ -1,0 +1,8 @@
+2 A + 3 B -> C; k1*A*B;
+C -> A + B; k2*C;
+k2 = 0.05;
+3 true
+true true true
+She said "yes" α	.
+true true true
+true

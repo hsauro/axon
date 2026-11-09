@@ -96,6 +96,11 @@ begin
   Result := CharInSet(C, ['0'..'9']);
 end;
 
+const
+  // The line state inside a triple-quoted string that runs on to the next
+  // line; other states are the depth of nested #= =# comments.
+  InTripleString = $40000000;
+
 function AxonTokenizer(const Colors: TAxonColors): TTokenizeLineProc;
 begin
   Result :=
@@ -104,7 +109,7 @@ begin
       Runs: TList<TTokenRun>;
       N, I, Start, Depth: Integer;
       Word: string;
-      AtLineStart: Boolean;
+      AtLineStart, InTriple: Boolean;
 
       procedure Add(AStart, ALength: Integer; AColor: TAlphaColor);
       var
@@ -143,12 +148,41 @@ begin
         end;
       end;
 
+      { Scans a triple-quoted string from I to its closing quotes, or to the
+        end of the line (InTriple stays True); an escape such as \" is
+        skipped. }
+      procedure ScanTriple;
+      begin
+        InTriple := True;
+        while I <= N do
+        begin
+          if (ALine[I] = '\') and (I < N) then
+            Inc(I, 2)
+          else if (ALine[I] = '"') and (I + 2 <= N) and (ALine[I + 1] = '"') and
+            (ALine[I + 2] = '"') then
+          begin
+            Inc(I, 3);
+            InTriple := False;
+            Exit;
+          end
+          else
+            Inc(I);
+        end;
+      end;
+
     begin
       Runs := TList<TTokenRun>.Create;
       try
         N := Length(ALine);
         I := 1;
+        InTriple := False;
         Depth := AStateIn;
+        if Depth = InTripleString then
+        begin
+          Depth := 0;
+          ScanTriple;
+          Add(1, I - 1, Colors.Str);
+        end;
         if Depth > 0 then
         begin
           Start := I;
@@ -176,6 +210,14 @@ begin
                 Add(Start, N - Start + 1, Colors.Comment);
               I := N + 1;
             end;
+          end
+          else if (ALine[I] = '"') and (I + 2 <= N) and (ALine[I + 1] = '"') and
+            (ALine[I + 2] = '"') then
+          begin
+            Start := I;
+            Inc(I, 3);
+            ScanTriple;
+            Add(Start, I - Start, Colors.Str);
           end
           else if ALine[I] = '"' then
           begin
@@ -233,7 +275,10 @@ begin
             AtLineStart := False;
         end;
         ARuns := Runs.ToArray;
-        Result := Depth;
+        if InTriple then
+          Result := InTripleString
+        else
+          Result := Depth;
       finally
         Runs.Free;
       end;
