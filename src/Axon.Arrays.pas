@@ -7,7 +7,9 @@ unit Axon.Arrays;
    Elementwise work goes through the scalar operators in Axon.Ops one element
    at a time, so overflow checks, promotion and NaN rules are exactly the
    scalar ones. The result's element type is the widest of the element
-   results. Ranges take part as vectors. *)
+   results. Ranges take part as vectors. The common cases (operators on bool,
+   int and real elements, sums and products) run in typed loops that compute
+   the same results without boxing each element (see "fast paths"). *)
 
 interface
 
@@ -394,6 +396,343 @@ begin
   Result := BuildArray(R, C, IsVec, Values, EmptyType);
 end;
 
+{ ---------------- fast paths ---------------- }
+
+(* Typed loops for the common cases of elementwise operators and reductions
+   on bool, int and real operands. They compute exactly what the scalar
+   operators compute element by element (RealArith, IntArith with its
+   overflow checks, CompareOrder, ValuesEqual), in the same order, so results
+   and errors are identical; they only skip boxing each element into a
+   TAxValue and rebuilding the array. Anything else (complex elements, empty
+   results, and, or, integer powers) returns False, and the general code
+   runs. *)
+
+type
+  { One operand of a fast elementwise operation: an array, or a scalar
+    standing for an array of one element. }
+  TFastOperand = record
+    Arr: TArrayObj;          // nil for a scalar
+    Holder: TAxValue;        // keeps a range's array alive
+    T: TElemType;
+    SR: Double;              // the scalar's value
+    SI: Int64;
+    Rows, Cols: Integer;
+    IsVec: Boolean;
+  end;
+
+function FastOperand(const V: TAxValue; out O: TFastOperand): Boolean;
+begin
+  Result := True;
+  O.Arr := nil;
+  O.SR := 0;
+  O.SI := 0;
+  case V.Kind of
+    vkArray, vkRange:
+      begin
+        O.Arr := ArrayHold(V, O.Holder);
+        O.T := O.Arr.ElemType;
+        if O.T = etComplex then
+          Exit(False);
+        O.Rows := O.Arr.Rows;
+        O.Cols := O.Arr.Cols;
+        O.IsVec := O.Arr.IsVector;
+      end;
+    vkBool, vkInt, vkReal:
+      begin
+        O.T := ElemTypeOf(V);
+        O.SI := 0;
+        case V.Kind of
+          vkBool: begin O.SI := Ord(V.B); O.SR := Ord(V.B); end;
+          vkInt:  begin O.SI := V.I; O.SR := V.I; end;
+        else
+          O.SR := V.R;
+        end;
+        O.Rows := 1;
+        O.Cols := 1;
+        O.IsVec := False;
+      end;
+  else
+    Result := False;
+  end;
+end;
+
+{ Element K of an operand as a real (ToReal) or an int (ToInt). }
+function RealAt(const O: TFastOperand; K: Integer): Double; inline;
+begin
+  if O.Arr = nil then
+    Result := O.SR
+  else
+    case O.T of
+      etReal: Result := O.Arr.R[K];
+      etInt:  Result := O.Arr.I[K];
+    else
+      Result := Ord(O.Arr.B[K]);
+    end;
+end;
+
+function IntAtOf(const O: TFastOperand; K: Integer): Int64; inline;
+begin
+  if O.Arr = nil then
+    Result := O.SI
+  else if O.T = etInt then
+    Result := O.Arr.I[K]
+  else
+    Result := Ord(O.Arr.B[K]);
+end;
+
+(* Out := A op B for + - * / when each operand is a real array of Out's
+   shape or a real-valued scalar; False otherwise. *)
+function RealLoop(Op: TTokenKind; const OA, OB: TFastOperand; Out: TArrayObj): Boolean;
+var
+  N, K: Integer;
+  X, Y: Double;
+  PA, PB, PO: PDouble;
+begin
+  N := Out.Count;
+  Result := False;
+  if (OA.Arr <> nil) and ((OA.T <> etReal) or (OA.Arr.Count <> N)) then Exit;
+  if (OB.Arr <> nil) and ((OB.T <> etReal) or (OB.Arr.Count <> N)) then Exit;
+  if (OA.Arr = nil) and (OB.Arr = nil) then Exit;
+  PO := @Out.R[0];
+  if (OA.Arr <> nil) and (OB.Arr <> nil) then
+  begin
+    PA := @OA.Arr.R[0];
+    PB := @OB.Arr.R[0];
+    case Op of
+      tkPlus:  for K := 0 to N - 1 do begin PO^ := PA^ + PB^; Inc(PA); Inc(PB); Inc(PO); end;
+      tkMinus: for K := 0 to N - 1 do begin PO^ := PA^ - PB^; Inc(PA); Inc(PB); Inc(PO); end;
+      tkStar, tkDotStar:
+        for K := 0 to N - 1 do begin PO^ := PA^ * PB^; Inc(PA); Inc(PB); Inc(PO); end;
+    else
+      for K := 0 to N - 1 do begin PO^ := PA^ / PB^; Inc(PA); Inc(PB); Inc(PO); end;
+    end;
+  end
+  else if OB.Arr = nil then
+  begin
+    PA := @OA.Arr.R[0];
+    Y := OB.SR;
+    case Op of
+      tkPlus:  for K := 0 to N - 1 do begin PO^ := PA^ + Y; Inc(PA); Inc(PO); end;
+      tkMinus: for K := 0 to N - 1 do begin PO^ := PA^ - Y; Inc(PA); Inc(PO); end;
+      tkStar, tkDotStar:
+        for K := 0 to N - 1 do begin PO^ := PA^ * Y; Inc(PA); Inc(PO); end;
+    else
+      for K := 0 to N - 1 do begin PO^ := PA^ / Y; Inc(PA); Inc(PO); end;
+    end;
+  end
+  else
+  begin
+    PB := @OB.Arr.R[0];
+    X := OA.SR;
+    case Op of
+      tkPlus:  for K := 0 to N - 1 do begin PO^ := X + PB^; Inc(PB); Inc(PO); end;
+      tkMinus: for K := 0 to N - 1 do begin PO^ := X - PB^; Inc(PB); Inc(PO); end;
+      tkStar, tkDotStar:
+        for K := 0 to N - 1 do begin PO^ := X * PB^; Inc(PB); Inc(PO); end;
+    else
+      for K := 0 to N - 1 do begin PO^ := X / PB^; Inc(PB); Inc(PO); end;
+    end;
+  end;
+  Result := True;
+end;
+
+function FastBinaryOp(Op: TTokenKind; const A, B: TAxValue; out Res: TAxValue): Boolean;
+var
+  OA, OB: TFastOperand;
+  R, C, I, J, KA, KB, K, RowA, ColA, RowB, ColB: Integer;
+  IsVec, RealMode, Compare: Boolean;
+  Out: TArrayObj;
+  X, Y: Double;
+  P, Q: Int64;
+begin
+  Result := False;
+  if not (Op in [tkPlus, tkMinus, tkStar, tkDotStar, tkSlash, tkDotSlash, tkBackslash,
+    tkDotBackslash, tkDotCaret, tkCaret, tkEqEq, tkNotEq, tkLess, tkLessEq, tkGreater,
+    tkGreaterEq]) then
+    Exit;
+  if not FastOperand(A, OA) or not FastOperand(B, OB) then
+    Exit;
+  // Shapes as Broadcast2; a mismatch, or an empty result, is left to it.
+  if ((OA.Rows <> OB.Rows) and (OA.Rows <> 1) and (OB.Rows <> 1)) or
+    ((OA.Cols <> OB.Cols) and (OA.Cols <> 1) and (OB.Cols <> 1)) then
+    Exit;
+  if OA.Rows = 1 then R := OB.Rows else R := OA.Rows;
+  if OA.Cols = 1 then C := OB.Cols else C := OA.Cols;
+  if (R = 0) or (C = 0) then
+    Exit;
+  RealMode := (OA.T = etReal) or (OB.T = etReal);
+  Compare := Op in [tkEqEq, tkNotEq, tkLess, tkLessEq, tkGreater, tkGreaterEq];
+  // Integer powers can give ints or reals element by element: general code.
+  if not RealMode and (Op in [tkDotCaret, tkCaret]) then
+    Exit;
+  IsVec := ((OA.Arr = nil) or OA.IsVec) and ((OB.Arr = nil) or OB.IsVec);
+
+  if Compare then
+    Out := TArrayObj.Create(etBool, R, C, IsVec)
+  else if RealMode or (Op in [tkSlash, tkDotSlash, tkBackslash, tkDotBackslash]) then
+    Out := TArrayObj.Create(etReal, R, C, IsVec)
+  else
+    Out := TArrayObj.Create(etInt, R, C, IsVec);
+  Res := ArrayValue(Out);
+
+  // The commonest cases, two real arrays of one shape or a real array and a
+  // number, with + - * /: straight loops over the buffers.
+  if RealMode and (Op in [tkPlus, tkMinus, tkStar, tkDotStar, tkSlash, tkDotSlash]) and
+    RealLoop(Op, OA, OB, Out) then
+    Exit(True);
+
+  // Element (I, J) of an operand is at J * Col + I * Row (0 for a size-1 dimension).
+  if OA.Rows = 1 then RowA := 0 else RowA := 1;
+  if OA.Cols = 1 then ColA := 0 else ColA := OA.Rows;
+  if OB.Rows = 1 then RowB := 0 else RowB := 1;
+  if OB.Cols = 1 then ColB := 0 else ColB := OB.Rows;
+
+  K := 0;
+  for J := 0 to C - 1 do
+    for I := 0 to R - 1 do
+    begin
+      KA := J * ColA + I * RowA;
+      KB := J * ColB + I * RowB;
+      if Compare then
+      begin
+        if RealMode then
+        begin
+          // CompareOrder and ValuesEqual on reals: NaN is unordered and unequal.
+          X := RealAt(OA, KA);
+          Y := RealAt(OB, KB);
+          if IsNan(X) or IsNan(Y) then
+            Out.B[K] := Op = tkNotEq
+          else
+            case Op of
+              tkEqEq:      Out.B[K] := X = Y;
+              tkNotEq:     Out.B[K] := X <> Y;
+              tkLess:      Out.B[K] := X < Y;
+              tkLessEq:    Out.B[K] := X <= Y;
+              tkGreater:   Out.B[K] := X > Y;
+            else
+              Out.B[K] := X >= Y;
+            end;
+        end
+        else
+        begin
+          P := IntAtOf(OA, KA);
+          Q := IntAtOf(OB, KB);
+          case Op of
+            tkEqEq:      Out.B[K] := P = Q;
+            tkNotEq:     Out.B[K] := P <> Q;
+            tkLess:      Out.B[K] := P < Q;
+            tkLessEq:    Out.B[K] := P <= Q;
+            tkGreater:   Out.B[K] := P > Q;
+          else
+            Out.B[K] := P >= Q;
+          end;
+        end;
+      end
+      else if RealMode then
+      begin
+        X := RealAt(OA, KA);
+        Y := RealAt(OB, KB);
+        case Op of
+          tkPlus:  Out.R[K] := X + Y;
+          tkMinus: Out.R[K] := X - Y;
+          tkStar, tkDotStar: Out.R[K] := X * Y;
+          tkSlash, tkDotSlash: Out.R[K] := X / Y;
+          tkBackslash, tkDotBackslash: Out.R[K] := Y / X;
+        else
+          // RealArith's power: a negative base with a non-integer exponent is NaN.
+          if (X < 0) and (Frac(Y) <> 0) then
+            Out.R[K] := NaN
+          else
+            Out.R[K] := Power(X, Y);
+        end;
+      end
+      else
+      begin
+        P := IntAtOf(OA, KA);
+        Q := IntAtOf(OB, KB);
+        case Op of
+          tkPlus:  Out.I[K] := CheckedAdd(P, Q);
+          tkMinus: Out.I[K] := CheckedSub(P, Q);
+          tkStar, tkDotStar: Out.I[K] := CheckedMul(P, Q);
+          tkSlash, tkDotSlash: Out.R[K] := P / Q;
+        else
+          Out.R[K] := Q / P;
+        end;
+      end;
+      Inc(K);
+    end;
+  Result := True;
+end;
+
+{ -x on a bool, int or real array, as UnaryOp element by element. }
+function FastNegate(const V: TAxValue; out Res: TAxValue): Boolean;
+var
+  Holder: TAxValue;
+  A, Out: TArrayObj;
+  K: Integer;
+begin
+  A := ArrayHold(V, Holder);
+  Result := (A.ElemType <> etComplex) and (A.Count > 0);
+  if not Result then
+    Exit;
+  if A.ElemType = etReal then
+  begin
+    Out := TArrayObj.Create(etReal, A.Rows, A.Cols, A.IsVector);
+    Res := ArrayValue(Out);
+    for K := 0 to A.Count - 1 do
+      Out.R[K] := -A.R[K];
+  end
+  else
+  begin
+    Out := TArrayObj.Create(etInt, A.Rows, A.Cols, A.IsVector);
+    Res := ArrayValue(Out);
+    for K := 0 to A.Count - 1 do
+      if A.ElemType = etInt then
+        Out.I[K] := CheckedNeg(A.I[K])
+      else
+        Out.I[K] := -Ord(A.B[K]);
+  end;
+end;
+
+{ Fold of + or * over an int, bool or real array from Start (NeutralFor),
+  as Fold computes it: the same order and the same checks. }
+function FastFold(A: TArrayObj; Op: TTokenKind; Lo, Count, Stride: Integer;
+  out Res: TAxValue): Boolean;
+var
+  K, P: Integer;
+  S: Double;
+  N, Q: Int64;
+begin
+  Result := A.ElemType <> etComplex;
+  if not Result then
+    Exit;
+  P := Lo;
+  if A.ElemType = etReal then
+  begin
+    if Op = tkPlus then S := 0 else S := 1;
+    for K := 1 to Count do
+    begin
+      if Op = tkPlus then S := S + A.R[P] else S := S * A.R[P];
+      Inc(P, Stride);
+    end;
+    Res := RealValue(S);
+  end
+  else
+  begin
+    if Op = tkPlus then N := 0 else N := 1;
+    for K := 1 to Count do
+    begin
+      if A.ElemType = etInt then Q := A.I[P] else Q := Ord(A.B[P]);
+      if Op = tkPlus then
+        N := CheckedAdd(N, Q)
+      else
+        N := CheckedMul(N, Q);
+      Inc(P, Stride);
+    end;
+    Res := IntValue(N);
+  end;
+end;
+
 function ArrayBinaryOp(Op: TTokenKind; const A, B: TAxValue): TAxValue;
 var
   ScalarA, ScalarB: Boolean;
@@ -419,6 +758,8 @@ begin
         Exit(MatrixPower(A, B));
       end;
   end;
+  if FastBinaryOp(Op, A, B, Result) then
+    Exit;
   if Op in [tkEqEq, tkNotEq, tkLess, tkLessEq, tkGreater, tkGreaterEq, tkAnd, tkOr] then
     EmptyType := etBool
   else
@@ -437,6 +778,8 @@ var
 begin
   if Op = tkQuote then
     Exit(Transpose(ArrayHold(A, Holder), False));
+  if (Op = tkMinus) and FastNegate(A, Result) then
+    Exit;
   Result := MapArray(A,
     function(const X: TAxValue): TAxValue
     begin
@@ -709,6 +1052,8 @@ begin
     Exit(BinaryOp(Op, Start, V));
   end;
   A := ArrayHold(V, Holder);
+  if FastFold(A, Op, 0, A.Count, 1, Result) then
+    Exit;
   Result := Start;
   for K := 0 to A.Count - 1 do
     Result := BinaryOp(Op, Result, A.Get(K));
@@ -760,12 +1105,13 @@ begin
     // Down each column: a 1×Cols matrix.
     SetLength(Values, A.Cols);
     for J := 0 to A.Cols - 1 do
-    begin
-      Acc := Start;
-      for I := 0 to A.Rows - 1 do
-        Acc := BinaryOp(Op, Acc, A.Get(J * A.Rows + I));
-      Values[J] := Acc;
-    end;
+      if not FastFold(A, Op, J * A.Rows, A.Rows, 1, Values[J]) then
+      begin
+        Acc := Start;
+        for I := 0 to A.Rows - 1 do
+          Acc := BinaryOp(Op, Acc, A.Get(J * A.Rows + I));
+        Values[J] := Acc;
+      end;
     Result := BuildArray(1, A.Cols, False, Values, ElemTypeOf(Start));
   end
   else
@@ -773,12 +1119,13 @@ begin
     // Along each row: Rows×1 (a vector stays a vector).
     SetLength(Values, A.Rows);
     for I := 0 to A.Rows - 1 do
-    begin
-      Acc := Start;
-      for J := 0 to A.Cols - 1 do
-        Acc := BinaryOp(Op, Acc, A.Get(J * A.Rows + I));
-      Values[I] := Acc;
-    end;
+      if not FastFold(A, Op, I, A.Cols, A.Rows, Values[I]) then
+      begin
+        Acc := Start;
+        for J := 0 to A.Cols - 1 do
+          Acc := BinaryOp(Op, Acc, A.Get(J * A.Rows + I));
+        Values[I] := Acc;
+      end;
     Result := BuildArray(A.Rows, 1, A.IsVector, Values, ElemTypeOf(Start));
   end;
 end;

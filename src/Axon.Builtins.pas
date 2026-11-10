@@ -77,7 +77,30 @@ end;
 
 function ApplyElementary(const Fn: string; const V: TAxValue; RF: TRealFn;
   CF: TComplexFn): TAxValue;
+var
+  A, Out: TArrayObj;
+  Holder: TAxValue;
+  K: Integer;
 begin
+  if IsArrayLike(V) then
+  begin
+    // Bool, int and real elements: RF on each as a real, straight into a
+    // real array, as the element-by-element route below computes it.
+    A := ToArray(V);
+    Holder := ArrayValue(A);
+    if (A.ElemType <> etComplex) and (A.Count > 0) then
+    begin
+      Out := TArrayObj.Create(etReal, A.Rows, A.Cols, A.IsVector);
+      Result := ArrayValue(Out);
+      case A.ElemType of
+        etReal: for K := 0 to A.Count - 1 do Out.R[K] := RF(A.R[K]);
+        etInt:  for K := 0 to A.Count - 1 do Out.R[K] := RF(A.I[K]);
+      else
+        for K := 0 to A.Count - 1 do Out.R[K] := RF(Ord(A.B[K]));
+      end;
+      Exit;
+    end;
+  end;
   if IsArrayLike(V) then
     Exit(MapArray(V,
       function(const X: TAxValue): TAxValue
@@ -667,6 +690,8 @@ var
   Holder: TAxValue;
   A: TArrayObj;
   K: Integer;
+  X: Double;
+  N: Int64;
 begin
   if not IsArrayLike(V) then
   begin
@@ -677,6 +702,31 @@ begin
   Holder := ArrayValue(A);
   if A.Count = 0 then
     RaiseFmt(ArgumentError, '%s of an empty array', [Fn]);
+  // Real and int arrays: MinMax's rules in a typed loop (NaN wins; ints exactly).
+  if A.ElemType = etReal then
+  begin
+    X := A.R[0];
+    for K := 1 to A.Count - 1 do
+      if IsNan(X) or IsNan(A.R[K]) then
+        X := NaN
+      else if WantMax then
+        X := Max(X, A.R[K])
+      else
+        X := Min(X, A.R[K]);
+    Exit(RealValue(X));
+  end;
+  if A.ElemType = etInt then
+  begin
+    N := A.I[0];
+    for K := 1 to A.Count - 1 do
+      if WantMax then
+      begin
+        if A.I[K] > N then N := A.I[K];
+      end
+      else if A.I[K] < N then
+        N := A.I[K];
+    Exit(IntValue(N));
+  end;
   Result := A.Get(0);
   NeedRealNumber(Fn, Result);
   for K := 1 to A.Count - 1 do
@@ -1360,16 +1410,231 @@ begin
   MergeSort(0, Length(Result));
 end;
 
+{ The element type an array or range has. }
+function ToArrayElemType(const V: TAxValue): TElemType;
+begin
+  if V.Kind = vkArray then
+    Result := AsArray(V).ElemType
+  else if AsRange(V).IsInt then
+    Result := etInt
+  else
+    Result := etReal;
+end;
+
+(* The sort order of an int or real vector, as SortOrder computes it for its
+   items (the same stable merge sort and the same comparisons, NaN last), on
+   the numbers themselves. Nil when X is not such a vector, and the general
+   route runs. *)
+function TypedSortOrder(const Fn: string; const Args: TAxValues; out Order: TArray<Integer>): Boolean;
+var
+  A: TArrayObj;
+  Holder: TAxValue;
+  Desc: Boolean;
+  Tmp: TArray<Integer>;
+  K: Integer;
+
+  function Before(P, Q: Integer): Boolean;   // item P strictly before item Q
+  var
+    X, Y: Double;
+    NA, NB: Boolean;
+  begin
+    if A.ElemType = etInt then
+    begin
+      if Desc then Exit(A.I[P] > A.I[Q]);
+      Exit(A.I[P] < A.I[Q]);
+    end;
+    X := A.R[P];
+    Y := A.R[Q];
+    NA := IsNan(X);
+    NB := IsNan(Y);
+    if NA or NB then
+      Exit(Ord(NA) - Ord(NB) < 0);           // NaN last, either way
+    if Desc then Exit(X > Y);
+    Result := X < Y;
+  end;
+
+  procedure MergeSort(Lo, Hi: Integer);     // sorts Order[Lo..Hi-1]
+  var
+    Mid, I, J, K: Integer;
+  begin
+    if Hi - Lo < 2 then
+      Exit;
+    Mid := (Lo + Hi) div 2;
+    MergeSort(Lo, Mid);
+    MergeSort(Mid, Hi);
+    I := Lo;
+    J := Mid;
+    K := Lo;
+    while (I < Mid) and (J < Hi) do
+    begin
+      if Before(Order[J], Order[I]) then
+      begin
+        Tmp[K] := Order[J];
+        Inc(J);
+      end
+      else
+      begin
+        Tmp[K] := Order[I];
+        Inc(I);
+      end;
+      Inc(K);
+    end;
+    while I < Mid do
+    begin
+      Tmp[K] := Order[I];
+      Inc(I);
+      Inc(K);
+    end;
+    while J < Hi do
+    begin
+      Tmp[K] := Order[J];
+      Inc(J);
+      Inc(K);
+    end;
+    for K := Lo to Hi - 1 do
+      Order[K] := Tmp[K];
+  end;
+
+begin
+  Result := False;
+  if not IsArrayLike(Args[0]) then
+    Exit;
+  A := ToArray(Args[0]);
+  Holder := ArrayValue(A);
+  if not (A.ElemType in [etInt, etReal]) or
+    not (A.IsVector or (A.Rows <= 1) or (A.Cols <= 1)) then
+    Exit;
+  Desc := SortDescending(Fn, Args);
+  SetLength(Order, A.Count);
+  for K := 0 to High(Order) do
+    Order[K] := K;
+  SetLength(Tmp, A.Count);
+  MergeSort(0, A.Count);
+  Result := True;
+end;
+
+(* X in the order SortOrder gives its items: NaN last, either way, and
+   equal numbers (0.0 and -0.0) in their original order. Any stable sort
+   gives that order, so this one moves the NaNs to the end first (keeping
+   their order), then merge-sorts the numbers with plain comparisons. *)
+procedure SortRealValues(var X: TArray<Double>; Desc: Boolean);
+var
+  Tmp: TArray<Double>;
+  N, M, K: Integer;
+
+  procedure Sort(Lo, Hi: Integer);    // X[Lo..Hi-1], stable
+  var
+    Mid, I, J, P: Integer;
+    V: Double;
+  begin
+    if Hi - Lo <= 24 then
+    begin
+      // Insertion sort: an item moves left past strictly larger ones only.
+      for I := Lo + 1 to Hi - 1 do
+      begin
+        V := X[I];
+        J := I - 1;
+        if Desc then
+          while (J >= Lo) and (X[J] < V) do begin X[J + 1] := X[J]; Dec(J); end
+        else
+          while (J >= Lo) and (X[J] > V) do begin X[J + 1] := X[J]; Dec(J); end;
+        X[J + 1] := V;
+      end;
+      Exit;
+    end;
+    Mid := (Lo + Hi) div 2;
+    Sort(Lo, Mid);
+    Sort(Mid, Hi);
+    if Desc then
+    begin
+      if not (X[Mid] > X[Mid - 1]) then Exit;   // already in order
+    end
+    else if not (X[Mid] < X[Mid - 1]) then
+      Exit;
+    Move(X[Lo], Tmp[Lo], (Mid - Lo) * SizeOf(Double));
+    I := Lo;
+    J := Mid;
+    P := Lo;
+    while (I < Mid) and (J < Hi) do
+    begin
+      // The right item goes first only when strictly before the left one.
+      if (Desc and (X[J] > Tmp[I])) or (not Desc and (X[J] < Tmp[I])) then
+      begin
+        X[P] := X[J];
+        Inc(J);
+      end
+      else
+      begin
+        X[P] := Tmp[I];
+        Inc(I);
+      end;
+      Inc(P);
+    end;
+    while I < Mid do
+    begin
+      X[P] := Tmp[I];
+      Inc(I);
+      Inc(P);
+    end;
+  end;
+
+begin
+  N := Length(X);
+  // NaNs to the end, in order.
+  SetLength(Tmp, N);
+  M := 0;
+  for K := 0 to N - 1 do
+    if not IsNan(X[K]) then
+    begin
+      X[M] := X[K];
+      Inc(M);
+    end
+    else
+      Tmp[K - M] := X[K];
+  for K := M to N - 1 do
+    X[K] := Tmp[K - M];
+  Sort(0, M);
+end;
+
 { sort(x) and sort(x, "descend"): a vector or list in order, as a new value
   of the same kind, shape and element type. }
 function BSort(const Args: TAxValues): TAxValue;
 var
+  Holder: TAxValue;
   Items: TSortItems;
   Order: TArray<Integer>;
   Sorted: TAxValues;
   A, R: TArrayObj;
   K: Integer;
+  Vals: TArray<Double>;
 begin
+  // A real vector: sort the numbers themselves.
+  if IsArrayLike(Args[0]) and (ToArrayElemType(Args[0]) = etReal) then
+  begin
+    A := ToArray(Args[0]);
+    Holder := ArrayValue(A);
+    if A.IsVector or (A.Rows <= 1) or (A.Cols <= 1) then
+    begin
+      Vals := Copy(A.R);
+      SortRealValues(Vals, SortDescending('sort', Args));
+      R := TArrayObj.Create(etReal, A.Rows, A.Cols, A.IsVector);
+      Result := ArrayValue(R);
+      R.R := Vals;
+      Exit;
+    end;
+  end;
+  if TypedSortOrder('sort', Args, Order) then
+  begin
+    A := ToArray(Args[0]);
+    Holder := ArrayValue(A);  // holds A (a new array for a range) while it is read
+    R := TArrayObj.Create(A.ElemType, A.Rows, A.Cols, A.IsVector);
+    Result := ArrayValue(R);
+    if A.ElemType = etInt then
+      for K := 0 to High(Order) do R.I[K] := A.I[Order[K]]
+    else
+      for K := 0 to High(Order) do R.R[K] := A.R[Order[K]];
+    Exit;
+  end;
   Items := SortItems('sort', Args[0]);
   Order := SortOrder(Items, SortDescending('sort', Args));
   SetLength(Sorted, Length(Order));
@@ -1393,7 +1658,8 @@ var
   R: TArrayObj;
   K: Integer;
 begin
-  Order := SortOrder(SortItems('sortperm', Args[0]), SortDescending('sortperm', Args));
+  if not TypedSortOrder('sortperm', Args, Order) then
+    Order := SortOrder(SortItems('sortperm', Args[0]), SortDescending('sortperm', Args));
   R := TArrayObj.Create(etInt, Length(Order), 1, True);
   Result := ArrayValue(R);
   for K := 0 to High(Order) do

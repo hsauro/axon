@@ -1,0 +1,25 @@
+true true true true
+true true true
+true true true
+true false true false bool
+true true true int true true
+NaN -2 7
+true true true
+true true true NaN NaN
+int real int int int real
+real real int real
+matrix 2x3 matrix 1x2 vector 2x1
+1×3 matrix{real}
+  1.5  2.5  3.5
+2-vector{real}
+  NaN
+  4.0
+1×3 matrix{real}
+  5.0  7.0  9.0 2×1 matrix{real}
+   6.0
+  15.0 24 720.0
+Inf -Inf
+OverflowError integer overflow in +
+OverflowError integer overflow in unary -
+OverflowError integer overflow in +
+OverflowError integer overflow in *
