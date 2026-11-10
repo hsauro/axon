@@ -44,7 +44,8 @@
   morekeywords=[2]{zeros,ones,eye,rand,linspace,size,sum,prod,mean,all,any,
     dot,adjoint,isequal,keep,eltype,reshape,sparse,speye,nnz,full,splu,
     append,get,keys,haskey,dict,print,println,error,string,length,typeof,
-    sqrt,exp,log,sin,cos,tan,asin,acos,atan,sinh,cosh,tanh,asinh,acosh,atanh,
+    sqrt,exp,log,log10,log2,sin,cos,tan,asin,acos,atan,atan2,deg2rad,rad2deg,
+    sinh,cosh,tanh,asinh,acosh,atanh,
     abs,int,floor,ceil,round,real,imag,conj,arg,complex,div,mod,min,max,
     factorial,format,pi,sort,sortperm,atexit},
   sensitive=true,
@@ -1329,6 +1330,112 @@ Module & Contents \\
 
 % ===================================================================
 \chapter{Numerical computing}\label{ch:num}
+
+\section{Mathematical functions}\label{sec:mathfn}
+
+The elementary functions are built in, so they need no \code{import}. Each
+takes a number or an array; on an array it applies to every element and
+returns an array of the same shape. An \code{int} argument is converted to
+\code{real}, so \code{sqrt(4)} is \code{2.0}. Angles are in radians;
+\code{deg2rad} and \code{rad2deg} convert to and from degrees.
+
+\begin{longtable}{@{}p{0.2\linewidth}p{0.4\linewidth}p{0.34\linewidth}@{}}
+\toprule
+Function & Result & Real arguments \\
+\midrule
+\endhead
+\code{sqrt(x)} & The square root $\sqrt{x}$ & $x \ge 0$ \\
+\code{exp(x)} & The exponential $e^x$ & any \\
+\code{log(x)} & The natural logarithm $\ln x$ & $x > 0$; \code{log(0.0)} is
+  \code{-Inf} \\
+\code{log10(x)} & The logarithm to base 10, $\log_{10} x$ & $x > 0$ \\
+\code{log2(x)} & The logarithm to base 2, $\log_2 x$ & $x > 0$ \\
+\addlinespace
+\code{sin(x)} & The sine of $x$ radians & any \\
+\code{cos(x)} & The cosine & any \\
+\code{tan(x)} & The tangent & any \\
+\addlinespace
+\code{asin(x)} & The inverse sine, in $[-\pi/2, \pi/2]$ & $-1 \le x \le 1$ \\
+\code{acos(x)} & The inverse cosine, in $[0, \pi]$ & $-1 \le x \le 1$ \\
+\code{atan(x)} & The inverse tangent, in $(-\pi/2, \pi/2)$ & any \\
+\code{atan2(y, x)} & The angle of the point $(x, y)$, in $(-\pi, \pi]$ & any;
+  not complex \\
+\code{deg2rad(x)} & $x$ degrees in radians, $x\pi/180$ & any \\
+\code{rad2deg(x)} & $x$ radians in degrees, $180x/\pi$ & any \\
+\addlinespace
+\code{sinh(x)} & The hyperbolic sine & any \\
+\code{cosh(x)} & The hyperbolic cosine & any \\
+\code{tanh(x)} & The hyperbolic tangent & any \\
+\addlinespace
+\code{asinh(x)} & The inverse hyperbolic sine & any \\
+\code{acosh(x)} & The inverse hyperbolic cosine, $\ge 0$ & $x \ge 1$ \\
+\code{atanh(x)} & The inverse hyperbolic tangent & $-1 < x < 1$; $\pm 1$ give
+  $\pm$\code{Inf} \\
+\bottomrule
+\end{longtable}
+
+A real argument outside the range in the last column gives \code{NaN} rather
+than an error, as IEEE arithmetic does, so a calculation over a whole array
+keeps going. For a result in the complex plane, pass a complex argument: each
+function then returns its principal value. \code{log10} and \code{log2} give
+an exact power of the base its exponent exactly, so \code{log10(1000.0)} is
+\code{3.0}; for another base, divide: \code{log(x) / log(b)}. \code{atan2(y, x)}
+is the angle of the point $(x, y)$ from the positive $x$ axis. Unlike
+\code{atan(y / x)}, it tells the four quadrants apart and works when \code{x}
+is 0, which makes it the function for converting to polar coordinates.
+
+\begin{axon}
+println(sqrt(2.0), exp(1.0), log(e), sin(pi / 6))
+println(sqrt(4), typeof(sqrt(4)))
+println(sqrt(-4.0), log(0.0), atanh(1.0))
+println(sqrt(-4 + 0i), log(-1 + 0i))
+println(exp([0.0; 1.0; 2.0])')
+println(log10(1000.0), log2(1024), atan2(1.0, -1.0) / pi)
+println(sin(deg2rad(30)), rad2deg(atan2(1.0, 1.0)), deg2rad(180) == pi)
+\end{axon}
+\begin{axonout}
+1.4142135623731 2.71828182845905 1.0 0.5
+2.0 real
+NaN -Inf Inf
+0.0 + 2.0i 0.0 + 3.14159265358979i
+1(*@\texttimes@*)3 matrix{real}
+  1.0  2.71828  7.38906
+3.0 10.0 0.75
+0.5 45.0 true
+\end{axonout}
+
+The other numeric functions round, divide and compare. The rounding
+functions return an \code{int}:
+
+\begin{longtable}{@{}p{0.2\linewidth}p{0.74\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{abs(x)} & The absolute value, or the modulus of a complex number:
+  \code{abs(3 + 4i)} is \code{5.0} \\
+\code{floor(x)} & The largest integer not above \code{x}: \code{floor(2.7)}
+  is \code{2} \\
+\code{ceil(x)} & The smallest integer not below \code{x}: \code{ceil(2.1)}
+  is \code{3} \\
+\code{round(x)} & The nearest integer, halves away from zero:
+  \code{round(2.5)} is \code{3}, \code{round(-2.5)} is \code{-3} \\
+\code{int(x)} & Truncation toward zero: \code{int(-2.7)} is \code{-2} \\
+\code{div(a, b)} & Floored division, \code{floor(a / b)}: \code{div(-7, 2)}
+  is \code{-4} \\
+\code{mod(a, b)} & The remainder of \code{div}, with the sign of \code{b}:
+  \code{mod(-7, 2)} is \code{1} \\
+\code{min(a, b)}, \code{max(a, b)} & The smaller or larger, elementwise for
+  arrays; with one array, its smallest or largest element \\
+\code{factorial(n)} & $n!$ for an \code{int} $n \ge 0$ \\
+\bottomrule
+\end{longtable}
+
+Powers are operators: \code{x ^ y} for numbers and square matrices, and
+\code{x .^ y} elementwise for arrays. The constants \code{pi} and \code{e} are
+the reals nearest to $\pi$ and $e$. Infinities and NaN display as
+\code{Inf} and \code{NaN}, and come from arithmetic, such as \code{1.0 / 0.0},
+or from text, as in \code{real("Inf")}. Appendix~\ref{app:builtins} lists every built-in function.
 
 \section{Linear algebra}
 
@@ -2958,7 +3065,7 @@ Mandelbrot set, 60 \texttimes{} 60 points & 190 ms & 212 \textmu s &
 use numbers, \code{bool}s and real or integer arrays: arithmetic and comparisons,
 \code{if}, \code{while} and \code{for} loops, element reads and writes with
 integer indices, calls to other functions, and the scalar built-ins (the
-elementary functions, \code{abs}, \code{floor}, \code{min}, \code{max},
+elementary functions, \code{atan2}, \code{abs}, \code{floor}, \code{min}, \code{max},
 \code{mod}, \code{length}, \code{size}, \code{zeros}, \code{sum},
 \code{println} and others). A parameter annotated \code{int}, \code{real},
 \code{bool}, \code|vector{real}|, \code|vector{int}| or \code|matrix{real}| has
@@ -3090,11 +3197,14 @@ Function & Result \\
 
 \section*{Elementary functions}
 
-\code{sqrt}, \code{exp}, \code{log} (natural), \code{sin}, \code{cos},
-\code{tan}, \code{asin}, \code{acos}, \code{atan}, \code{sinh}, \code{cosh},
-\code{tanh}, \code{asinh}, \code{acosh} and \code{atanh} take a number or an
-array and apply elementwise. A real argument outside the domain gives NaN; a
-complex one gives the principal value. \code{abs(x)} is the absolute value, or
+\code{sqrt}, \code{exp}, \code{log} (natural), \code{log10}, \code{log2},
+\code{sin}, \code{cos}, \code{tan}, \code{asin}, \code{acos}, \code{atan},
+\code{sinh}, \code{cosh}, \code{tanh}, \code{asinh}, \code{acosh} and
+\code{atanh} take a number or an array and apply elementwise. A real argument
+outside the domain gives NaN; a complex one gives the principal value.
+\code{atan2(y, x)} is the angle of the point $(x, y)$, in $(-\pi, \pi]$, for
+real arguments, elementwise for arrays. \code{deg2rad(x)} and
+\code{rad2deg(x)} convert angles between degrees and radians. \code{abs(x)} is the absolute value, or
 the modulus of a complex number, and \code{factorial(n)} is $n!$ for an
 \code{int} $n \ge 0$.
 

@@ -145,6 +145,84 @@ begin
   else Result := ArcTanh(X);
 end;
 
+const
+  Ln10 = 2.302585092994045684;
+  Ln2 = 0.693147180559945309;
+
+(* log10 and log2 of a real. An exact power of the base gives its exponent
+   exactly (log10(1000.0) is 3.0, log2(0.125) is -3.0), as a C library's
+   correctly rounded log10 and log2 do; other values come within an ulp or
+   two of the true logarithm. Called directly by compiled code, so they
+   never raise. *)
+function RLog10(X: Double): Double;
+var
+  K: Int64;
+  P: Double;
+begin
+  if X < 0 then Exit(NaN);
+  Result := Ln(X) / Ln10;
+  if (X > 0) and (Abs(Result) < 400) then
+  begin
+    K := Round(Result);
+    // 10^K as the double nearest to it, as the literal 1eK reads.
+    if (Abs(Result - K) < 1e-9) and TryParseReal('1e' + IntToStr(K), P) and (P = X) then
+      Result := K;
+  end;
+end;
+
+function RLog2(X: Double): Double;
+var
+  M: Double;
+  E: Integer;
+begin
+  if X < 0 then Exit(NaN);
+  if (X = 0) or IsInfinite(X) or IsNan(X) then
+    Exit(Ln(X));
+  // X = M * 2^E with 0.5 <= M < 1, so log2 X = (E - 1) + log2(2M).
+  Frexp(X, M, E);
+  if M = 0.5 then
+    Result := E - 1
+  else
+    Result := (E - 1) + Ln(2 * M) / Ln2;
+end;
+
+(* atan2(y, x): the angle of the point (x, y) from the positive x axis, in
+   (-pi, pi], with the signs of zeros and infinities as in C's atan2. *)
+function RAtan2(Y, X: Double): Double;
+begin
+  Result := ArcTan2(Y, X);
+end;
+
+(* Angle conversions. Dividing first makes the common angles exact:
+   deg2rad(180) is pi and deg2rad(90) is pi / 2, as are rad2deg(pi) = 180 and
+   rad2deg(pi / 2) = 90. *)
+function RDeg2Rad(X: Double): Double; begin Result := (X / 180) * Pi; end;
+function RRad2Deg(X: Double): Double; begin Result := (X / Pi) * 180; end;
+function CDeg2Rad(const Z: TComplex): TComplex;
+begin
+  Result := Cx(RDeg2Rad(Z.Re), RDeg2Rad(Z.Im));
+end;
+function CRad2Deg(const Z: TComplex): TComplex;
+begin
+  Result := Cx(RRad2Deg(Z.Re), RRad2Deg(Z.Im));
+end;
+
+function CLog10(const Z: TComplex): TComplex;
+var
+  L: TComplex;
+begin
+  L := CLog(Z);
+  Result := Cx(L.Re / Ln10, L.Im / Ln10);
+end;
+
+function CLog2(const Z: TComplex): TComplex;
+var
+  L: TComplex;
+begin
+  L := CLog(Z);
+  Result := Cx(L.Re / Ln2, L.Im / Ln2);
+end;
+
 function ElementaryRealFunction(const Name: string): Pointer;
 begin
   if Name = 'sqrt' then Result := @RSqrt
@@ -162,6 +240,11 @@ begin
   else if Name = 'asinh' then Result := @RAsinh
   else if Name = 'acosh' then Result := @RAcosh
   else if Name = 'atanh' then Result := @RAtanh
+  else if Name = 'log10' then Result := @RLog10
+  else if Name = 'log2' then Result := @RLog2
+  else if Name = 'deg2rad' then Result := @RDeg2Rad
+  else if Name = 'rad2deg' then Result := @RRad2Deg
+  else if Name = 'atan2' then Result := @RAtan2     // two arguments: (y, x)
   else Result := nil;
 end;
 
@@ -311,6 +394,34 @@ function BExp(const Args: TAxValues): TAxValue;
 begin Result := ApplyElementary('exp', Args[0], RExp, CExp); end;
 function BLog(const Args: TAxValues): TAxValue;
 begin Result := ApplyElementary('log', Args[0], RLog, CLog); end;
+function BLog10(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('log10', Args[0], RLog10, CLog10); end;
+function BLog2(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('log2', Args[0], RLog2, CLog2); end;
+function BDeg2Rad(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('deg2rad', Args[0], RDeg2Rad, CDeg2Rad); end;
+function BRad2Deg(const Args: TAxValues): TAxValue;
+begin Result := ApplyElementary('rad2deg', Args[0], RRad2Deg, CRad2Deg); end;
+
+{ atan2(y, x) on real numbers, elementwise with broadcasting for arrays. }
+function Atan2Value(const Y, X: TAxValue): TAxValue;
+begin
+  NeedRealNumber('atan2', Y);
+  NeedRealNumber('atan2', X);
+  Result := RealValue(RAtan2(ToReal(Y), ToReal(X)));
+end;
+
+function BAtan2(const Args: TAxValues): TAxValue;
+begin
+  if IsArrayLike(Args[0]) or IsArrayLike(Args[1]) then
+    Result := Broadcast2(Args[0], Args[1],
+      function(const Y, X: TAxValue): TAxValue
+      begin
+        Result := Atan2Value(Y, X);
+      end, 'atan2')
+  else
+    Result := Atan2Value(Args[0], Args[1]);
+end;
 function BSin(const Args: TAxValues): TAxValue;
 begin Result := ApplyElementary('sin', Args[0], RSin, CSin); end;
 function BCos(const Args: TAxValues): TAxValue;
@@ -1938,6 +2049,11 @@ begin
   Add('asinh', BAsinh, 1, 1);
   Add('acosh', BAcosh, 1, 1);
   Add('atanh', BAtanh, 1, 1);
+  Add('log10', BLog10, 1, 1);
+  Add('log2', BLog2, 1, 1);
+  Add('atan2', BAtan2, 2, 2);
+  Add('deg2rad', BDeg2Rad, 1, 1);
+  Add('rad2deg', BRad2Deg, 1, 1);
   Add('abs', BAbs, 1, 1);
   Add('int', BInt, 1, 1);
   Add('floor', BFloor, 1, 1);

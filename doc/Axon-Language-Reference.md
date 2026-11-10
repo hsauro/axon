@@ -678,10 +678,11 @@ See [Sparse operands](#sparse-operands).
 
 ### Elementary functions
 
-`sqrt`, `exp`, `log`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh` and `atanh` take a number or an array and apply elementwise. A real argument outside the function's domain gives NaN (`sqrt(-1.0)`, `log(-1.0)`); a complex argument gives the principal value. `log` is the natural logarithm.
+`sqrt`, `exp`, `log`, `log10`, `log2`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `deg2rad` and `rad2deg` take a number or an array and apply elementwise. A real argument outside the function's domain gives NaN (`sqrt(-1.0)`, `log(-1.0)`); a complex argument gives the principal value. `log` is the natural logarithm, and `log10` and `log2` the logarithms to base 10 and 2; an exact power of the base gives its exponent exactly (`log10(1000.0)` is `3.0`, `log2(0.125)` is `-3.0`). Angles are in radians; `deg2rad(x)` converts degrees to radians, `(x / 180) * pi`, and `rad2deg(x)` radians to degrees, `(x / pi) * 180`, which makes the right angles exact (`deg2rad(180)` is `pi`, `rad2deg(pi / 2)` is `90.0`).
 
 | Function | Result |
 | --- | --- |
+| `atan2(y, x)` | The angle of the point (x, y) from the positive x axis, in (−π, π]: unlike `atan(y / x)`, it tells the quadrants apart and allows `x = 0`. Signed zeros and infinities are handled as in C's `atan2` (`atan2(0.0, -1.0)` is π, `atan2(-0.0, -1.0)` is −π, `atan2(0, 0)` is 0). Real arguments only, a complex one raises `TypeError`; elementwise with broadcasting when either is an array |
 | `abs(x)` | The absolute value, or the modulus of a complex number |
 | `factorial(n: int)` | n! for an `int` n ≥ 0 |
 
@@ -1077,7 +1078,7 @@ The interpreter compiles functions to native code at their first call (a just-in
   - **Variables.** Local and typed variables.
   - **Arrays.** Element reads and writes with int indices and `end`, operators on real arrays, and vector and matrix literals of numbers.
   - **Values from outside.** Reads of module variables and captured variables, and of their record fields (`p.a`), when the values are numbers or arrays that compile. They are read when the function is entered, and a function that reads them does not call anything that runs interpreted, so it sees exactly the values the interpreter would.
-  - **Calls.** Calls to other functions, recursion included, and the scalar built-ins: the elementary functions, `abs`, `floor`, `ceil`, `round`, `int`, `real`, `min`, `max`, `div`, `mod`, `length`, `size`, `zeros`, `ones`, `sum`, `print`, `println` and `error`.
+  - **Calls.** Calls to other functions, recursion included, and the scalar built-ins: the elementary functions, `atan2`, `abs`, `floor`, `ceil`, `round`, `int`, `real`, `min`, `max`, `div`, `mod`, `length`, `size`, `zeros`, `ones`, `sum`, `print`, `println` and `error`.
 - **What stays interpreted.**
   - **Types.** A function whose variable changes type, or whose result type depends on a value: `n ^ k` with `int` operands and a variable exponent is an `int` for `k >= 0` and a `real` otherwise. A call whose arguments include a string, list, record, dictionary, complex number, range, or an array other than a real vector, int vector or real matrix.
   - **Names.** A function that reads a variable that may be unassigned on some path, that both reads a variable from outside and assigns it, or (a closure) that assigns a variable of an enclosing scope.

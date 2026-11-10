@@ -38,7 +38,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..115] of TBuiltinDoc = (
+  BuiltinDocs: array[0..120] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -109,6 +109,11 @@ const
     (Name: 'asinh';    Params: '(x)';     Text: 'The inverse hyperbolic sine'),
     (Name: 'acosh';    Params: '(x)';     Text: 'The inverse hyperbolic cosine'),
     (Name: 'atanh';    Params: '(x)';     Text: 'The inverse hyperbolic tangent'),
+    (Name: 'log10';    Params: '(x)';     Text: 'The base-10 logarithm (exact for powers of 10)'),
+    (Name: 'log2';     Params: '(x)';     Text: 'The base-2 logarithm (exact for powers of 2)'),
+    (Name: 'atan2';    Params: '(y, x)';  Text: 'The angle of the point (x, y), in (-pi, pi]; elementwise for arrays'),
+    (Name: 'deg2rad';  Params: '(x)';     Text: 'An angle in degrees converted to radians, x * pi / 180'),
+    (Name: 'rad2deg';  Params: '(x)';     Text: 'An angle in radians converted to degrees, x * 180 / pi'),
     (Name: 'abs';      Params: '(x)';     Text: 'The absolute value, or the modulus of a complex number'),
     (Name: 'int';      Params: '(x)';     Text: 'Converts to int, truncating toward zero; int("42") reads a string'),
     (Name: 'floor';    Params: '(x)';     Text: 'The largest integer not above x'),

@@ -795,8 +795,9 @@ end;
 { ---- calls ---- }
 
 const
-  ElementaryNames: array[0..14] of string = ('sqrt', 'exp', 'log', 'sin', 'cos', 'tan',
-    'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh');
+  ElementaryNames: array[0..18] of string = ('sqrt', 'exp', 'log', 'sin', 'cos', 'tan',
+    'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'log10', 'log2',
+    'deg2rad', 'rad2deg');
 
 function IsElementary(const Name: string): Boolean;
 var
@@ -970,6 +971,16 @@ begin
     NeedArgs(1);
     NeedNumbers;
     Args[0] := Convert(Args[0], jtReal);
+    T.Direct := True;
+    Result := [jtReal];
+  end
+  else if Name = 'atan2' then
+  begin
+    // RAtan2(ToReal(y), ToReal(x)), called directly, as Atan2Value.
+    NeedArgs(2);
+    NeedNumbers;
+    Args[0] := Convert(Args[0], jtReal);
+    Args[1] := Convert(Args[1], jtReal);
     T.Direct := True;
     Result := [jtReal];
   end

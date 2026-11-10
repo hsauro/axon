@@ -32,8 +32,8 @@ const
     'vectors-and-matrices: zeros ones eye rand linspace size length reshape ' +
       'eltype sum prod mean min max all any',
     'numeric-promotion: int floor ceil round real complex div mod',
-    'elementary-functions: sqrt exp log sin cos tan asin acos atan sinh cosh tanh ' +
-      'asinh acosh atanh abs factorial',
+    'elementary-functions: sqrt exp log log10 log2 sin cos tan asin acos atan atan2 ' +
+      'deg2rad rad2deg sinh cosh tanh asinh acosh atanh abs factorial',
     'complex-number-functions: imag conj arg',
     'constants: pi e',
     'ranges: range',

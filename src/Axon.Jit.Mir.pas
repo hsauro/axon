@@ -96,8 +96,9 @@ begin
 end;
 
 const
-  ElementaryNames: array[0..14] of string = ('sqrt', 'exp', 'log', 'sin', 'cos', 'tan',
-    'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh');
+  ElementaryNames: array[0..18] of string = ('sqrt', 'exp', 'log', 'sin', 'cos', 'tan',
+    'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'log10', 'log2',
+    'deg2rad', 'rad2deg');
 
 procedure EnsureContext;
 var
@@ -126,6 +127,7 @@ begin
   MIR_load_external(Ctx, 'rt_new_array', H.NewArray);
   for N in ElementaryNames do
     MIR_load_external(Ctx, PAnsiChar(AnsiString('rt_' + N)), ElementaryRealFunction(N));
+  MIR_load_external(Ctx, 'rt_atan2', ElementaryRealFunction('atan2'));
 end;
 
 procedure LinkModules;
@@ -166,7 +168,7 @@ type
     TempCount, ProtoCount: Integer;
     ErrProto, ErrImport, CountIntProto, CountIntImport,
     CountRealProto, CountRealImport, PowProto, PowImport,
-    CallProto, CallImport, FrameProto, FrameImport, RecProto, RecImport, D1Proto: TMirItem;
+    CallProto, CallImport, FrameProto, FrameImport, RecProto, RecImport, D1Proto, D2Proto: TMirItem;
     PtrProto, PtrPtrProto, AssignImport, MoveImport, ClearImport, UniqueImport,
     LeaveProto, LeaveImport, IndexErrProto, IndexErrImport, NewArrayProto, NewArrayImport: TMirItem;
     // Arrays: the frame of value slots, and the single exit that releases it.
@@ -359,7 +361,10 @@ begin
     end
     else if (Insn.Target.Kind = ckBuiltin) and Insn.Target.Direct then
     begin
-      Info.Proto := D1Proto;
+      if Length(Insn.Ops) = 2 then
+        Info.Proto := D2Proto
+      else
+        Info.Proto := D1Proto;
       ImportName := AnsiString('rt_' + Insn.Target.Name);
       Info.Callee := MIR_new_import(Ctx, PAnsiChar(ImportName));
     end;
@@ -732,7 +737,10 @@ begin
       Dst := Regs[I.Dsts[0]]
     else
       Dst := Scratch(MIR_T_D);
-    E('call', [RefOp(Info.Proto), RefOp(Info.Callee), RegOp(Dst), Opnd(I.Ops[0])]);
+    if Length(I.Ops) = 2 then
+      E('call', [RefOp(Info.Proto), RefOp(Info.Callee), RegOp(Dst), Opnd(I.Ops[0]), Opnd(I.Ops[1])])
+    else
+      E('call', [RefOp(Info.Proto), RefOp(Info.Callee), RegOp(Dst), Opnd(I.Ops[0])]);
     Exit;
   end;
 
@@ -1030,6 +1038,8 @@ begin
   RecImport := MIR_new_import(Ctx, 'rt_recursion');
   V := Vars([MIR_T_D], ['x']);
   D1Proto := MIR_new_proto_arr(Ctx, 'rt_d1_p', 1, @ResD, 1, @V[0]);
+  V := Vars([MIR_T_D, MIR_T_D], ['y', 'x']);
+  D2Proto := MIR_new_proto_arr(Ctx, 'rt_d2_p', 1, @ResD, 2, @V[0]);
   V := Vars([MIR_T_P], ['p']);
   PtrProto := MIR_new_proto_arr(Ctx, 'rt_p_p', 0, nil, 1, @V[0]);
   V := Vars([MIR_T_P, MIR_T_P], ['dst', 'src']);
