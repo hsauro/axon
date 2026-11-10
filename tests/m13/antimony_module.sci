@@ -27,12 +27,16 @@ println(sol.names, sol.t')
 println(approx(sol.y[1, :], 2 * exp(-0.5 * sol.t), tol = 1e-7))
 println(approx(sol.y[1, :] + sol.y[2, :], 2 * ones(5), tol = 1e-9))
 
+# The function rhs makes, as text.
+println(antimony.rhs_text(d))
+
 # A species with no value starts at 0; a parameter whose value has no exact
 # short text (1/3) is passed in a vector, with the same results.
 e = antimony.load("A -> B; k*A; A = 3")
 e.parameters["k"] = 1 / 3
 s2 = antimony.simulate(e, 3.0, points = 4, method = "bdf", rtol = 1e-9, atol = 1e-12)
 println(s2.y[2, 1], approx(s2.y[1, :], 3 * exp(-s2.t / 3), tol = 1e-6))
+println(antimony.rhs_text(e))
 
 # A rate law may use only species and parameters.
 try

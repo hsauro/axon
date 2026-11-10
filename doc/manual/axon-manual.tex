@@ -1135,7 +1135,7 @@ println(fact(20), factorial(20))
 2432902008176640000 2432902008176640000
 \end{axonout}
 
-\section{Lists, records and dictionaries}
+\section{Lists, records and dictionaries}\label{sec:lists}
 
 Three kinds of collection hold values of any type.
 
@@ -2477,6 +2477,387 @@ TypeError - stats.variance: data must be a vector, got list
 \end{itemize}
 
 % ===================================================================
+\chapter{Case study: reaction models}\label{ch:antimony}
+
+Biochemical reaction networks are often written in Antimony, a text format in
+which each reaction is written much as it would be on paper, followed by its
+rate law. This chapter follows the standard module \code{antimony}, which reads
+a model in a basic subset of Antimony, builds its differential equations and
+simulates them with \code{ode.solve}. The module is about 360 lines of Axon,
+with no native code. It began as a short script that only read the text, and
+it shows how far strings, dictionaries, records, \code{parse_function} and the
+JIT go on a real task.
+
+\section{The model}
+
+The example is a pathway of three steps whose end product, \code{S3}, inhibits
+the first step:
+
+\begin{shell}
+J0: -> S1;      v0 / (1 + (S3/Ki)^h)    // supply, inhibited by S3
+J1: S1 -> S2;   Vm1*S1/(Km1 + S1)
+J2: S2 -> S3;   Vm2*S2/(Km2 + S2)
+J3: S3 -> ;     k3*S3                   # removal
+
+S1 = 0; S2 = 0; S3 = 0
+v0 = 10; Ki = 1; h = 4
+Vm1 = 12; Km1 = 2
+Vm2 = 15; Km2 = 1.5
+k3 = 2
+\end{shell}
+
+A reaction has an optional name and colon, the reactants, an arrow
+(\code{->} or \code{=>}) and the products. Either side may be empty, as for
+the supply \code{J0} and the removal \code{J3}. A term is a species name,
+with a coefficient in front if more than one molecule takes part, as in
+\code{2 A + B}. The rate law follows after a semicolon. The other statements
+assign numbers. A name that appears in a reaction is a \emph{species}, and its
+assignment gives its initial concentration. Every other assigned name is a
+\emph{parameter}. Statements end at a semicolon or at the end of a line, and
+\code{//} or \code{#} starts a comment.
+
+\section{Running a simulation}
+
+The whole program is short:
+
+\ex{pathway.sci}
+\begin{axonout}
+species: {"S1", "S2", "S3"}
+3(*@\texttimes@*)4 matrix{real}
+  1.0  -1.0   0.0   0.0
+  0.0   1.0  -1.0   0.0
+  0.0   0.0   1.0  -1.0
+S1 at t = 10: 0.5527
+S2 at t = 10: 0.3143
+S3 at t = 10: 1.2992
+\end{axonout}
+
+\code{antimony.load} reads the text into a model, and
+\code{antimony.read(path)} does the same for a file. \code{simulate} solves
+the equations from time 0 to 10 and returns \code{ode.solve}'s result record,
+reported at 201 evenly spaced times, so \code{sol.y[i, :]} is species
+\code{i} over time (Figure~\ref{fig:pathway.pdf}). The model's parameters are
+an ordinary dictionary, so the parameter scan only sets
+\code{model.parameters["Ki"]} and simulates again (Figure~\ref{fig:pathway_scan.pdf}).
+As a check, at the steady state the removal rate,
+$k_3 S_3 = 2 \times 1.2992 = 2.598$, equals the inhibited supply,
+$10 / (1 + 1.2992^4) = 2.598$.
+
+\fig{pathway.pdf}{0.8}{The pathway's time course, from \texttt{pathway.sci}.}
+\fig{pathway_scan.pdf}{0.8}{\code{S3} for four values of the inhibition
+constant \code{Ki}.}
+
+The rest of the chapter shows how the module gets from the text to those
+curves, in four steps: reading the statements, sorting names into species
+and parameters, building the equations, and turning the rate laws into code.
+
+\section{Reading the text}
+
+\paragraph{Statements.} The first step removes the comments and breaks the
+text into statements: first into lines, then each line at its semicolons.
+\code{find} gives the position of a comment mark (0 when there is none), and
+a range of positions cuts the line there.
+
+\begin{axon}
+# The line without its comment, if it has one.
+function strip_comment(line)
+  for mark in {"//", "#"}
+    k = find(line, mark)
+    if k > 0
+      line = line[1:k - 1]
+    end
+  end
+  return line
+end
+
+# The statements of the source, trimmed, comments and empty ones dropped.
+function statements_of(source)
+  result = {}
+  for line in split(source, "\n")
+    for s in split(strip_comment(line), ";")
+      s = trim(s)
+      if s != ""
+        result = append(result, s)
+      end
+    end
+  end
+  return result
+end
+
+println(statements_of("J1: A -> B; k*A   // decay\nA = 10; k = 0.5"))
+\end{axon}
+\begin{axonout}
+{"J1: A -> B", "k*A", "A = 10", "k = 0.5"}
+\end{axonout}
+
+After this split, a reaction and its rate law are two statements in a row.
+The loop in \code{load} walks through the list with an index, and when a
+statement is a reaction it takes the next statement as its rate law.
+Building the list with \code{result = append(result, s)} costs time in
+proportion to its length, because a statement of that form adds to the list
+in place (Section~\ref{sec:lists}).
+
+\paragraph{Reactions.} A statement is a reaction if it contains an arrow.
+Anything before a colon is the reaction's name; a reaction without one is
+called \code{_J0}, \code{_J1}, and so on, as Antimony names them. Each side
+is split at \code{+}, and each term into its coefficient and name:
+
+\begin{axon}
+# An int when the text is a whole number, otherwise a real.
+function read_number(s)
+  try
+    return int(s)
+  catch
+    return real(s)
+  end
+end
+
+function parse_side(side)
+  result = dict()
+  if trim(side) == ""
+    return result
+  end
+  for term in split(side, "+")
+    parts = split(trim(term))
+    if length(parts) == 1
+      coefficient = 1
+      name = parts[1]
+    elseif length(parts) == 2
+      coefficient = read_number(parts[1])
+      name = parts[2]
+    else
+      error("Invalid species term: '" + trim(term) + "'")
+    end
+    result[name] = get(result, name, 0) + coefficient
+  end
+  return result
+end
+
+println(parse_side("2 A + B"), parse_side("A + A"), parse_side("0.5 C"))
+\end{axon}
+\begin{axonout}
+dict("A" => 2, "B" => 1) dict("A" => 2) dict("C" => 0.5)
+\end{axonout}
+
+\code{split} without a separator splits at runs of spaces. Adding to
+\code{get(result, name, 0)} counts a species that appears twice on a side.
+\code{read_number} tries \code{int} first and falls back to \code{real}, so
+whole coefficients stay integers.
+
+\paragraph{Species and parameters.} Whether an assigned name is a species
+depends on the reactions, and Antimony lets \code{A = 10} come before the
+reaction that uses \code{A}. So \code{load} keeps every assignment in one
+dictionary while it reads, and sorts them once the reactions are known:
+
+\begin{axon}
+species = dict("A" => nothing, "B" => nothing)   # from the reactions
+values = dict("A" => 10, "k" => 0.5)              # every assignment
+parameters = dict()
+for name in keys(values)
+  if haskey(species, name)
+    species[name] = values[name]
+  else
+    parameters[name] = values[name]
+  end
+end
+println(species, parameters)
+\end{axon}
+\begin{axonout}
+dict("A" => 10, "B" => nothing) dict("k" => 0.5)
+\end{axonout}
+
+Dictionaries keep their entries in the order they were added, so the species
+stay in the order they first appear in the reactions. That order numbers the
+rows of the stoichiometry matrix and the components of the solution.
+
+\paragraph{Records.} The result is a \code{Model}, and each reaction a
+\code{Reaction}, declared as record types so that every model has the same
+fields:
+
+\begin{axon}
+record Reaction
+  name: string
+  reactants: dict
+  products: dict
+  rate: string
+end
+
+record Model
+  reactions: list
+  species: dict
+  parameters: dict
+end
+\end{axon}
+
+\section{From reactions to equations}
+
+Write $y$ for the vector of species concentrations and $v(y)$ for the vector of
+reaction rates. Each reaction changes each species by its rate times the
+number of molecules it makes or uses, so
+\[
+  \frac{dy}{dt} = N\,v(y), \qquad
+  N_{ij} = (\mbox{molecules of species } i \mbox{ made by reaction } j)
+         - (\mbox{molecules used}).
+\]
+$N$ is the stoichiometry matrix, one row per species and one column per
+reaction, and \code{antimony.stoichiometry} builds it from the reactions'
+dictionaries:
+
+\begin{axon}
+function stoichiometry(model)
+  names = keys(model.species)
+  N = zeros(length(names), length(model.reactions))
+  for j in 1:length(model.reactions)
+    r = model.reactions[j]
+    for i in 1:length(names)
+      N[i, j] = get(r.products, names[i], 0) - get(r.reactants, names[i], 0)
+    end
+  end
+  return N
+end
+\end{axon}
+
+For the pathway, with $v_{J0}, \ldots, v_{J3}$ the rates of the four
+reactions, the matrix printed above says that
+$dS_1/dt = v_{J0} - v_{J1}$, $dS_2/dt = v_{J1} - v_{J2}$ and
+$dS_3/dt = v_{J2} - v_{J3}$.
+
+\section{Turning rate laws into code}
+
+The rate laws are still text, such as \code{"Vm1*S1/(Km1 + S1)"}, and
+\code{ode.solve} needs a function \code{f(t, y)}. One way would be to write an
+expression evaluator in Axon and run it on every rate law at every step,
+but that would be slow and would duplicate what Axon already does. Instead
+the module writes the text of the whole function, and \code{parse_function}
+makes it into one. \code{antimony.rhs_text} shows the text it writes:
+
+\begin{axon}
+import antimony
+
+m = antimony.load("""
+    J1: A -> B; k1*A
+    J2: B -> ;  k2*B
+    A = 10; k1 = 0.5; k2 = 0.2""")
+println(antimony.rhs_text(m))
+\end{axon}
+\begin{axonout}
+function(_t, _y)
+  A = _y[1]
+  B = _y[2]
+  k1 = 0.5
+  k2 = 0.2
+  _v1 = k1*A
+  _v2 = k2*B
+  return [-_v1; _v1 - _v2]
+end
+\end{axonout}
+
+\begin{itemize}
+\item \textbf{The model's names become local variables.} Each species is set
+  from its component of \code{_y} and each parameter from its value, so the
+  rate laws can be copied in as they were written. The function's own names
+  start with an underscore, which keeps them apart from the model's names.
+\item \textbf{The derivatives are $N v$.} Each row of the result sums the
+  rates with their coefficients from $N$. Zero entries are left out, and
+  coefficients of $\pm 1$ are written without a factor, so the result reads
+  like the equations above.
+\item \textbf{Rate laws are checked first.} A function made by
+  \code{parse_function} sees only its parameters and the built-in functions,
+  never the program's variables. Before writing the function, the module
+  passes each rate law to the two-string form,
+  \code{parse_function(names, rate)}, with every species and parameter as
+  \code{names}. That form checks every name in the expression, so a typing
+  mistake is reported with its reaction and position, and before any
+  simulation starts:
+\end{itemize}
+
+\begin{axon}
+import antimony
+try
+  antimony.simulate(antimony.load("A -> B; k*A*Q; A = 1; k = 1"), 1.0)
+catch err
+  println(err.kind, "-", err.message)
+end
+\end{axon}
+\begin{axonout}
+NameError - rate law of reaction _J0: parse_function: unknown name "Q" at character 5 of "k*A*Q"
+\end{axonout}
+
+The function \code{parse_function} returns is an ordinary Axon function, so
+the JIT compiles it at its first call (Chapter~\ref{ch:perf}), and every
+evaluation of the right-hand side during the solve runs as native code.
+Because the parameters' values are written into the function, it needs
+nothing from outside, and \code{rhs} hands exactly that function to
+\code{ode.solve}.
+
+That relies on a value written as text reading back as the same number. The
+module checks it with \code{real(string(v)) == v} for each parameter. Every
+value typed in a model passes, because \code{string} shows up to 15
+significant digits. A value computed in a program, such as
+\code{model.parameters["k"] = 1/3}, may not. The module then writes
+\code{k = _p[1]} instead, makes a function of \code{(_t, _y, _p)}, and
+passes the parameters in a vector through a small closure:
+
+\begin{axon}
+function wrap(f, p)
+  return function(t, y)
+    return f(t, y, p)
+  end
+end
+\end{axon}
+
+The results are the same. The cost is that the JIT does not compile a call
+to a closure, so each step makes one interpreted call before running the
+compiled code.
+
+\section{Simulating}
+
+With the right-hand side and the initial values (a vector of the species'
+values, 0 for any never assigned), simulating is one call:
+
+\begin{axon}
+import ode
+import antimony
+
+function simulate(model, t_end; t_start = 0.0, points = 101, method = "rk45",
+                  rtol = 1e-6, atol = 1e-9)
+  return ode.solve(antimony.rhs(model), antimony.initial(model), [t_start, t_end],
+                   method = method, rtol = rtol, atol = atol,
+                   t_eval = linspace(t_start, t_end, points),
+                   names = antimony.species_names(model))
+end
+\end{axon}
+
+\code{t_eval} reports the solution at evenly spaced times, which suit a plot,
+and \code{names} labels the components. \code{method = "bdf"} selects CVODE's
+stiff solver, for models whose reactions run at very different speeds
+(Section~\ref{sec:ode}).
+
+\section{What the case study shows}
+
+\begin{itemize}
+\item \textbf{Text handling} is \code{split}, \code{trim}, \code{find} and
+  ranges of positions; triple-quoted strings hold a model in a program as it
+  would appear in a file.
+\item \textbf{Dictionaries} map names to values and keep their order, which
+  gives the species a fixed numbering. \textbf{Records} with declared types
+  give every model the same shape.
+\item \textbf{Generating code} with \code{parse_function} replaces an
+  interpreter for rate laws. The rate laws are checked when the model is set
+  up, and the JIT compiles the generated code like any other.
+\item \textbf{A module} packages it: \code{help antimony} lists its
+  functions, and \code{import antimony} works from any program, because the
+  module ships in the standard library.
+\end{itemize}
+
+The module reads only part of Antimony. It does not read boundary species
+(\code{$X}), compartments, events, function definitions or assignments of
+expressions. Each could be added in the same way. A boundary species, for
+example, would keep its name in the rate laws but get a zero row in $N$. The
+Language Reference's section ``The antimony module'' lists exactly what is
+read.
+
+% ===================================================================
 \chapter{Performance}\label{ch:perf}
 
 \section{The JIT compiler}
@@ -2778,5 +3159,8 @@ opens as your own copy to change and run.
 \shipped{14_lorenz.sci}
 \shipped{15_subplots.sci}
 \shipped{16_four_views.sci}
+\shipped{17_formatting_types_files.sci}
+\shipped{18_scatter3d.sci}
+\shipped{19_antimony.sci}
 
 \end{document}

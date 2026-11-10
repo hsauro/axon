@@ -238,19 +238,13 @@ function term(c, v)
 end
 
 
-## The right-hand side of the model's differential equations, dy/dt = N v(y),
-## as a function f(t, y) for ode.solve: y holds the species in the order of
-## species_names(model). The rate laws become one function made with
-## parse_function, so they are checked here, and the JIT compiles it.
-export function rhs(model)
-  names = keys(model.species)
-  pnames = keys(model.parameters)
-  known = join(names, ", ")
-  if length(pnames) > 0
-    known = known + ", " + join(pnames, ", ")
+# Each rate law may use only species, parameters and built-in functions;
+# parse_function reports any other name with its position.
+function check_rates(model)
+  known = join(keys(model.species), ", ")
+  if length(model.parameters) > 0
+    known = known + ", " + join(keys(model.parameters), ", ")
   end
-
-  # Each rate law may use only species and parameters.
   for r in model.reactions
     try
       parse_function(known, r.rate)
@@ -258,21 +252,29 @@ export function rhs(model)
       error(err.kind, "rate law of reaction " + r.name + ": " + err.message)
     end
   end
+end
 
-  # When every parameter's value reads back exactly from its text, as any
-  # value typed in a model does, the values are written into the function,
-  # which then needs nothing from outside: ode.solve calls the compiled code
-  # directly. Otherwise they are passed in a vector _p.
-  literal = true
-  for name in pnames
+
+# Whether every parameter's value reads back exactly from its text, as any
+# value typed in a model does, so it can be written into the function.
+function literal_values(model)
+  for name in keys(model.parameters)
     v = model.parameters[name]
     if real(string(v)) != v
-      literal = false
+      return false
     end
   end
+  return true
+end
 
-  # The function: species and parameters as local names, then the rates,
-  # then the derivatives.
+
+# The text of the right-hand side: species and parameters as local names,
+# then the reaction rates _v1, _v2, ..., then the derivatives. With literal
+# true the parameters' values are written in; otherwise they come from a
+# third parameter, the vector _p.
+function source(model, literal)
+  names = keys(model.species)
+  pnames = keys(model.parameters)
   if literal
     lines = {"function(_t, _y)"}
   else
@@ -292,6 +294,8 @@ export function rhs(model)
   for j in 1:length(model.reactions)
     lines = append(lines, "  _v" + string(j) + " = " + model.reactions[j].rate)
   end
+
+  # Row i of N v: the rates that change species i, with their coefficients.
   N = stoichiometry(model)
   rows = {}
   for i in 1:length(names)
@@ -310,11 +314,34 @@ export function rhs(model)
   end
   lines = append(lines, "  return [" + join(rows, "; ") + "]")
   lines = append(lines, "end")
-  f = parse_function(join(lines, "\n"))
-  if literal
-    return f
-  end
+  return join(lines, "\n")
+end
 
+
+## The text of the function that rhs(model) makes, to read or check: the
+## species and parameters as local names, the rates _v1, _v2, ... of the
+## reactions in order, and the derivatives.
+export function rhs_text(model)
+  check_rates(model)
+  return source(model, literal_values(model))
+end
+
+
+## The right-hand side of the model's differential equations, dy/dt = N v(y),
+## as a function f(t, y) for ode.solve: y holds the species in the order of
+## species_names(model). The rate laws become one function made with
+## parse_function, so they are checked here, and the JIT compiles it.
+export function rhs(model)
+  check_rates(model)
+
+  # With the parameters' values written in, the function needs nothing from
+  # outside, and ode.solve calls the compiled code directly. Otherwise they
+  # are passed in a vector, through a small closure.
+  if literal_values(model)
+    return parse_function(source(model, true))
+  end
+  f = parse_function(source(model, false))
+  pnames = keys(model.parameters)
   p = zeros(length(pnames))
   for i in 1:length(pnames)
     p[i] = model.parameters[pnames[i]]
