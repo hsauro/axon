@@ -92,3 +92,7 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - Source files are UTF-8 without a byte-order mark, which Delphi reads as ANSI, so a non-ASCII character inside a string literal gets mangled. Write it as a character code instead (`#$00D7` for ×). Non-ASCII in comments is fine.
 - Delphi `{ … }` comments don't nest, so a comment that contains `{` or `}` (grammar excerpts, `matrix{T}`) must use `(* … *)`.
 - Parser ownership: a function that takes a child node frees it if it fails, so the caller must clear its own reference before the call. See `ParsePostfix`.
+
+## Direction
+
+- Over time, move more of the language onto the JIT: the interpreter stays a simple tree walker and is not being optimised (decided 2026-11-09), because most real use runs compiled code, which is 15–80× faster than CPython on loops, calls and array access while the interpreter is 25–50× slower. Next candidates for the JIT are what it rejects today: lists, records, strings and dictionaries, closures that assign outward, and code at the top level of a script. Each extension needs the usual checks: compiled and interpreted results identical, tests in all three JIT modes. `bench/vs_python.py` and `bench/loops_vs_python.py` measure the effect, and the manual's appendix "Speed compared with Python" reports the numbers.
