@@ -380,6 +380,37 @@ The speed-ups are smaller than for loops over numbers because the work is alloca
 
 With the JIT forced on, the tests, examples and benchmarks compile 321 functions (290 after J9). The commonest rejections left are function values passed as arguments, strings (and lists of strings), `global` and `typeof`.
 
+### J11 — Strings
+
+Done Nov 10, 2026. After J10, most functions that stay interpreted take or build strings: labels, titles and kinds passed through, messages built with `+`, `typeof` tests.
+
+**Values.** A string register is a value slot, as an array, record or list register is: strings are reference-counted values in the interpreter too. A string literal is a constant the compiled code holds, copied into its register (`const`). `string` joins the types `JTypeOfValue` gives, so string parameters, results, record fields (`list{string}`, `{title: "…"}`) and captures compile. A parameter annotated `string` has that type.
+
+**What compiles.**
+
+- [x] String literals as values; strings assigned, passed, returned, and held in records and lists
+- [x] `a + b` for two strings (`concat`); `+` of a string and a number is the interpreter's `TypeError`, and rejects the function
+- [x] `==`, `!=`, `<`, `<=`, `>`, `>=` between strings, by `CompareStr` as `CompareOrder` and `ValuesEqual` compare them (`strcmp`). `==` between a string and a number is `false` (and `!=` `true`), as the interpreter has it; ordering them is its `TypeError`, and rejects
+- [x] The string built-ins, called as the interpreter calls them (`rt_call`), with their result types known: `string`, `length`, `upper`, `lower`, `trim`, `ltrim`, `rtrim`, `replace`, `repeat`, `contains`, `startswith`, `endswith`, `find`, `split` (a `list{string}`), `join`, `format`, and `int` and `real` of a string; `print`, `println` and `error` with any strings. `string(x)` of a bool, int or real and `length(s)` of a string are common enough in loops to get their own helpers (`strof`, `strlen`), which call the interpreter's `Display` and code-point count directly
+- [x] `typeof(x)`, whose result follows from x's static type, as a constant: `typeof(x) == "real"` costs a comparison
+
+**Not in J11.** Indexing strings (`s[i]`, characters as code points), `for c in s`, string formatting built-ins beyond those listed, dictionaries.
+
+**Runtime helpers.** `rt_str_concat(dst, a, b)` and `rt_str_cmp(a, b)` (−1, 0 or 1); `rt_str_of_int(dst, x, is_bool)`, `rt_str_of_real(dst, x)` and `rt_str_len(a)`, sharing `Display` and `StringLength` (`Axon.Builtins`) with the interpreter; constants are values the compiled code owns (`TJitCode.Consts`). A string argument to `rt_call` is boxed from its register, or from the literal when the call site holds one (`print("…")`).
+
+**Tests.** `tests/j11`: dumps; results against the interpreter; errors from string built-ins with their traces (`int("x")`); rejections. The whole suite in all three JIT modes.
+
+**Results.** `bench.cmd`, Win64 Release, i9-9900X, Nov 10, 2026; all identical compiled and interpreted.
+
+| Kernel | Interpreted | Compiled | Speed-up |
+| --- | --- | --- | --- |
+| `labels(10000)`: `"p" + string(k) + "_" + string(k * 2)` and its length, per step | 43.2 ms | 10.5 ms | 4× |
+| `kinds_loop(10000)`: three calls per step of a function that tests `typeof(x) == "real"` and branches on a kind string | 174 ms | 7.87 ms | 22× |
+
+Building strings is allocation and formatting: each step of `labels` makes five new strings and formats two integers, about 1 µs in all, and that work is the interpreter's own. With `string(k)` and `length(s)` going through `rt_call`, the general route for built-ins, the kernel took 20.2 ms (2×); their own helpers saved about 1 µs per step. Code that only passes strings through and compares them, as option handling does, gains as much as other compiled code: `typeof` is a constant and a comparison is one call.
+
+With the JIT forced on, the tests compile 481 functions (321 after J10), not counting `tests/j11`. Most of the rejections left are function values passed as arguments (`f`, the plot module's callbacks), `global`, matrix literals with vector entries (`[x, y]` of columns), `nothing` as a default (`label = nothing`), `try`, and calls through an expression.
+
 ## Baseline (today's interpreter)
 
 Measured in J0 before any JIT work: `bench.cmd` on Win64 Release, on an Intel Core i9-9900X at 3.5 GHz. The figures are best of 5 per call, from `time.bench`. The kernels' parameters are annotated, so the JIT can compile them unchanged.

@@ -38,4 +38,4 @@ function wrap(x: real): real
   call.interp legacy(x)  @31:3
   ret x
 
-function legacy(real): not compiled: strings are not compiled (26:7)
+function legacy(real): not compiled: complex numbers are not compiled (26:7)

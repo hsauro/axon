@@ -84,8 +84,13 @@ unit Axon.Jit.Lower;
      (EJitRetry), so the literal is list{T} from the start. l = append(l, x)
      appends in place, as ExecAppendAssign does.
 
+   - Strings (J11): values in slots; literals are constants copied in.
+     + joins two strings, comparisons use CompareStr, the string built-ins
+     go through the interpreter's routines with their result types known,
+     and typeof(x) is a constant from x's static type.
+
    Not compiled yet, and rejected: ranges, masks and colons as indices,
-   strings other than print and error arguments,
+   indexing and iterating strings,
    complex numbers, ranges as values, nested function definitions, try,
    global and keyword arguments.
 
@@ -300,6 +305,10 @@ type
     function AppendType(const L, X: TJValue; N: TNode): TJType;
     function TryAppendAssign(S: TAssignStmt): Boolean;
     procedure ListMismatch(V: TJVar; const Val: TJValue);
+    // strings (J11)
+    function StringConst(const Text: string): TJValue;
+    function LowerStringBuiltin(E: TCallExpr; const Name: string; var Args: TArray<TJValue>;
+      out Results: TArray<TJType>): Boolean;
     function LowerMatrix(E: TMatrixExpr): TJValue;
     procedure CheckCaptures;
     procedure LowerDestructure(S: TDestructureStmt);
@@ -359,6 +368,7 @@ begin
   if T.Name = 'bool' then JT := jtBool
   else if T.Name = 'int' then JT := jtInt
   else if T.Name = 'real' then JT := jtReal
+  else if T.Name = 'string' then JT := jtString
   else Result := False;
 end;
 
@@ -411,6 +421,26 @@ begin
     for K := 0 to High(A) do
       if A[K] <> B[K] then
         Exit(False);
+end;
+
+{ What typeof gives for a value of static type T (TypeName). }
+function StaticTypeName(T: TJType): string;
+begin
+  case T of
+    jtBool:   Result := 'bool';
+    jtInt:    Result := 'int';
+    jtReal:   Result := 'real';
+    jtString: Result := 'string';
+    jtVecReal, jtVecInt: Result := 'vector';
+    jtMatReal: Result := 'matrix';
+  else
+    if IsListType(T) then
+      Result := 'list'
+    else if IsRecordType(T) and (ShapeOf(T).Decl <> nil) then
+      Result := ShapeOf(T).Decl.Name
+    else
+      Result := 'record';
+  end;
 end;
 
 { TLowerer }
@@ -647,7 +677,7 @@ begin
     else if C = TListExpr then
       Result := LowerListLit(TListExpr(E))
     else if C = TStringLit then
-      Reject('strings are not compiled', E)
+      Result := StringConst(TStringLit(E).Value)
     else if C = TImagLit then
       Reject('complex numbers are not compiled', E)
     else if C = TNothingLit then
@@ -784,8 +814,36 @@ function TLowerer.LowerCompare(E: TBinaryExpr; const L, R: TJValue): TJValue;
 var
   T: TJType;
   Op: TJOp;
-  Dst: Integer;
+  Dst, C: Integer;
 begin
+  // Strings (J11): by CompareStr; a string and a number are never equal
+  // (ValuesEqual), and cannot be ordered (CompareOrder's TypeError).
+  if (L.Typ = jtString) and (R.Typ = jtString) then
+  begin
+    C := Temp(jtInt);
+    F.Emit(joStrCmp, jtInt, C, [L.Opnd, R.Opnd]);
+    ReleaseFieldTemps([L.Opnd, R.Opnd]);
+    case E.Op of
+      tkEqEq:    Op := joEq;
+      tkNotEq:   Op := joNe;
+      tkLess:    Op := joLt;
+      tkLessEq:  Op := joLe;
+      tkGreater: Op := joGt;
+    else
+      Op := joGe;
+    end;
+    Dst := Temp(jtBool);
+    F.Emit(Op, jtInt, Dst, [RegOperand(C), IntOperand(0)]);
+    Exit(MakeValue(jtBool, RegOperand(Dst)));
+  end;
+  if ((L.Typ = jtString) and Numeric(R.Typ)) or (Numeric(L.Typ) and (R.Typ = jtString)) then
+  begin
+    if E.Op = tkEqEq then
+      Exit(MakeValue(jtBool, BoolOperand(False)));
+    if E.Op = tkNotEq then
+      Exit(MakeValue(jtBool, BoolOperand(True)));
+    Reject('comparison of %s and %s, a TypeError', [JTypeName(L.Typ), JTypeName(R.Typ)], E);
+  end;
   if not Numeric(L.Typ) or not Numeric(R.Typ) then
     Reject('comparison of %s and %s is not compiled', [JTypeName(L.Typ), JTypeName(R.Typ)], E);
   if Max(Rank(L.Typ), Rank(R.Typ)) <= 1 then T := jtInt else T := jtReal;
@@ -815,6 +873,14 @@ var
 begin
   if IsArrayType(L.Typ) or IsArrayType(R.Typ) then
     Exit(LowerArrayOp(E, E.Op, L, R, False));
+  if (E.Op = tkPlus) and (L.Typ = jtString) and (R.Typ = jtString) then
+  begin
+    // a + b on strings (J11).
+    Dst := Temp(jtString);
+    F.Emit(joConcat, jtString, Dst, [L.Opnd, R.Opnd]);
+    ReleaseFieldTemps([L.Opnd, R.Opnd]);
+    Exit(MakeValue(jtString, RegOperand(Dst)));
+  end;
   if not Numeric(L.Typ) or not Numeric(R.Typ) then
     Reject('operator %s on %s and %s, a TypeError',
       [TokenSpelling[E.Op], JTypeName(L.Typ), JTypeName(R.Typ)], E);
@@ -944,6 +1010,45 @@ begin
   if (R.Kind = rkBuiltin) and TryInlineBuiltin(E, R.Name, Args, Want, Result) then
     Exit;
 
+  // typeof(x): a constant from x's static type (J11), x still evaluated.
+  if (R.Kind = rkBuiltin) and (R.Name = 'typeof') and (Length(Args) = 1) and
+    (Storable(Args[0].Typ)) then
+  begin
+    if (Want >= 0) and (Want <> 1) then
+      Reject('uses typeof, which returns one value, where %d are wanted', [Want], E);
+    ReleaseFieldTemps([Args[0].Opnd]);
+    if Want < 0 then
+      Result := []
+    else
+      Result := [StringConst(StaticTypeName(Args[0].Typ))];
+    Exit;
+  end;
+
+  // string(x) of a number and length(s) of a string: direct helpers (J11).
+  if (R.Kind = rkBuiltin) and (Length(Args) = 1) and
+    (((R.Name = 'string') and Numeric(Args[0].Typ)) or
+     ((R.Name = 'length') and (Args[0].Typ = jtString))) then
+  begin
+    if (Want >= 0) and (Want <> 1) then
+      Reject('uses %s, which returns one value, where %d are wanted', [R.Name, Want], E);
+    if R.Name = 'string' then
+    begin
+      K := Temp(jtString);
+      F.Emit(joStrOf, Args[0].Typ, K, [Args[0].Opnd]);
+    end
+    else
+    begin
+      K := Temp(jtInt);
+      F.Emit(joStrLen, jtInt, K, [Args[0].Opnd]);
+      ReleaseFieldTemps([Args[0].Opnd]);
+    end;
+    if Want < 0 then
+      Result := []
+    else
+      Result := [MakeValue(F.Regs[K].Typ, RegOperand(K))];
+    Exit;
+  end;
+
   // append(l, x) on a list: a new list (J10).
   if (R.Kind = rkBuiltin) and (R.Name = 'append') and (Length(Args) = 2) and
     IsListType(Args[0].Typ) then
@@ -1037,6 +1142,8 @@ var
 begin
   T.Kind := ckBuiltin;
   N := Length(Args);
+  if LowerStringBuiltin(E, Name, Args, Result) then
+    Exit;
   if (Name = 'print') or (Name = 'println') then
   begin
     for A in Args do
@@ -2109,6 +2216,102 @@ begin
   ReleaseTemps([X.Opnd]);
   MarkAssigned(V);
   Result := True;
+end;
+
+{ A string literal as a value: a constant copied into a register (J11). }
+function TLowerer.StringConst(const Text: string): TJValue;
+var
+  Dst: Integer;
+begin
+  Dst := Temp(jtString);
+  F.Emit(joConst, jtString, Dst, [StringOperand(Text)]);
+  Result := MakeValue(jtString, RegOperand(Dst));
+end;
+
+(* The string built-ins (J11), called as the interpreter calls them, with
+   their argument types checked here (a wrong type is the interpreter's
+   TypeError) and their result types known. False for another name. *)
+function TLowerer.LowerStringBuiltin(E: TCallExpr; const Name: string; var Args: TArray<TJValue>;
+  out Results: TArray<TJType>): Boolean;
+var
+  N, K: Integer;
+
+  procedure Need(const Types: array of TJType);
+  var
+    J: Integer;
+  begin
+    if N <> Length(Types) then
+      Reject('calls %s with %d argument(s), an ArgumentError', [Name, N], E);
+    for J := 0 to High(Types) do
+      if (Types[J] <> jtNothing) and (Args[J].Typ <> Types[J]) and
+        not ((Types[J] = jtReal) and Numeric(Args[J].Typ)) then
+        Reject('passes %s to %s, which needs %s', [JTypeName(Args[J].Typ), Name,
+          JTypeName(Types[J])], E);
+  end;
+
+begin
+  Result := True;
+  N := Length(Args);
+  if Name = 'string' then
+  begin
+    if (N <> 1) or not Storable(Args[0].Typ) then
+      Reject('calls string with %d argument(s) or a value that is not compiled', [N], E);
+    Results := [jtString];
+  end
+  else if (Name = 'length') and (N = 1) and (Args[0].Typ = jtString) then
+    Results := [jtInt]
+  else if (Name = 'upper') or (Name = 'lower') or (Name = 'trim') or (Name = 'ltrim') or
+    (Name = 'rtrim') then
+  begin
+    Need([jtString]);
+    Results := [jtString];
+  end
+  else if Name = 'replace' then
+  begin
+    Need([jtString, jtString, jtString]);
+    Results := [jtString];
+  end
+  else if Name = 'repeat' then
+  begin
+    Need([jtString, jtInt]);
+    Results := [jtString];
+  end
+  else if (Name = 'contains') or (Name = 'startswith') or (Name = 'endswith') then
+  begin
+    Need([jtString, jtString]);
+    Results := [jtBool];
+  end
+  else if Name = 'find' then
+  begin
+    if N = 3 then Need([jtString, jtString, jtInt]) else Need([jtString, jtString]);
+    Results := [jtInt];
+  end
+  else if Name = 'split' then
+  begin
+    if N = 2 then Need([jtString, jtString]) else Need([jtString]);
+    Results := [ListType(jtString)];
+  end
+  else if Name = 'join' then
+  begin
+    if (N <> 2) or not IsListType(Args[0].Typ) or
+      not (ListElem(Args[0].Typ) in [jtString, jtNothing]) or (Args[1].Typ <> jtString) then
+      Reject('join of these arguments is not compiled', E);
+    Results := [jtString];
+  end
+  else if Name = 'format' then
+  begin
+    for K := 0 to N - 1 do
+      if not Numeric(Args[K].Typ) then
+        Reject('passes %s to format, which is not compiled', [JTypeName(Args[K].Typ)], E);
+    Results := [jtString];
+  end
+  else if ((Name = 'int') or (Name = 'real')) and (N = 1) and (Args[0].Typ = jtString) then
+  begin
+    // A number read from text: ArgumentError when it is not one.
+    if Name = 'int' then Results := [jtInt] else Results := [jtReal];
+  end
+  else
+    Result := False;
 end;
 
 { r.a = x, r.a.b = x: the value first, then the write through the path. The

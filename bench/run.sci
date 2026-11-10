@@ -206,6 +206,37 @@ function particles(n: int, steps: int): real
   return total
 end
 
+## Strings (J11): labels built in a loop.
+function labels(n: int): int
+  total = 0
+  for k in 1:n
+    s = "p" + string(k) + "_" + string(k * 2)
+    total = total + length(s)
+  end
+  return total
+end
+
+## Branching on a kind string and on typeof, as option handling does.
+function weigh(kind: string, x): real
+  w = 0.0
+  if typeof(x) == "real"
+    w = x
+  end
+  if kind == "double"
+    return 2.0 * w
+  elseif kind == "half"
+    return 0.5 * w
+  end
+  return w
+end
+function kinds_loop(n: int): real
+  s = 0.0
+  for k in 1:n
+    s = s + weigh("half", k * 1.0) + weigh("double", 1.0) + weigh("other", 2.0)
+  end
+  return s
+end
+
 # ---------------------------------------------------------------- driver
 
 function pad(s, w)
@@ -250,4 +281,6 @@ row("record_steps(2000)", function() return record_steps(2000) end)
 row("ode rk45, parameter record", lv_params)
 row("list_build_sum(10000)", function() return list_build_sum(10000) end)
 row("particles(100, 50)", function() return particles(100, 50) end)
+row("labels(10000)", function() return labels(10000) end)
+row("kinds_loop(10000)", function() return kinds_loop(10000) end)
 println(pad("matmul 60x60 (BLAS *)", 30), lpad(time.format(time.bench(function() return A * B end).best), 10))

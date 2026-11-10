@@ -1796,7 +1796,7 @@ true
 
 \section{Searching}
 
-\begin{longtable}{@{}p{0.34\linewidth}p{0.6\linewidth}@{}}
+\begin{longtable}{@{}p{0.48\linewidth}p{0.46\linewidth}@{}}
 \toprule
 Function & Result \\
 \midrule
@@ -1829,7 +1829,7 @@ true true false
 1 4 6 8 11
 \end{axonout}
 
-\section{Changing strings}
+\section{Other strings methods}
 
 These functions return a new string and leave the original alone:
 
@@ -1838,13 +1838,14 @@ These functions return a new string and leave the original alone:
 Function & Result \\
 \midrule
 \endhead
-\code{upper(s: string)}, \code{lower(s: string)} & \code{s} in capitals or small letters, for
-  any alphabet \\
-\code{trim(s: string)} & \code{s} without spaces, tabs and line breaks at either end \\
-\code{ltrim(s: string)}, \code{rtrim(s: string)} & The same at the start only, or at the end
-  only \\
-\code{replace(s: string, old: string, new: string)} & \code{s} with every \code{old} replaced by
-  \code{new} \\
+\code{length(s: string)} & Returns the length of the string \\
+\code{upper(s: string)} & Convert \code{s} to all capitals \\
+\code{lower(s: string)} & Convert \code{s} to small letters, for any alphabet \\
+\code{trim(s: string)} & Remove spaces, tabs and line breaks at either end of \code{s} \\
+\code{ltrim(s: string)} & Remove spaces, tabs and line breaks at the start of \code{s} \\
+\code{rtrim(s: string)} & Remove spaces, tabs and line breaks at the end of \code{s}\\
+\code{repeat(s, n)} & Returns a repeated a string {\tt n} times \\
+\code{replace(s: string, old: string, new: string)} & In \code{s}, replace every \code{old} by \code{new} \\
 \bottomrule
 \end{longtable}
 
@@ -3085,11 +3086,16 @@ runs as fast as one written with separate variables. Lists compile when their
 elements all have one type: \code|l = {}| followed by
 \code{l = append(l, x)} in a loop, indexing, \code{length}, element writes
 and \code{for x in l}, for lists of numbers, arrays, records or lists.
+Strings compile as well: literals, joining with \code{+}, comparisons, the
+string built-ins (\code{string}, \code{length}, \code{split}, \code{join},
+\code{upper}, \code{replace}, \code{format} and the others), and strings held
+in records and lists. \code{typeof(x)} is known when the function is
+compiled, so a test such as \code{typeof(x) == "real"} costs almost nothing.
 
-\paragraph{What stays interpreted.} Functions that use strings (other than in
-\code{print} and \code{println}), lists that mix types, dictionaries,
-complex numbers, \code{try}, \code{global}, or indexing with ranges, colons
-or masks, functions that change a record's shape, and functions whose
+\paragraph{What stays interpreted.} Functions that use lists that mix
+types, dictionaries, complex numbers, \code{try}, \code{global}, indexing
+with ranges, colons or masks, or the characters of a string (\code{s[i]},
+\code{for c in s}), functions that change a record's shape, and functions whose
 variables change type. They still run correctly, at the
 interpreter's speed.
 
@@ -3251,30 +3257,40 @@ Function & Result \\
 \end{longtable}
 
 \section*{Output and text}
-\begin{longtable}{@{}p{0.36\linewidth}p{0.58\linewidth}@{}}
+% Each signature on one line of its own; the descriptions wrap.
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.585\linewidth}
+  >{\raggedright\arraybackslash}p{0.37\linewidth}@{}}
 \toprule
 Function & Result \\
 \midrule
 \endhead
-\code{print(a, b, ...)} & Writes the values separated by spaces \\
-\code{println(a, b, ...)} & The same, then ends the line \\
-\code{format(x, d: int)} & \code{x} as text with exactly \code{d} decimals \\
-\code{string(x)} & The display form of any value, as a string \\
-\code{split(s: string)}, \code{split(s: string, sep: string)} & The words of s, or the pieces between
+\mbox{\code{print(a, b, ...)}} & Writes the values separated by spaces \\
+\mbox{\code{println(a, b, ...)}} & The same, then ends the line \\
+\mbox{\code{format(x, d: int)}} & \code{x} as text with exactly \code{d} decimals \\
+\mbox{\code{string(x)}} & The display form of any value, as a string \\
+\mbox{\code{split(s: string)}}\newline
+\mbox{\code{split(s: string, sep: string)}} & The words of s, or the pieces between
   each sep, as a list of strings \\
-\code{join(parts: list, sep: string)} & A list of strings joined, with sep between them \\
-\code{trim(s: string)}, \code{ltrim(s: string)}, \code{rtrim(s: string)} & s without spaces, tabs and
+\mbox{\code{join(parts: list, sep: string)}} & A list of strings joined, with sep between them \\
+\mbox{\code{trim(s: string)}}\newline
+\mbox{\code{ltrim(s: string)}}\newline
+\mbox{\code{rtrim(s: string)}} & s without spaces, tabs and
   line breaks at both ends, the start or the end \\
-\code{upper(s: string)}, \code{lower(s: string)} & s in capital or small letters \\
-\code{contains(s: string, p: string)}, \code{startswith(s: string, p: string)}, \code{endswith(s: string, p: string)} & Whether
+\mbox{\code{upper(s: string)}}\newline
+\mbox{\code{lower(s: string)}} & s in capital or small letters \\
+\mbox{\code{contains(s: string, p: string)}}\newline
+\mbox{\code{startswith(s: string, p: string)}}\newline
+\mbox{\code{endswith(s: string, p: string)}} & Whether
   p occurs in s, begins it or ends it \\
-\code{find(s: string, p: string)}, \code{find(s, p, start: int)} & The position of the first p in s,
+\mbox{\code{find(s: string, p: string)}}\newline
+\mbox{\code{find(s, p, start: int)}} & The position of the first p in s,
   or 0 \\
-\code{replace(s: string, old: string, new: string)} & s with every old replaced by new \\
-\code{repeat(s: string, n: int)} & s repeated n times \\
-\code{parse_function(params: string, expr: string)} & A function made from text
+\mbox{\code{replace(s: string, old: string, new: string)}} & s with every old replaced by new \\
+\mbox{\code{repeat(s: string, n: int)}} & s repeated n times \\
+\mbox{\code{parse_function(params: string, expr: string)}} & A function made from text
   (Section~\ref{sec:parsefn}) \\
-\code{int(s: string)}, \code{real(s: string)} & The number written in the string s \\
+\mbox{\code{int(s: string)}}\newline
+\mbox{\code{real(s: string)}} & The number written in the string s \\
 \bottomrule
 \end{longtable}
 
@@ -3414,7 +3430,7 @@ RK45, Lotka--Volterra to $t = 50$ & 19.2 ms & & 4.3 ms & 4.4$\times$ faster \\
 BDF, Robertson to $t = 40$ & 40.4 ms & & 1.2 ms & 34$\times$ faster \\
 \addlinespace
 \multicolumn{5}{@{}l}{\emph{Lists, dictionaries and text (plain Python)}} \\
-append $10^5$ items to a list & 3.7 ms & 113 ms & 114 ms & 30$\times$ slower \\
+append $10^5$ items to a list & 3.8 ms & 112 ms & 12.3 ms & 3.3$\times$ slower \\
 $10^5$ dictionary inserts and lookups & 51.0 ms & 557 ms & 551 ms & 11$\times$ slower \\
 split and join $2 \times 10^5$ words & 13.5 ms & & 87.1 ms & 6.5$\times$ slower \\
 \bottomrule
@@ -3422,8 +3438,9 @@ split and join $2 \times 10^5$ words & 13.5 ms & & 87.1 ms & 6.5$\times$ slower 
 
 A blank interpreted time marks a kernel whose work is done by library or
 solver code, which runs at the same speed either way. The list and dictionary
-kernels have both times because the JIT does not yet compile lists or
-dictionaries, so their functions stay interpreted.
+kernels have both times. The list kernel compiles; the dictionary kernel's
+function stays interpreted, because the JIT does not compile dictionaries
+yet, so its two times are the same.
 
 \section*{What the numbers show}
 
@@ -3443,14 +3460,17 @@ dictionaries, so their functions stay interpreted.
 \item \textbf{Whole-array operations are within 1.3 to 4 times of NumPy}.
   Axon runs them as typed loops; NumPy uses vectorised machine instructions,
   and sums pairwise, which rounds differently, where Axon adds in order.
-\item \textbf{Lists, dictionaries and text are slower}, 6 to 30 times,
-  because that code runs in the interpreter.
+\item \textbf{Lists, dictionaries and text are slower}, 3 to 11 times.
+  Appending to a list compiles, but each append still allocates, where
+  Python's lists keep spare room; dictionaries run in the interpreter; and
+  \code{split} and \code{join} are library code that is slower than
+  Python's.
 \end{itemize}
 
 In practice: put the work in functions. The JIT compiles a function at its
 first call when it uses numbers, \code{bool}s and real or integer arrays;
-code at the top level of a script, and functions that use dictionaries or
-strings, run interpreted. Records and lists compile, as long as a function
+code at the top level of a script, and functions that use dictionaries,
+run interpreted. Records, lists and strings compile, as long as a function
 keeps each record's fields and their types, and each list's elements of one
 type. \menu{Run}~$\rightarrow$~\menu{Use JIT
 Compiler} with the JIT report on (Section~\ref{sec:ide-jit}) shows which

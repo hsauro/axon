@@ -153,6 +153,11 @@ begin
   MIR_load_external(Ctx, 'rt_new_list', H.NewList);
   MIR_load_external(Ctx, 'rt_list_append', H.ListAppend);
   MIR_load_external(Ctx, 'rt_list_unique', H.ListUnique);
+  MIR_load_external(Ctx, 'rt_str_concat', H.StrConcat);
+  MIR_load_external(Ctx, 'rt_str_cmp', H.StrCmp);
+  MIR_load_external(Ctx, 'rt_str_of_int', H.StrOfInt);
+  MIR_load_external(Ctx, 'rt_str_of_real', H.StrOfReal);
+  MIR_load_external(Ctx, 'rt_str_len', H.StrLen);
   for N in ElementaryNames do
     MIR_load_external(Ctx, PAnsiChar(AnsiString('rt_' + N)), ElementaryRealFunction(N));
   MIR_load_external(Ctx, 'rt_atan2', ElementaryRealFunction('atan2'));
@@ -201,6 +206,9 @@ type
     LeaveProto, LeaveImport, IndexErrProto, IndexErrImport, NewArrayProto, NewArrayImport: TMirItem;
     NewRecordProto, NewRecordImport, RecUniqueImport: TMirItem;
     NewListProto, NewListImport, AppendProto, AppendImport, ListUniqueImport: TMirItem;
+    ConcatProto, ConcatImport, StrCmpProto, StrCmpImport: TMirItem;
+    StrOfIntProto, StrOfIntImport, StrOfRealProto, StrOfRealImport: TMirItem;
+    StrLenProto, StrLenImport: TMirItem;
     // Arrays: the frame of value slots, and the single exit that releases it.
     SlotOf: TArray<Integer>;          // per JIR register: its slot, or -1
     NSlots, JunkSlot: Integer;
@@ -231,6 +239,8 @@ type
     procedure GenListElem(I: TJInsn; IsStore: Boolean);
     procedure GenList(I: TJInsn);
     procedure GenAppend(I: TJInsn);
+    // strings (J11)
+    procedure GenConst(I: TJInsn);
     procedure SetupResultDests(I: TJInsn; const ResultTypes: TArray<TJType>);
     procedure ClearJunk(I: TJInsn; const ResultTypes: TArray<TJType>);
     function C(const Name: AnsiString): Int32;
@@ -816,6 +826,20 @@ begin
     Opnd(I.Ops[0]), RegOp(ArgBuf), IntOp(OperandType(I.Ops[1])), IntOp(I.Ops[2].I)]);
 end;
 
+{ ---- strings (J11) ---- }
+
+{ Dst := a string constant, which the compiled code owns. }
+procedure TGen.GenConst(I: TJInsn);
+var
+  P: PAxValue;
+begin
+  New(P);
+  P^ := StringValue(I.Ops[0].S);
+  Code.Consts.Add(P);
+  E('call', [RefOp(PtrPtrProto), RefOp(AssignImport), RegOp(SlotAddr(SlotOf[I.Dst])),
+    IntOp(NativeInt(P))]);
+end;
+
 { An operator on arrays: Axon.Ops through rt_call. }
 procedure TGen.GenOp(I: TJInsn);
 var
@@ -947,9 +971,13 @@ begin
   Result.ValuePtr := I.Target.ValuePtr;
   Result.ArgTypes := I.Target.ArgTypes;
   SetLength(Result.Strings, Length(I.Ops));
+  SetLength(Result.IsLit, Length(I.Ops));
   for K := 0 to High(I.Ops) do
     if I.Ops[K].Kind = jkString then
+    begin
       Result.Strings[K] := I.Ops[K].S;
+      Result.IsLit[K] := True;
+    end;
   // The results the caller loads (none for a statement).
   Used := False;
   for K := 0 to High(I.Dsts) do
@@ -1276,6 +1304,23 @@ begin
       GenList(I);
     joAppend:
       GenAppend(I);
+    joConst:
+      GenConst(I);
+    joConcat:
+      E('call', [RefOp(ConcatProto), RefOp(ConcatImport), RegOp(SlotAddr(SlotOf[I.Dst])),
+        Opnd(I.Ops[0]), Opnd(I.Ops[1])]);
+    joStrCmp:
+      E('call', [RefOp(StrCmpProto), RefOp(StrCmpImport), Reg(I.Dst), Opnd(I.Ops[0]),
+        Opnd(I.Ops[1])]);
+    joStrOf:
+      if I.Typ = jtReal then
+        E('call', [RefOp(StrOfRealProto), RefOp(StrOfRealImport), RegOp(SlotAddr(SlotOf[I.Dst])),
+          Opnd(I.Ops[0])])
+      else
+        E('call', [RefOp(StrOfIntProto), RefOp(StrOfIntImport), RegOp(SlotAddr(SlotOf[I.Dst])),
+          Opnd(I.Ops[0]), IntOp(Ord(I.Typ = jtBool))]);
+    joStrLen:
+      E('call', [RefOp(StrLenProto), RefOp(StrLenImport), Reg(I.Dst), Opnd(I.Ops[0])]);
   else
     raise EMirError.CreateFmt('JIT: no code for JIR op %d', [Ord(I.Op)]);
   end;
@@ -1364,6 +1409,21 @@ begin
   AppendProto := MIR_new_proto_arr(Ctx, 'rt_list_append_p', 0, nil, 5, @V[0]);
   AppendImport := MIR_new_import(Ctx, 'rt_list_append');
   ListUniqueImport := MIR_new_import(Ctx, 'rt_list_unique');
+  V := Vars([MIR_T_P, MIR_T_P, MIR_T_P], ['dst', 'a', 'b']);
+  ConcatProto := MIR_new_proto_arr(Ctx, 'rt_str_concat_p', 0, nil, 3, @V[0]);
+  ConcatImport := MIR_new_import(Ctx, 'rt_str_concat');
+  V := Vars([MIR_T_P, MIR_T_P], ['a', 'b']);
+  StrCmpProto := MIR_new_proto_arr(Ctx, 'rt_str_cmp_p', 1, @ResI64, 2, @V[0]);
+  StrCmpImport := MIR_new_import(Ctx, 'rt_str_cmp');
+  V := Vars([MIR_T_P, MIR_T_I64, MIR_T_I64], ['dst', 'x', 'isbool']);
+  StrOfIntProto := MIR_new_proto_arr(Ctx, 'rt_str_of_int_p', 0, nil, 3, @V[0]);
+  StrOfIntImport := MIR_new_import(Ctx, 'rt_str_of_int');
+  V := Vars([MIR_T_P, MIR_T_D], ['dst', 'x']);
+  StrOfRealProto := MIR_new_proto_arr(Ctx, 'rt_str_of_real_p', 0, nil, 2, @V[0]);
+  StrOfRealImport := MIR_new_import(Ctx, 'rt_str_of_real');
+  V := Vars([MIR_T_P], ['a']);
+  StrLenProto := MIR_new_proto_arr(Ctx, 'rt_str_len_p', 1, @ResI64, 1, @V[0]);
+  StrLenImport := MIR_new_import(Ctx, 'rt_str_len');
   DeclareCalls;
 
   // A slot for every array register, and a junk slot for array results that

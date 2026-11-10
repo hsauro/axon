@@ -80,7 +80,15 @@ unit Axon.Jit.Ir;
    vectors:
 
      %5 = list list{real} (%1, 2.5)      a list literal
-     l = append l, x, 1                  append; 1: in place when nothing else holds l *)
+     l = append l, x, 1                  append; 1: in place when nothing else holds l
+
+   Strings (J11) are values in slots too. A literal is a constant copied in:
+
+     %6 = const "x = "                   a string literal as a value
+     %7 = concat %6, s                   a + b
+     %8 = strcmp a, b                    -1, 0 or 1, as CompareStr
+     %9 = strof k                        string(k) of a bool, int or real
+     %10 = strlen s                      length(s), in code points *)
 
 interface
 
@@ -170,7 +178,12 @@ type
     joSetField,                   // the field at Path of the record Ops[0] := Ops[1]
     joRecord,                     // Dst := a record of shape Typ from Ops (its fields in order)
     joList,                       // Dst := a list of type Typ from Ops
-    joAppend                      // Dst := append(Ops[0], Ops[1]); Ops[2] = 1: in place if unique
+    joAppend,                     // Dst := append(Ops[0], Ops[1]); Ops[2] = 1: in place if unique
+    joConst,                      // Dst := the string Ops[0] (a jkString operand)
+    joConcat,                     // Dst := Ops[0] + Ops[1], two strings
+    joStrCmp,                     // Dst (int) := -1, 0 or 1: Ops[0] against Ops[1], as CompareStr
+    joStrOf,                      // Dst := string(Ops[0]), a bool, int or real
+    joStrLen                      // Dst (int) := length(Ops[0]), a string, in code points
   );
 
   TJInsn = class
@@ -443,7 +456,7 @@ end;
 
 function IsBoxedType(T: TJType): Boolean;
 begin
-  Result := IsArrayType(T) or IsRecordType(T) or IsListType(T);
+  Result := IsArrayType(T) or IsRecordType(T) or IsListType(T) or (T = jtString);
 end;
 
 function ShapeOf(T: TJType): TJShape;
@@ -490,6 +503,7 @@ begin
     vkBool: Result := jtBool;
     vkInt:  Result := jtInt;
     vkReal: Result := jtReal;
+    vkString: Result := jtString;
     vkArray:
       begin
         A := AsArray(V);
@@ -682,7 +696,8 @@ const
     'add', 'sub', 'mul', 'neg', 'div', 'pow',
     'eq', 'ne', 'lt', 'le', 'gt', 'ge',
     'not', 'jmp', 'bt', 'bf', 'count', 'elem', 'ret', 'call', 'load', 'store', 'len', 'op',
-    'clear', 'bound', 'array', 'field', 'setfield', 'record', 'list', 'append');
+    'clear', 'bound', 'array', 'field', 'setfield', 'record', 'list', 'append', 'const', 'concat',
+    'strcmp', 'strof', 'strlen');
 
 procedure TJFunction.Dump(Lines: TStrings);
 var
@@ -893,6 +908,8 @@ begin
           Line := Line + 'list ' + JTypeName(Insn.Typ) + ' (' + OperandList(Insn.Ops) + ')';
         joAppend:
           Line := Line + 'append ' + OperandList(Insn.Ops);
+        joConst, joConcat, joStrCmp, joStrOf, joStrLen:
+          Line := Line + OpNames[Insn.Op] + ' ' + OperandList(Insn.Ops);
         joField, joSetField:
           Line := Line + OpNames[Insn.Op] + '.' + JTypeName(Insn.Typ) + ' ' + PathOperands(Insn);
         joLoad, joStore, joLen:

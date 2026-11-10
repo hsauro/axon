@@ -1,0 +1,33 @@
+function label(k: int): string
+  %0 = const "x"
+  %1 = strof k
+  %2 = concat %0, %1
+  ret %2
+
+function width(s: string): int
+  %0 = strlen s
+  %1 = add.int %0, 1  @9:3
+  ret %1
+
+function pick(kind: string): real
+  %0 = const "square"
+  %1 = strcmp kind, %0
+  %2 = eq.int %1, 0
+  bf %2, L1
+  ret 4.0
+L1:
+L0:
+  %3 = const "string"
+  %4 = const "string"
+  %5 = strcmp %3, %4
+  %6 = eq.int %5, 0
+  bf %6, L3
+  %7 = const "m"
+  %8 = strcmp kind, %7
+  %6 = lt.int %8, 0
+L3:
+  bf %6, L4
+  ret 1.0
+L4:
+L2:
+  ret 0.0

@@ -49,6 +49,10 @@ function ElementaryRealFunction(const Name: string): Pointer;
 function AppendInPlace(var V: TAxValue; const X: TAxValue): Boolean;
 function AppendValue(const V, X: TAxValue): TAxValue;
 
+{ The length of a string in code points, as length(s): a surrogate pair
+  counts once. }
+function StringLength(const S: string): Int64;
+
 implementation
 
 uses
@@ -371,10 +375,23 @@ end;
 
 { length of a list, a string (in characters, i.e. Unicode code points), a
   range or an array (all its elements). }
-function BLength(const Args: TAxValues): TAxValue;
+{ The length of a string in code points: a surrogate pair counts once. }
+function StringLength(const S: string): Int64;
 var
-  S: string;
-  I, N: Integer;
+  I: Integer;
+begin
+  Result := 0;
+  I := 1;
+  while I <= Length(S) do
+  begin
+    if S[I].IsHighSurrogate and (I < Length(S)) then
+      Inc(I);
+    Inc(I);
+    Inc(Result);
+  end;
+end;
+
+function BLength(const Args: TAxValues): TAxValue;
 begin
   case Args[0].Kind of
     vkList:  Result := IntValue(Length(AsList(Args[0]).Items));
@@ -382,20 +399,7 @@ begin
     vkArray: Result := IntValue(AsArray(Args[0]).Count);
     vkDict:  Result := IntValue(Length(AsDict(Args[0]).Keys));
     vkSparse: Result := IntValue(AsSparse(Args[0]).Rows * AsSparse(Args[0]).Cols);
-    vkString:
-      begin
-        S := AsString(Args[0]);
-        N := 0;
-        I := 1;
-        while I <= Length(S) do
-        begin
-          if S[I].IsHighSurrogate and (I < Length(S)) then
-            Inc(I);
-          Inc(I);
-          Inc(N);
-        end;
-        Result := IntValue(N);
-      end;
+    vkString: Result := IntValue(StringLength(AsString(Args[0])));
   else
     RaiseFmt(TypeError, 'length is not defined for %s', [TypeName(Args[0])]);
   end;

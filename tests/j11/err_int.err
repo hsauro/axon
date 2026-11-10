@@ -1,0 +1,4 @@
+ArgumentError: int: cannot read "12x" as an integer
+  at err_int.sci:4:7 in parse
+  at err_int.sci:8:10 in outer
+  at err_int.sci:10:1

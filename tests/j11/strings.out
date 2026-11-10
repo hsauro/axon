@@ -1,0 +1,14 @@
+{"x1=0.5", "x2=1.0", "x3=1.5"} true true
+{eq: false, ne: true, lt: true, ge: true, num: false, numne: true} true true
+{eq: true, ne: false, lt: false, ge: true, num: false, numne: true} true true
+{upper: "A,B,C", lower: "a,b,c", n: 5, parts: {"a", "b", "c"}, joined: "a+b+c", has: true, starts: true, ends: true, at: 2, rep: "a;b;c", twice: "abab", l: "x ", r: "  x"} true true
+86.5 true true
+{t: "real", r: "record", l: "list", v: "vector", s: "string", isreal: true} true true
+{t: "int", r: "record", l: "list", v: "vector", s: "string", isreal: false} true true
+8.0 true true
+0.0 true true
+true,-2,0.5,3 true true
+RUN 3 step 2
+RUN 3 step 2
+{name: "RUN", steps: 2, notes: {"start", "step 1", "step 2"}} true true
+a true false

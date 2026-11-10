@@ -49,6 +49,8 @@ type
     NParams: Integer;
     Captures: TArray<TJCapture>;
     LocalNames: TArray<string>;
+    // J11: the string constants the code copies into its registers.
+    Consts: TList<PAxValue>;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -65,6 +67,7 @@ type
     ValuePtr: PAxValue;           // else the variable holding it
     ArgTypes: TArray<TJType>;
     Strings: TArray<string>;      // string literal arguments, by position
+    IsLit: TArray<Boolean>;       // which arguments are those literals (others: registers)
     ResultTypes: TArray<TJType>;  // the values the caller uses
   end;
 
@@ -74,6 +77,7 @@ type
     Assign, Move, Clear, MakeUnique, Leave, IndexError, NewArray: Pointer;
     NewRecord, RecordUnique: Pointer;
     NewList, ListAppend, ListUnique: Pointer;
+    StrConcat, StrCmp, StrOfInt, StrOfReal, StrLen: Pointer;
   end;
 
 var
@@ -111,7 +115,8 @@ implementation
 
 uses
   System.Math,
-  Axon.Errors, Axon.Ops, Axon.Tokens, Axon.NativeModules, Axon.Jit.Mir, Axon.Native.Mir;
+  Axon.Errors, Axon.Ops, Axon.Tokens, Axon.NativeModules, Axon.Builtins, Axon.Jit.Mir,
+  Axon.Native.Mir;
 
 type
   TJitFrame = record
@@ -133,10 +138,16 @@ constructor TJitCode.Create;
 begin
   inherited Create;
   CallSites := TObjectList<TObject>.Create(True);
+  Consts := TList<PAxValue>.Create;
 end;
 
 destructor TJitCode.Destroy;
+var
+  P: PAxValue;
 begin
+  for P in Consts do
+    Dispose(P);
+  Consts.Free;
   CallSites.Free;
   inherited;
 end;
@@ -490,6 +501,44 @@ begin
   MakeUnique(P^);
 end;
 
+{ a + b of two strings (J11), as BinaryOp joins them. }
+procedure RtStrConcat(Dst, A, B: PAxValue); cdecl;
+begin
+  Dst^ := StringValue(AsString(A^) + AsString(B^));
+end;
+
+{ -1, 0 or 1: a against b, as CompareOrder and ValuesEqual compare strings. }
+function RtStrCmp(A, B: PAxValue): Int64; cdecl;
+var
+  C: Integer;
+begin
+  C := CompareStr(AsString(A^), AsString(B^));
+  if C < 0 then Result := -1
+  else if C > 0 then Result := 1
+  else Result := 0;
+end;
+
+{ string(x) of an int or bool (IsBool <> 0), as BString: Display of the value. }
+procedure RtStrOfInt(Dst: PAxValue; X, IsBool: Int64); cdecl;
+begin
+  if IsBool <> 0 then
+    Dst^ := StringValue(Display(BoolValue(X <> 0)))
+  else
+    Dst^ := StringValue(Display(IntValue(X)));
+end;
+
+{ string(x) of a real, as BString. }
+procedure RtStrOfReal(Dst: PAxValue; X: Double); cdecl;
+begin
+  Dst^ := StringValue(Display(RealValue(X)));
+end;
+
+{ length(s) of a string, as BLength: code points, a surrogate pair counted once. }
+function RtStrLen(A: PAxValue): Int64; cdecl;
+begin
+  Result := StringLength(AsString(A^));
+end;
+
 procedure RtIndexError(Fid, Site, Index, Len: Int64); cdecl;
 begin
   Pending(Fid, Site, IndexError, Format('index %d is out of bounds for a dimension of length %d',
@@ -528,7 +577,11 @@ begin
         jtBool:   Boxed[K] := BoolValue(Slot^ <> 0);
         jtInt:    Boxed[K] := IntValue(Slot^);
         jtReal:   Boxed[K] := RealValue(PDouble(Slot)^);
-        jtString: Boxed[K] := StringValue(CS.Strings[K]);
+        jtString:
+          if (K < Length(CS.IsLit)) and CS.IsLit[K] then
+            Boxed[K] := StringValue(CS.Strings[K])
+          else
+            Boxed[K] := PAxValue(PPointer(Slot)^)^;    // a string register's slot
       else
         if IsBoxedType(CS.ArgTypes[K]) then
           Boxed[K] := PAxValue(PPointer(Slot)^)^     // an array or record: its slot
@@ -595,6 +648,11 @@ begin
   Result.NewList := @RtNewList;
   Result.ListAppend := @RtListAppend;
   Result.ListUnique := @RtListUnique;
+  Result.StrConcat := @RtStrConcat;
+  Result.StrCmp := @RtStrCmp;
+  Result.StrOfInt := @RtStrOfInt;
+  Result.StrOfReal := @RtStrOfReal;
+  Result.StrLen := @RtStrLen;
 end;
 
 { ---- compiling ---- }

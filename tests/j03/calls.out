@@ -9,7 +9,7 @@
 4.0 true true
 true true true
 true true true
-true false strings are not compiled (60:7)
+true false complex numbers are not compiled (60:7)
 talk: 3 1.5 true
 true
 10 true

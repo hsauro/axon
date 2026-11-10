@@ -23,7 +23,7 @@ function use_pair(a: int): int
 end
 
 function legacy(x)
-  s = "text"
+  s = 1i
   return x
 end
 
