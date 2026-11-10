@@ -8,20 +8,14 @@ _J0 dict("C" => 1) dict() k2*C
    1.0  -1.0
 1×3 matrix{real}
   10.0  4.0  0.0
+1×2 matrix{real}
+  0.5  2.0
 1×3 matrix{real}
   -40.0  -20.0  20.0
 {"A", "B"} 1×5 matrix{real}
   0.0  1.0  2.0  3.0  4.0
 true
 true
-function(_t, _y)
-  A = _y[1]
-  B = _y[2]
-  k = 0.5
-  _v1 = k*A
-  return [-_v1; _v1]
-end
-0.0 true
 function(_t, _y, _p)
   A = _y[1]
   B = _y[2]
@@ -29,7 +23,16 @@ function(_t, _y, _p)
   _v1 = k*A
   return [-_v1; _v1]
 end
+0.0 true
+0.0 {"A", "B"} {"k"} 2.0 0.5
+2.0 1.0
+true
+true
+true
+dict("k" => 0.5)
 NameError rate law of reaction _J0: parse_function: unknown name "Q" at character 5 of "k*A*Q"
+NameError antimony.set: the model has no species or parameter "Q"
+NameError antimony.value: the model has no species or parameter "Q"
 Missing rate law for reaction: A -> B
 Invalid species term: '2 x y'
 Invalid assignment: A = 1 = 2

@@ -22,6 +22,7 @@ const
 {$ENDIF}
 
   CV_BDF = 2;
+  CV_NORMAL = 1;
   CV_ONE_STEP = 2;
   CV_ROOT_RETURN = 2;
 
@@ -42,6 +43,7 @@ var
   SUNLinSol_Dense: function(Y, A, Ctx: Pointer): Pointer; cdecl;
   CVodeCreate: function(Lmm: Integer; Ctx: Pointer): Pointer; cdecl;
   CVodeInit: function(Mem: Pointer; F: TCvRhsFn; T0: Double; Y0: Pointer): Integer; cdecl;
+  CVodeReInit: function(Mem: Pointer; T0: Double; Y0: Pointer): Integer; cdecl;
   CVodeSStolerances: function(Mem: Pointer; RTol, ATol: Double): Integer; cdecl;
   CVodeSVtolerances: function(Mem: Pointer; RTol: Double; ATol: Pointer): Integer; cdecl;
   CVodeSetLinearSolver: function(Mem, LS, A: Pointer): Integer; cdecl;
@@ -147,7 +149,8 @@ begin
         Bind(CVode, 'CVode') and
         Bind(CVodeGetDky, 'CVodeGetDky') and
         Bind(CVodeGetReturnFlagName, 'CVodeGetReturnFlagName') and
-        Bind(CVodeFree, 'CVodeFree');
+        Bind(CVodeFree, 'CVodeFree') and
+        Bind(CVodeReInit, 'CVodeReInit');
   end;
   Result := Bound;
 end;

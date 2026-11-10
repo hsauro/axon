@@ -15,10 +15,11 @@ for r in m.reactions
 end
 println(antimony.stoichiometry(m))
 println(antimony.initial(m)')
+println(antimony.parameter_values(m)')
 
 # The right-hand side at the start: v1 = 0.5*10*4 = 20, v2 = 0.
 f = antimony.rhs(m)
-println(f(0.0, antimony.initial(m))')
+println(f(0.0, antimony.initial(m), antimony.parameter_values(m))')
 
 # A -> B with rate k*A: A = 2 exp(-k t), and A + B stays 2.
 d = antimony.load("A -> B; k*A; A = 2; k = 0.5")
@@ -30,17 +31,49 @@ println(approx(sol.y[1, :] + sol.y[2, :], 2 * ones(5), tol = 1e-9))
 # The function rhs makes, as text.
 println(antimony.rhs_text(d))
 
-# A species with no value starts at 0; a parameter whose value has no exact
-# short text (1/3) is passed in a vector, with the same results.
+# A species with no value starts at 0; a parameter changed in the model
+# (1/3) is used by the next simulation.
 e = antimony.load("A -> B; k*A; A = 3")
 e.parameters["k"] = 1 / 3
 s2 = antimony.simulate(e, 3.0, points = 4, method = "bdf", rtol = 1e-9, atol = 1e-12)
 println(s2.y[2, 1], approx(s2.y[1, :], 3 * exp(-s2.t / 3), tol = 1e-6))
-println(antimony.rhs_text(e))
+
+# Stepping: k doubles at t = 1, so A = 2 exp(-0.5) exp(-(t - 1)) after it.
+sim = antimony.simulator(d, rtol = 1e-10, atol = 1e-12)
+println(sim.t, sim.species, sim.parameters, sim.y[1], sim.p[1])
+for k in 1:4
+  if k == 3
+    sim = antimony.set(sim, "k", 1.0)
+  end
+  sim = antimony.step(sim, 0.5)
+end
+println(sim.t, antimony.value(sim, "k"))
+println(approx(antimony.value(sim, "A"), 2 * exp(-0.5) * exp(-1.0), tol = 1e-8))
+println(approx(antimony.value(sim, "A") + antimony.value(sim, "B"), 2.0, tol = 1e-9))
+
+# set changes a species too: adding 1 to B.
+b = antimony.value(sim, "B")
+sim = antimony.set(sim, "B", b + 1)
+println(approx(antimony.value(sim, "B"), b + 1, tol = 0))
+
+# The simulator is a copy: the model is unchanged.
+println(d.parameters)
 
 # A rate law may use only species and parameters.
 try
   antimony.rhs(antimony.load("A -> B; k*A*Q; k = 1"))
+catch err
+  println(err.kind, err.message)
+end
+
+# Names set and value do not know.
+try
+  antimony.set(sim, "Q", 1)
+catch err
+  println(err.kind, err.message)
+end
+try
+  antimony.value(sim, "Q")
 catch err
   println(err.kind, err.message)
 end

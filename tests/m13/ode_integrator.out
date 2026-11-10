@@ -1,0 +1,18 @@
+Integrator rk45 1.0e-9
+true true
+true
+true
+true true
+Integrator bdf 1.0e-9
+true true
+true
+true
+true true
+true
+ValueError negative rate after t = 1
+true
+ArgumentError ode.advance: t1 must be later than t (got t = 1.0, t1 = 1.0)
+TypeError ode.advance: s must be an integrator from ode.integrator, got record
+ArgumentError ode.integrator: method must be "rk45" or "bdf", got "euler"
+ArgumentError ode.integrator: rtol must be a positive number
+TypeError ode.integrator: the right-hand side must be a function, got int

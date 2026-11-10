@@ -8,7 +8,9 @@
 ## Statements end at ";" or at the end of a line, and "//" or "#" starts a
 ## comment. "->" and "=>" are both read as reactions. Assigned names that
 ## appear in a reaction are species (initial values); the rest are
-## parameters. See the Language Reference, "The antimony module".
+## parameters. simulate solves a whole time span; simulator, step and set
+## advance a simulation in steps, changing values between them. See the
+## Language Reference, "The antimony module".
 
 import io
 import ode
@@ -238,6 +240,18 @@ function term(c, v)
 end
 
 
+## The parameters' values as a real vector, in the order of
+## keys(model.parameters): the vector rhs(model) reads as its third argument.
+export function parameter_values(model)
+  names = keys(model.parameters)
+  p = zeros(length(names))
+  for i in 1:length(names)
+    p[i] = model.parameters[names[i]]
+  end
+  return p
+end
+
+
 # Each rate law may use only species, parameters and built-in functions;
 # parse_function reports any other name with its position.
 function check_rates(model)
@@ -255,41 +269,19 @@ function check_rates(model)
 end
 
 
-# Whether every parameter's value reads back exactly from its text, as any
-# value typed in a model does, so it can be written into the function.
-function literal_values(model)
-  for name in keys(model.parameters)
-    v = model.parameters[name]
-    if real(string(v)) != v
-      return false
-    end
-  end
-  return true
-end
-
-
-# The text of the right-hand side: species and parameters as local names,
-# then the reaction rates _v1, _v2, ..., then the derivatives. With literal
-# true the parameters' values are written in; otherwise they come from a
-# third parameter, the vector _p.
-function source(model, literal)
+## The text of the function that rhs(model) makes, to read or check: the
+## species and parameters as local names set from _y and _p, the rates _v1,
+## _v2, ... of the reactions in order, and the derivatives.
+export function rhs_text(model)
+  check_rates(model)
   names = keys(model.species)
   pnames = keys(model.parameters)
-  if literal
-    lines = {"function(_t, _y)"}
-  else
-    lines = {"function(_t, _y, _p)"}
-  end
+  lines = {"function(_t, _y, _p)"}
   for i in 1:length(names)
     lines = append(lines, "  " + names[i] + " = _y[" + string(i) + "]")
   end
   for i in 1:length(pnames)
-    if literal
-      value = string(real(model.parameters[pnames[i]]))
-    else
-      value = "_p[" + string(i) + "]"
-    end
-    lines = append(lines, "  " + pnames[i] + " = " + value)
+    lines = append(lines, "  " + pnames[i] + " = _p[" + string(i) + "]")
   end
   for j in 1:length(model.reactions)
     lines = append(lines, "  _v" + string(j) + " = " + model.reactions[j].rate)
@@ -318,39 +310,18 @@ function source(model, literal)
 end
 
 
-## The text of the function that rhs(model) makes, to read or check: the
-## species and parameters as local names, the rates _v1, _v2, ... of the
-## reactions in order, and the derivatives.
-export function rhs_text(model)
-  check_rates(model)
-  return source(model, literal_values(model))
-end
-
-
 ## The right-hand side of the model's differential equations, dy/dt = N v(y),
-## as a function f(t, y) for ode.solve: y holds the species in the order of
-## species_names(model). The rate laws become one function made with
-## parse_function, so they are checked here, and the JIT compiles it.
+## as a function f(t, y, p) for ode.solve with params = p: y holds the
+## species in the order of species_names(model) and p the parameters'
+## values, as parameter_values(model) gives them. The rate laws become one
+## function made with parse_function, so they are checked here, and the JIT
+## compiles it.
 export function rhs(model)
-  check_rates(model)
-
-  # With the parameters' values written in, the function needs nothing from
-  # outside, and ode.solve calls the compiled code directly. Otherwise they
-  # are passed in a vector, through a small closure.
-  if literal_values(model)
-    return parse_function(source(model, true))
-  end
-  f = parse_function(source(model, false))
-  pnames = keys(model.parameters)
-  p = zeros(length(pnames))
-  for i in 1:length(pnames)
-    p[i] = model.parameters[pnames[i]]
-  end
-  return function(t, y)
-    return f(t, y, p)
-  end
+  return parse_function(rhs_text(model))
 end
 
+
+# ------------------------------------------------------------ simulating
 
 ## Simulates the model from t_start to t_end and returns ode.solve's result,
 ## reported at `points` evenly spaced times, with the species names as its
@@ -359,7 +330,74 @@ end
 export function simulate(model, t_end; t_start = 0.0, points = 101, method = "rk45",
                          rtol = 1e-6, atol = 1e-9)
   return ode.solve(rhs(model), initial(model), [t_start, t_end], method = method,
-                   rtol = rtol, atol = atol,
+                   rtol = rtol, atol = atol, params = parameter_values(model),
                    t_eval = linspace(t_start, t_end, points),
                    names = species_names(model))
+end
+
+
+## A simulation to advance in steps with step(sim, h), changing species or
+## parameters between steps with set(sim, name, value). The model is made
+## into code once, here, and the solver keeps its state from step to step,
+## starting afresh only after a change. A record with fields t (the time,
+## from t_start), y (the species' values), p (the parameters' values),
+## species and parameters (their names, in the order of y and p) and solver
+## (an ode.integrator).
+export function simulator(model; t_start = 0.0, method = "rk45", rtol = 1e-6, atol = 1e-9)
+  return {t: t_start + 0.0, y: initial(model), p: parameter_values(model),
+          species: species_names(model), parameters: keys(model.parameters),
+          solver: ode.integrator(rhs(model), method = method, rtol = rtol, atol = atol)}
+end
+
+
+## sim advanced by h > 0 in time: the same record with t and y at the new
+## time. The solver continues from the previous step unless a value was
+## changed, so many short steps cost about what one simulation does.
+export function step(sim, h)
+  target = sim.t + h
+  sim.y = ode.advance(sim.solver, sim.t, sim.y, target, params = sim.p)
+  sim.t = target
+  return sim
+end
+
+
+# The position of name in names, or 0.
+function position(names, name)
+  for i in 1:length(names)
+    if names[i] == name
+      return i
+    end
+  end
+  return 0
+end
+
+
+## sim with the species or parameter called name set to value, from the next
+## step on.
+export function set(sim, name, value)
+  i = position(sim.species, name)
+  if i > 0
+    sim.y[i] = value
+    return sim
+  end
+  i = position(sim.parameters, name)
+  if i > 0
+    sim.p[i] = value
+    return sim
+  end
+  error("NameError", "antimony.set: the model has no species or parameter \"" + name + "\"")
+end
+
+
+## The value of the species or parameter called name in sim.
+export function value(sim, name)
+  i = position(sim.species, name)
+  if i > 0
+    return sim.y[i]
+  end
+  i = position(sim.parameters, name)
+  if i > 0
+    return sim.p[i]
+  end
+  error("NameError", "antimony.value: the model has no species or parameter \"" + name + "\"")
 end

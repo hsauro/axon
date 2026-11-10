@@ -1,10 +1,11 @@
 > import ode
 > help ode.solve
-solve(f, y0, tspan; method = "rk45", rtol = 1e-6, atol = 1e-9, t_eval = nothing, events = nothing, terminal = false, direction = 0, names = nothing, max_step = nothing, first_step = nothing, max_steps = 100000)
+solve(f, y0, tspan; method = "rk45", rtol = 1e-6, atol = 1e-9, t_eval = nothing, events = nothing, terminal = false, direction = 0, names = nothing, max_step = nothing, first_step = nothing, max_steps = 100000, params = nothing)
   Solves y' = f(t, y) from tspan[1] to tspan[2] with y(tspan[1]) = y0.
   method is "rk45" (explicit, the default) or "bdf" (stiff, CVODE). Returns a
   record with t, y (one column per time), names, status ("success" or
   "event"), t_events, y_events, nfev, nsteps and at(t) for dense output.
+  With params set, f and the event functions are called as f(t, y, params).
 > import graphics
 > help graphics
 module graphics

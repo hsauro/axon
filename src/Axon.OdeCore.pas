@@ -29,7 +29,7 @@ unit Axon.OdeCore;
    the loop raises it when CVODE returns.
 
    f and the event functions are called as the interpreter calls them
-   (CallAxon); f's result is checked as call_rhs checked it, except that a
+   (CallAxon), with o.params as a third argument when it is not nothing; f's result is checked as call_rhs checked it, except that a
    scalar is accepted for one equation, as the reference says. *)
 
 interface
@@ -38,7 +38,7 @@ implementation
 
 uses
   System.SysUtils, System.Math, System.Generics.Collections,
-  Axon.Errors, Axon.Values, Axon.Ops, Axon.NativeModules, Axon.Native.Cvode;
+  Axon.Errors, Axon.Values, Axon.Ops, Axon.Arrays, Axon.NativeModules, Axon.Native.Cvode;
 
 type
   TVec = TArray<Double>;
@@ -192,6 +192,10 @@ type
   TOdeBase = class
   protected
     F: TAxValue;
+    // ode.solve's params: when given, f and the event functions are called
+    // as f(t, y, params).
+    Params: TAxValue;
+    HasParams: Boolean;
     N: Integer;
     S: Double;                   // the direction, 1 or -1
     Events: TAxValues;
@@ -260,7 +264,10 @@ var
   A: TArrayObj;
   K: Integer;
 begin
-  D := CallAxon(F, [RealValue(T), VectorValue(Y)]);
+  if HasParams then
+    D := CallAxon(F, [RealValue(T), VectorValue(Y), Params])
+  else
+    D := CallAxon(F, [RealValue(T), VectorValue(Y)]);
   TN := TypeName(D);
   if (TN <> 'vector') and (TN <> 'matrix') and (TN <> 'real') and (TN <> 'int') then
     Fail(TypeError, 'the right-hand side must return a real vector, got ' + TN);
@@ -293,7 +300,10 @@ function TOdeBase.Event(K: Integer; T: Double; const Y: TVec): Double;
 var
   V: TAxValue;
 begin
-  V := CallAxon(Events[K - 1], [RealValue(T), VectorValue(Y)]);
+  if HasParams then
+    V := CallAxon(Events[K - 1], [RealValue(T), VectorValue(Y), Params])
+  else
+    V := CallAxon(Events[K - 1], [RealValue(T), VectorValue(Y)]);
   if (V.Kind <> vkReal) and (V.Kind <> vkInt) then
     Fail(TypeError, Format('event function %d must return a real number, got %s', [K, TypeName(V)]));
   Result := ToReal(V);
@@ -462,6 +472,8 @@ begin
   Events := AsList(Field(O, 'events')).Items;
   Terminal := AsList(Field(O, 'terminal')).Items;
   Direction := AsList(Field(O, 'direction')).Items;
+  Params := Field(O, 'params');
+  HasParams := Params.Kind <> vkNothing;
   Ng := Length(Events);
 
   S := 1.0;
@@ -884,6 +896,8 @@ begin
   Events := AsList(Field(O, 'events')).Items;
   Terminal := AsList(Field(O, 'terminal')).Items;
   Direction := AsList(Field(O, 'direction')).Items;
+  Params := Field(O, 'params');
+  HasParams := Params.Kind <> vkNothing;
   Ng := Length(Events);
   S := 1.0;
   if T1 < T0 then S := -1.0;
@@ -1042,6 +1056,425 @@ begin
   end;
 end;
 
+{ ---------------------------------------------------------------- integrators }
+
+(* odecore.integrator(f, method, rtol, atol) and odecore.advance(s, t, y, p, t1),
+   behind ode.integrator and ode.advance: a solver that keeps its state
+   between calls, so that advancing a solution in many short intervals costs
+   about what one solve costs.
+
+   advance returns y at t1. It continues from the solver's state when t, y and
+   p are exactly the time, state and params it last returned and was given;
+   otherwise (the first call, a changed state or changed params, or a copy of
+   the caller's record used out of turn) it starts afresh from (t, y), as a
+   new solve would: RK45 picks a new first step, CVODE is reinitialized. The
+   solver steps past t1 as its step sizes dictate and interpolates y(t1), so
+   a short interval does not shorten its steps. Integration runs forward
+   only. *)
+
+type
+  TStepEngine = class(TOdeBase)
+  protected
+    Rtol: Double;
+    AtolK: TVec;
+    Started: Boolean;      // the solver's state continues the last result
+    LastT: Double;
+    LastY: TVec;
+    LastP: TAxValue;
+    procedure Reset(T0: Double; const Y0: TVec); virtual; abstract;
+    function AdvanceTo(Target: Double): TVec; virtual; abstract;
+  public
+    function Advance(T0: Double; const Y0: TVec; const P: TAxValue; Target: Double): TVec;
+  end;
+
+  { DOPRI5, as TRk45, one accepted step at a time. }
+  TRk45Engine = class(TStepEngine)
+  private
+    T, TPrev, H, Facmax: Double;
+    Y, K1: TVec;
+    // The dense output of the last accepted step, [TPrev, T].
+    D1, D2, D3, D4, D5: TVec;
+    procedure TakeStep;
+    function Dense(Tq: Double): TVec;
+  protected
+    procedure Reset(T0: Double; const Y0: TVec); override;
+    function AdvanceTo(Target: Double): TVec; override;
+  end;
+
+  { CVODE's BDF, kept between calls. }
+  TBdfEngine = class(TStepEngine)
+  private
+    Ctx, Mem, Yv, A, LS, AtolN: Pointer;
+    Pending: Exception;
+    function NativeVector(V: Pointer): TVec;
+    procedure Check(Flag: Integer; const What: string);
+  protected
+    procedure Reset(T0: Double; const Y0: TVec); override;
+    function AdvanceTo(Target: Double): TVec; override;
+  public
+    destructor Destroy; override;
+  end;
+
+  { The value odecore.integrator returns: a pointer value whose payload keeps
+    the solver alive while any copy of it exists. The engine is made at the
+    first advance, when the number of components is known. }
+  TIntegratorObj = class(TInterfacedObject)
+  public
+    F: TAxValue;
+    Method: string;
+    Rtol: Double;
+    Atol: TAxValue;
+    Engine: TStepEngine;
+    destructor Destroy; override;
+  end;
+
+const
+  MaxAdvanceSteps = 100000;
+
+function SameVec(const A, B: TVec): Boolean;
+var
+  K: Integer;
+begin
+  Result := Length(A) = Length(B);
+  if Result then
+    for K := 0 to High(A) do
+      if A[K] <> B[K] then
+        Exit(False);
+end;
+
+function TStepEngine.Advance(T0: Double; const Y0: TVec; const P: TAxValue; Target: Double): TVec;
+begin
+  if not (Started and (T0 = LastT) and SameVec(Y0, LastY) and ValuesIdentical(P, LastP)) then
+  begin
+    Started := False;
+    Params := P;
+    HasParams := P.Kind <> vkNothing;
+    Reset(T0, Y0);
+  end;
+  try
+    Result := AdvanceTo(Target);
+  except
+    Started := False;
+    raise;
+  end;
+  Started := True;
+  LastT := Target;
+  LastY := Copy(Result);
+  LastP := P;
+end;
+
+procedure TRk45Engine.Reset(T0: Double; const Y0: TVec);
+begin
+  T := T0;
+  TPrev := T0;
+  Y := Copy(Y0);
+  K1 := Rhs(T, Y);
+  Inc(NFev);
+  H := 0;            // chosen at the first step, from the first interval
+  Facmax := 10.0;
+end;
+
+{ One accepted step from (T, Y), as TRk45.Run's loop takes it, with no end
+  time to stop at. }
+procedure TRk45Engine.TakeStep;
+var
+  K2, K3, K4, K5, K6, K7, YNew, ErrV, Sk, Tmp: TVec;
+  TNew, Err, Fac: Double;
+  I: Integer;
+begin
+  SetLength(Tmp, N);
+  SetLength(YNew, N);
+  SetLength(ErrV, N);
+  SetLength(Sk, N);
+  repeat
+    if H < 16 * EPS * RMax(Abs(T), 1e-300) then
+      Fail('SolverError', 'the step size became too small at t = ' + RStr(T));
+    for I := 0 to N - 1 do
+      Tmp[I] := Y[I] + H * (K1[I] / 5);
+    K2 := Rhs(T + H / 5, Tmp);
+    for I := 0 to N - 1 do
+      Tmp[I] := Y[I] + H * (3 / 40 * K1[I] + 9 / 40 * K2[I]);
+    K3 := Rhs(T + 3 * H / 10, Tmp);
+    for I := 0 to N - 1 do
+      Tmp[I] := Y[I] + H * (44 / 45 * K1[I] - 56 / 15 * K2[I] + 32 / 9 * K3[I]);
+    K4 := Rhs(T + 4 * H / 5, Tmp);
+    for I := 0 to N - 1 do
+      Tmp[I] := Y[I] + H * (19372 / 6561 * K1[I] - 25360 / 2187 * K2[I] +
+        64448 / 6561 * K3[I] - 212 / 729 * K4[I]);
+    K5 := Rhs(T + 8 * H / 9, Tmp);
+    for I := 0 to N - 1 do
+      Tmp[I] := Y[I] + H * (9017 / 3168 * K1[I] - 355 / 33 * K2[I] + 46732 / 5247 * K3[I] +
+        49 / 176 * K4[I] - 5103 / 18656 * K5[I]);
+    K6 := Rhs(T + H, Tmp);
+    for I := 0 to N - 1 do
+      YNew[I] := Y[I] + H * (35 / 384 * K1[I] + 500 / 1113 * K3[I] + 125 / 192 * K4[I] -
+        2187 / 6784 * K5[I] + 11 / 84 * K6[I]);
+    TNew := T + H;
+    K7 := Rhs(TNew, YNew);
+    Inc(NFev, 6);
+    for I := 0 to N - 1 do
+    begin
+      ErrV[I] := H * (71 / 57600 * K1[I] - 71 / 16695 * K3[I] + 71 / 1920 * K4[I] -
+        17253 / 339200 * K5[I] + 22 / 525 * K6[I] - 1 / 40 * K7[I]);
+      Sk[I] := AtolK[I] + Rtol * RMax(Abs(Y[I]), Abs(YNew[I]));
+    end;
+    Err := Wrms(ErrV, Sk);
+    if Err <> Err then
+      Fail('SolverError', 'the solution is not finite at t = ' + RStr(T));
+    if Err > 1 then
+    begin
+      // Rejected: retry with a smaller step.
+      H := H * RMax(0.2, 0.9 * RPow(Err, -0.2));
+      Facmax := 1.0;
+    end;
+  until Err <= 1;
+
+  // Accepted: keep the dense output of [T, TNew], then move on.
+  SetLength(D1, N);
+  SetLength(D2, N);
+  SetLength(D3, N);
+  SetLength(D4, N);
+  SetLength(D5, N);
+  for I := 0 to N - 1 do
+  begin
+    D1[I] := Y[I];
+    D2[I] := YNew[I] - Y[I];
+    D3[I] := H * K1[I] - D2[I];
+    D4[I] := D2[I] - H * K7[I] - D3[I];
+    D5[I] := H * (-12715105075 / 11282082432 * K1[I] + 87487479700 / 32700410799 * K3[I] -
+      10690763975 / 1880347072 * K4[I] + 701980252875 / 199316789632 * K5[I] -
+      1453857185 / 822651844 * K6[I] + 69997945 / 29380423 * K7[I]);
+  end;
+  TPrev := T;
+  T := TNew;
+  Y := YNew;
+  K1 := K7;
+  Fac := RMin(Facmax, RMax(0.2, 0.9 * RPow(Err, -0.2)));
+  if Err = 0 then Fac := Facmax;
+  H := H * Fac;
+  Facmax := 10.0;
+end;
+
+function TRk45Engine.Dense(Tq: Double): TVec;
+var
+  Th, Th1: Double;
+  K: Integer;
+begin
+  Th := (Tq - TPrev) / (T - TPrev);
+  Th1 := 1 - Th;
+  SetLength(Result, N);
+  for K := 0 to N - 1 do
+    Result[K] := D1[K] + Th * (D2[K] + Th1 * (D3[K] + Th * (D4[K] + Th1 * D5[K])));
+end;
+
+function TRk45Engine.AdvanceTo(Target: Double): TVec;
+var
+  Sk, Y1, F1, Tmp: TVec;
+  D0, Dd1, D2_, H0, H1: Double;
+  I: Integer;
+  Steps: Int64;
+begin
+  if H = 0 then
+  begin
+    // The first step after a start (Hairer and Wanner, II.4), with the
+    // first interval in place of the whole span.
+    SetLength(Sk, N);
+    SetLength(Y1, N);
+    SetLength(Tmp, N);
+    for I := 0 to N - 1 do
+      Sk[I] := AtolK[I] + Rtol * Abs(Y[I]);
+    D0 := Wrms(Y, Sk);
+    Dd1 := Wrms(K1, Sk);
+    if (D0 < 1e-5) or (Dd1 < 1e-5) then
+      H0 := 1e-6
+    else
+      H0 := 0.01 * D0 / Dd1;
+    H0 := RMin(H0, Target - T);
+    for I := 0 to N - 1 do
+      Y1[I] := Y[I] + H0 * K1[I];
+    F1 := Rhs(T + H0, Y1);
+    Inc(NFev);
+    for I := 0 to N - 1 do
+      Tmp[I] := F1[I] - K1[I];
+    D2_ := Wrms(Tmp, Sk) / H0;
+    if RMax(Dd1, D2_) <= 1e-15 then
+      H1 := RMax(1e-6, H0 * 1e-3)
+    else
+      H1 := RPow(0.01 / RMax(Dd1, D2_), 0.2);
+    H := RMin(100 * H0, H1);
+  end;
+  Steps := 0;
+  while T < Target do
+  begin
+    Inc(Steps);
+    if Steps > MaxAdvanceSteps then
+      Fail('SolverError', 'more than ' + IntToStr(MaxAdvanceSteps) + ' steps before t = ' +
+        RStr(Target) + ' (stopped at t = ' + RStr(T) + ')');
+    TakeStep;
+  end;
+  if T = Target then
+    Result := Copy(Y)
+  else
+    Result := Dense(Target);
+end;
+
+{ y' = f(t, y) for CVODE, for an integrator. }
+function CvEngineRhs(T: Double; Y, YDot, User: Pointer): Integer; cdecl;
+var
+  B: TBdfEngine;
+  D: TVec;
+begin
+  B := TBdfEngine(User);
+  try
+    D := B.Rhs(T, B.NativeVector(Y));
+    if B.N > 0 then
+      Move(D[0], N_VGetArrayPointer(YDot)^, B.N * SizeOf(Double));
+    Inc(B.NFev);
+    Result := 0;
+  except
+    B.Pending := AcquireExceptionObject as Exception;
+    Result := -1;
+  end;
+end;
+
+function TBdfEngine.NativeVector(V: Pointer): TVec;
+begin
+  SetLength(Result, N);
+  if N > 0 then
+    Move(N_VGetArrayPointer(V)^, Result[0], N * SizeOf(Double));
+end;
+
+procedure TBdfEngine.Check(Flag: Integer; const What: string);
+begin
+  if Flag < 0 then
+    Fail('SolverError', 'CVODE ' + What + ' failed (' + FlagName(Flag) + ')');
+end;
+
+procedure TBdfEngine.Reset(T0: Double; const Y0: TVec);
+begin
+  if Mem = nil then
+  begin
+    if not CvodeAvailable then
+      RaiseError(ForeignError, CvodeError);
+    Check(SUNContext_Create(nil, Ctx), 'SUNContext_Create');
+    SUNContext_ClearErrHandlers(Ctx);
+    Yv := N_VNew_Serial(N, Ctx);
+    A := SUNDenseMatrix(N, N, Ctx);
+    LS := SUNLinSol_Dense(Yv, A, Ctx);
+    Move(Y0[0], N_VGetArrayPointer(Yv)^, N * SizeOf(Double));
+    Mem := CVodeCreate(CV_BDF, Ctx);
+    Check(CVodeInit(Mem, CvEngineRhs, T0, Yv), 'CVodeInit');
+    Check(CVodeSetUserData(Mem, Self), 'CVodeSetUserData');
+    AtolN := N_VNew_Serial(N, Ctx);
+    Move(AtolK[0], N_VGetArrayPointer(AtolN)^, N * SizeOf(Double));
+    Check(CVodeSVtolerances(Mem, Rtol, AtolN), 'CVodeSVtolerances');
+    Check(CVodeSetLinearSolver(Mem, LS, A), 'CVodeSetLinearSolver');
+    Check(CVodeSetMaxNumSteps(Mem, MaxAdvanceSteps), 'CVodeSetMaxNumSteps');
+  end
+  else
+  begin
+    Move(Y0[0], N_VGetArrayPointer(Yv)^, N * SizeOf(Double));
+    Check(CVodeReInit(Mem, T0, Yv), 'CVodeReInit');
+  end;
+end;
+
+function TBdfEngine.AdvanceTo(Target: Double): TVec;
+var
+  Flag: Integer;
+  TRet: Double;
+  E: Exception;
+begin
+  Flag := CVode(Mem, Target, Yv, TRet, CV_NORMAL);
+  if Pending <> nil then
+  begin
+    E := Pending;
+    Pending := nil;
+    raise E;
+  end;
+  if Flag < 0 then
+    Fail('SolverError', 'CVODE failed at t = ' + RStr(TRet) + ' (' + FlagName(Flag) + ')');
+  Result := NativeVector(Yv);
+end;
+
+destructor TBdfEngine.Destroy;
+begin
+  if Mem <> nil then CVodeFree(Mem);
+  if LS <> nil then SUNLinSolFree(LS);
+  if A <> nil then SUNMatDestroy(A);
+  if Yv <> nil then N_VDestroy(Yv);
+  if AtolN <> nil then N_VDestroy(AtolN);
+  if Ctx <> nil then SUNContext_Free(Ctx);
+  Pending.Free;
+  inherited;
+end;
+
+destructor TIntegratorObj.Destroy;
+begin
+  Engine.Free;
+  inherited;
+end;
+
+{ odecore.integrator(f, method, rtol, atol): ode.integrator checked them. }
+function BIntegrator(const Args: TAxValues): TAxValues;
+var
+  Obj: TIntegratorObj;
+  V: TAxValue;
+begin
+  Obj := TIntegratorObj.Create;
+  Obj.F := Args[0];
+  Obj.Method := AsString(Args[1]);
+  Obj.Rtol := ToReal(Args[2]);
+  Obj.Atol := Args[3];
+  V := NothingValue;
+  V.Kind := vkPointer;
+  V.I := Int64(NativeUInt(Obj));
+  V.Obj := Obj;
+  Result := [V];
+end;
+
+{ odecore.advance(s, t, y, p, t1): y at t1 as a vector, and the right-hand
+  side evaluations so far. }
+function BAdvance(const Args: TAxValues): TAxValues;
+var
+  Obj: TIntegratorObj;
+  Y0, AtolK: TVec;
+  N, K: Integer;
+begin
+  if (Args[0].Kind <> vkPointer) or (Args[0].Obj = nil) or
+    not ((Args[0].Obj as TObject) is TIntegratorObj) then
+    Fail(TypeError, 'advance needs an integrator from ode.integrator');
+  Obj := TIntegratorObj(Args[0].Obj as TObject);
+  Y0 := RealsOf(Args[2]);
+  N := Length(Y0);
+  if (Obj.Engine <> nil) and (Obj.Engine.N <> N) then
+    FreeAndNil(Obj.Engine);
+  if Obj.Engine = nil then
+  begin
+    if Obj.Atol.Kind = vkArray then
+    begin
+      AtolK := RealsOf(Obj.Atol);
+      if Length(AtolK) <> N then
+        Fail(DimensionError, Format('atol has %d values but y has %d components', [Length(AtolK), N]));
+    end
+    else
+    begin
+      SetLength(AtolK, N);
+      for K := 0 to N - 1 do
+        AtolK[K] := ToReal(Obj.Atol);
+    end;
+    if Obj.Method = 'bdf' then
+      Obj.Engine := TBdfEngine.Create(N)
+    else
+      Obj.Engine := TRk45Engine.Create(N);
+    Obj.Engine.F := Obj.F;
+    Obj.Engine.S := 1.0;
+    Obj.Engine.Rtol := Obj.Rtol;
+    Obj.Engine.AtolK := AtolK;
+  end;
+  Result := [VectorValue(Obj.Engine.Advance(ToReal(Args[1]), Y0, Args[3], ToReal(Args[4]))),
+    IntValue(Obj.Engine.NFev)];
+end;
+
 function MultiBuiltin(const Name: string; Fn: TBuiltinMultiFn; MinArgs, MaxArgs: Integer): TAxValue;
 var
   B: TBuiltinObj;
@@ -1060,10 +1493,12 @@ procedure DefineOdeCore(const Define: TProc<string, TAxValue>);
 begin
   Define('rk45', MultiBuiltin('rk45', BRk45, 5, 5));
   Define('bdf', MultiBuiltin('bdf', BBdf, 5, 5));
+  Define('integrator', MultiBuiltin('integrator', BIntegrator, 4, 4));
+  Define('advance', MultiBuiltin('advance', BAdvance, 5, 5));
 end;
 
 initialization
   RegisterNativeModule('odecore', DefineOdeCore,
-    ['The native loops behind the ode module: rk45 and bdf.']);
+    ['The native loops behind the ode module: rk45 and bdf, and integrator and advance.']);
 
 end.

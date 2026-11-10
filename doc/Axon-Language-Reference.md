@@ -934,9 +934,11 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 | `max_step: real` | The largest step (unlimited) |
 | `first_step: real` | The first step size (chosen automatically) |
 | `max_steps: int` | The most steps before giving up (`100000`) |
+| `params` | A value of any type passed to `f` and to every event function as a third argument, `f(t, y, params)` and `g(t, y, params)`, so one function serves different parameter values, and a compiled `f` is called directly (`nothing`: they take two arguments) |
 
 - **Result.** A record with fields `t` (a vector of the reported times), `y` (a matrix with one column per reported time, so `sol.y[1, :]` is the first component over time), `names`, `status` (`"success"`, or `"event"` when a terminal event stopped the integration), `t_events` and `y_events` (lists with one entry per event function: a vector of the times and a matrix of the states at which it occurred), `nfev` (right-hand-side evaluations), `nsteps` (accepted steps), `method`, and `at`, the dense output: `sol.at(t)` returns the state at any time in the solved range, and `sol.at(v)` for a vector of times returns a matrix with one column per time. A time outside the range raises `DomainError`.
 - **Events.** An event occurs where an event function changes sign in the counted direction; a function that starts at exactly zero does not trigger at the start. RK45 locates the crossing on the dense output; BDF uses CVODE's root finding. A terminal event ends the solution at the event time, which becomes the last reported time when `t_eval` is not given.
+- **Advancing in steps.** `ode.integrator(f; method: string = "rk45", rtol: real = 1e-6, atol = 1e-9)` returns an `Integrator` record (`method`, `rtol` and `handle`, a pointer to a solver that keeps its state between calls). `ode.advance(s, t, y, t1; params)` returns y at `t1` from y at `t`, as a vector; `t1` must be later than `t`. The solver steps past `t1` as its step sizes dictate and interpolates y(`t1`), so short intervals do not shorten its steps. It continues from where the last call ended when `t`, `y` and `params` are exactly what that call was given and returned; otherwise (the first call, a changed state or `params`, or the integrator used for another solution in between) it starts afresh from (`t`, `y`), as a new solve would, with RK45 choosing a new first step and CVODE reinitialized. So a loop `y = ode.advance(s, t, y, t + h, params = p)` costs about what one solve costs, and changing `y` or `p` between calls is a clean restart at that time. Events and `t_eval` are for `solve`.
 - **Errors.** A right-hand side of the wrong length raises `DimensionError`, and one of the wrong type `TypeError`. An error raised inside `f` or an event function propagates unchanged. A step size that falls below what the precision allows, too many steps, a non-finite solution or a CVODE failure raises `SolverError`. Invalid keywords raise `ArgumentError` or `TypeError`.
 
 ### The antimony module
@@ -960,9 +962,14 @@ A = 10; B = 5; k1 = 0.1; k2 = 0.05
 | `species_names(model)` | The species, as a list of strings in the order they first appear in the reactions: the order of the rows of `stoichiometry` and of the components of a simulation |
 | `stoichiometry(model)` | The stoichiometry matrix: one row per species and one column per reaction, entry products minus reactants |
 | `initial(model)` | The species' initial values, as a real vector |
-| `rhs(model)` | The right-hand side `f(t, y)` of dy/dt = N v(y) for `ode.solve`, with `y` the species in `species_names` order. The rate laws are made into one function with `parse_function`, which the JIT compiles; a rate law that uses a name other than a species, a parameter or a built-in raises its error (`NameError` or `SyntaxError`) here, with the reaction's name in the message |
-| `rhs_text(model)` | The text of the function `rhs` makes, to read or check: the species as local names set from `_y`, the parameters with their values, the rates `_v1`, `_v2`, … of the reactions in order, and the derivatives. A parameter whose value does not read back exactly from `string` (a computed `1/3`, say) is read from a third parameter `_p` instead, and `rhs` passes the values in a vector |
+| `parameter_values(model)` | The parameters' values, as a real vector in the order of `keys(model.parameters)` |
+| `rhs(model)` | The right-hand side `f(t, y, p)` of dy/dt = N v(y), for `ode.solve(f, y0, tspan, params = p)`: `y` holds the species in `species_names` order and `p` the parameters' values, as `parameter_values` gives them. The rate laws are made into one function with `parse_function`, which the JIT compiles; a rate law that uses a name other than a species, a parameter or a built-in raises its error (`NameError` or `SyntaxError`) here, with the reaction's name in the message |
+| `rhs_text(model)` | The text of the function `rhs` makes, to read or check: the species and parameters as local names set from `_y` and `_p`, the rates `_v1`, `_v2`, … of the reactions in order, and the derivatives |
 | `simulate(model, t_end: real; t_start: real = 0.0, points: int = 101, method: string = "rk45", rtol: real = 1e-6, atol = 1e-9)` | Solves the model from `t_start` to `t_end` and returns `ode.solve`'s result, reported at `points` evenly spaced times and with the species names as its `names`: `sol.y[i, :]` is species `i` over time. `method = "bdf"` suits stiff models |
+| `simulator(model; t_start: real = 0.0, method: string = "rk45", rtol: real = 1e-6, atol = 1e-9)` | A simulation to advance in steps, as a record: `t` (the time), `y` and `p` (the species' and parameters' values), `species` and `parameters` (their names, in that order), and `solver`, an `ode.integrator` for the right-hand side, which is made once here |
+| `step(sim, h: real)` | `sim` advanced by `h > 0` in time, with `ode.advance`: `t` and `y` at the new time. The solver continues from the previous step, and starts afresh only after `set` (or any other change to `y` or `p`), so many short steps cost about what one simulation does |
+| `set(sim, name: string, value: real)` | `sim` with the species or parameter `name` set to `value`, from the next step on. An unknown name raises `NameError` |
+| `value(sim, name: string)` | The current value of the species or parameter `name` |
 
 A `Model` record has the fields `reactions` (a list of `Reaction` records), `species` (a dictionary from name to initial value, `nothing` when none was assigned) and `parameters` (a dictionary from name to value). A `Reaction` has `name`, `reactants` and `products` (dictionaries from species name to coefficient) and `rate` (the rate law's text). The dictionaries can be changed before simulating, for a parameter scan:
 
@@ -974,6 +981,21 @@ for k in {0.5, 1.0}
   sol = antimony.simulate(m, 2.0, points = 3)
   println(k, sol.y[1, end])
 end
+```
+
+A simulator changes values between steps, here a parameter halfway through:
+
+```axon
+import antimony
+m = antimony.load("A -> B; k*A; A = 10; k = 0.5")
+sim = antimony.simulator(m)
+for j in 1:20
+  if j == 11
+    sim = antimony.set(sim, "k", 2.0)
+  end
+  sim = antimony.step(sim, 0.1)
+end
+println(sim.t, antimony.value(sim, "A"))
 ```
 
 ### The plot module

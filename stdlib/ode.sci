@@ -243,10 +243,11 @@ end
 ## method is "rk45" (explicit, the default) or "bdf" (stiff, CVODE). Returns a
 ## record with t, y (one column per time), names, status ("success" or
 ## "event"), t_events, y_events, nfev, nsteps and at(t) for dense output.
+## With params set, f and the event functions are called as f(t, y, params).
 export function solve(f, y0, tspan; method = "rk45", rtol = 1e-6, atol = 1e-9,
                       t_eval = nothing, events = nothing, terminal = false,
                       direction = 0, names = nothing, max_step = nothing,
-                      first_step = nothing, max_steps = 100000)
+                      first_step = nothing, max_steps = 100000, params = nothing)
   if typeof(f) != "function"
     fail("TypeError", "the right-hand side must be a function, got " + typeof(f))
   end
@@ -336,7 +337,8 @@ export function solve(f, y0, tspan; method = "rk45", rtol = 1e-6, atol = 1e-9,
   end
 
   o = {rtol: rtol + 0.0, atol: atol, t_eval: t_eval, events: events, terminal: terminal,
-       direction: direction, max_step: max_step + 0.0, first_step: first_step, max_steps: max_steps}
+       direction: direction, max_step: max_step + 0.0, first_step: first_step, max_steps: max_steps,
+       params: params}
   if method == "rk45"
     [out, status, te, ye, nfev, nsteps, at] = rk45(f, t0, t1, y0, o)
   elseif method == "bdf"
@@ -347,4 +349,69 @@ export function solve(f, y0, tspan; method = "rk45", rtol = 1e-6, atol = 1e-9,
   k = out.count
   return {t: out.t[1:k], y: out.y[:, 1:k], names: names, status: status,
           t_events: te, y_events: ye, nfev: nfev, nsteps: nsteps, method: method, at: at}
+end
+
+
+# ---------------------------------------------------------------- integrators
+
+## A solver kept between calls to advance: its method and relative
+## tolerance, and a handle to the solver and its state.
+export record Integrator
+  method: string
+  rtol: real
+  handle: pointer
+end
+
+## A solver that keeps its state between calls to advance, for a solution
+## advanced in steps, with parameters or the state changed between them.
+## method is "rk45" or "bdf"; rtol and atol are as for solve.
+export function integrator(f; method = "rk45", rtol = 1e-6, atol = 1e-9)
+  if typeof(f) != "function"
+    error("TypeError", "ode.integrator: the right-hand side must be a function, got " + typeof(f))
+  end
+  if method != "rk45" and method != "bdf"
+    error("ArgumentError", "ode.integrator: method must be \"rk45\" or \"bdf\", got \"" +
+      string(method) + "\"")
+  end
+  if (typeof(rtol) != "int" and typeof(rtol) != "real") or not (rtol > 0)
+    error("ArgumentError", "ode.integrator: rtol must be a positive number")
+  end
+  if typeof(atol) == "int" or typeof(atol) == "real"
+    if not (atol >= 0)
+      error("ArgumentError", "ode.integrator: atol must be non-negative")
+    end
+    atol = atol + 0.0
+  elseif typeof(atol) == "vector" or typeof(atol) == "range" or typeof(atol) == "matrix"
+    atol = real_vector(atol)
+    for a in atol
+      if not (a >= 0)
+        error("ArgumentError", "ode.integrator: atol must be non-negative, got " + string(a))
+      end
+    end
+  else
+    error("TypeError", "ode.integrator: atol must be a number or a vector, got " + typeof(atol))
+  end
+  return Integrator(method, rtol + 0.0, odecore.integrator(f, method, rtol + 0.0, atol))
+end
+
+## y at t1 > t, from y at t, with the integrator s. s continues from where
+## its last advance ended when t, y and params are exactly what that call was
+## given and returned; otherwise (the first call, or after a change) it
+## starts afresh from (t, y). With params set, f is called as f(t, y, params).
+export function advance(s, t, y, t1; params = nothing)
+  if not isa(s, Integrator)
+    error("TypeError", "ode.advance: s must be an integrator from ode.integrator, got " + typeof(s))
+  end
+  if (typeof(t) != "int" and typeof(t) != "real") or (typeof(t1) != "int" and typeof(t1) != "real")
+    error("TypeError", "ode.advance: the times must be numbers")
+  end
+  if not (t1 > t)
+    error("ArgumentError", "ode.advance: t1 must be later than t (got t = " + string(t) +
+      ", t1 = " + string(t1) + ")")
+  end
+  if typeof(y) != "real" and typeof(y) != "int" and typeof(y) != "vector" and typeof(y) != "matrix"
+    error("TypeError", "ode.advance: y must be a real vector, got " + typeof(y))
+  end
+  [v, nfev] = odecore.advance(s.handle, t + 0.0, real_vector(y), params, t1 + 0.0)
+  return v
 end
