@@ -3075,10 +3075,19 @@ elementary functions, \code{atan2}, \code{abs}, \code{floor}, \code{min}, \code{
 that type; an unannotated one takes the type of the argument it is called with,
 and the function is compiled for each combination of argument types it meets.
 
+Records compile too: literals such as \code|{t: 0.0, y: zeros(n)}|,
+constructors of declared record types, and field reads and writes, nested and
+through to array elements, as in \code{s.y[i] = s.y[i] + h * s.t}. A record's
+type is its shape, its field names and the types of their values, so a
+function that adds a field to a record, or gives a field a value of another
+type, stays interpreted. A simulation step that keeps its state in a record
+runs as fast as one written with separate variables.
+
 \paragraph{What stays interpreted.} Functions that use strings (other than in
-\code{print} and \code{println}), lists, records, dictionaries, complex numbers,
-\code{try}, \code{global}, or indexing with ranges, colons or masks, and
-functions whose variables change type. They still run correctly, at the
+\code{print} and \code{println}), lists, dictionaries, complex numbers,
+\code{try}, \code{global}, or indexing with ranges, colons or masks,
+functions that change a record's shape, and functions whose variables change
+type. They still run correctly, at the
 interpreter's speed.
 
 \paragraph{Seeing what happened.} In the IDE, the Output pane lists after each
@@ -3437,8 +3446,9 @@ dictionaries, so their functions stay interpreted.
 
 In practice: put the work in functions. The JIT compiles a function at its
 first call when it uses numbers, \code{bool}s and real or integer arrays;
-code at the top level of a script, and functions that use lists, records,
-dictionaries or strings, run interpreted. \menu{Run}~$\rightarrow$~\menu{Use JIT
+code at the top level of a script, and functions that use lists,
+dictionaries or strings, run interpreted. Records compile, as long as a
+function keeps each record's fields and their types. \menu{Run}~$\rightarrow$~\menu{Use JIT
 Compiler} with the JIT report on (Section~\ref{sec:ide-jit}) shows which
 functions were compiled, and why any were not. Extending the JIT to more of
 the language, rather than speeding up the interpreter, is the plan for

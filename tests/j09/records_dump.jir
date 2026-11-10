@@ -1,0 +1,51 @@
+function area: not compiled: parameter r has no type annotation (it is compiled when called, for the argument types) (9:15)
+
+function grow: not compiled: parameter s has no type annotation (it is compiled when called, for the argument types) (13:15)
+
+function driver(n: int): real
+  var b: record{w: real, h: real}
+  var q: P{a: real, n: int}
+  var s: record{t: real, y: vector{real}, q: P{a: real, n: int}}
+  b = record record{w: real, h: real} (2.0, 3.0)
+  q = record P{a: real, n: int} (1.5, n)  @22:7
+  %0 = call.builtin zeros(n)  @23:19
+  %1 = record record{t: real, y: vector{real}, q: P{a: real, n: int}} (0.0, %0, q)
+  clear %0
+  s = %1
+  %2 = call grow(s, 0.5)  @24:7
+  s = %2
+  %3 = call area(b)  @25:10
+  %4 = field.real s.q.a
+  %5 = add.real %3, %4
+  %6 = len.int s.y, 0
+  %7 = i2r %6
+  %8 = add.real %5, %7
+  ret %8
+
+function kw(x: real): P{a: real, n: int}
+  %0 = record P{a: real, n: int} (x, 2)  @29:10
+  ret %0
+
+function adds: not compiled: adds field b to s; a compiled record cannot change shape (34:3)
+
+function grow(s: record{t: real, y: vector{real}, q: P{a: real, n: int}}, h: real): record{t: real, y: vector{real}, q: P{a: real, n: int}}
+  %0 = field.real s.t
+  %1 = add.real %0, h
+  setfield.real s.t, %1
+  %2 = len.int s.y, 0
+  bound 1, %2  @15:16
+  %3 = load.real s.y, 1
+  %4 = mul.real %3, 2.0
+  %5 = len.int s.y, 0
+  bound 1, %5  @15:7
+  store.real s.y, 1, %4
+  %6 = field.int s.q.n
+  %7 = add.int %6, 1  @16:3
+  setfield.int s.q.n, %7
+  ret s
+
+function area(r: record{w: real, h: real}): real
+  %0 = field.real r.w
+  %1 = field.real r.h
+  %2 = mul.real %0, %1
+  ret %2

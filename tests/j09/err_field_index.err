@@ -1,0 +1,4 @@
+IndexError: index 4 is out of bounds for a dimension of length 3
+  at err_field_index.sci:4:7 in setk
+  at err_field_index.sci:9:7 in outer
+  at err_field_index.sci:12:1

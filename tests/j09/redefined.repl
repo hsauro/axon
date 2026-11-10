@@ -1,0 +1,19 @@
+> function jit_on()
+...   __jit_mode("on")
+... end
+> jit_on()
+> record P
+...   a: real
+... end
+> function make(x: real)
+...   return P(x)
+... end
+> make(1.0).a
+1.0
+> record P
+...   a: real
+... end
+> make(2.0)
+TypeError: record type P was redefined after this function was compiled
+  at <repl>:2:10 in make
+  at <repl>:1:1

@@ -1124,7 +1124,7 @@ begin
   begin
     Same := True;
     for K := 0 to High(Args) do
-      if JitTypeOf(Args[K]) <> F.JitLastTypes[K] then
+      if not JTypeMatches(Args[K], F.JitLastTypes[K]) then
       begin
         Same := False;
         Break;
@@ -1241,7 +1241,7 @@ begin
         Exit(False);
       V := AsRecord(V).Values[Idx];
     end;
-    if JTypeOfValue(V) <> C.Captures[K].Typ then
+    if not JTypeMatches(V, C.Captures[K].Typ) then
       Exit(False);
     Caps[K] := V;
   end;
@@ -1274,7 +1274,9 @@ var
       jtBool: ArgSlots[Slot] := Ord(V.B);
       jtInt:  ArgSlots[Slot] := V.I;
       jtReal: PDouble(@ArgSlots[Slot])^ := V.R;
-      jtVecReal, jtVecInt, jtMatReal: ArgSlots[Slot] := NativeInt(@V);
+    else
+      if IsBoxedType(T) then
+        ArgSlots[Slot] := NativeInt(@V);   // an array or record
     end;
   end;
 
@@ -1301,7 +1303,7 @@ begin
   for K := 0 to High(Caps) do
     Pack(Length(Args) + K, C.Captures[K].Typ, Caps[K]);
   for K := 0 to NRes - 1 do
-    if C.ResultTypes[K] in [jtVecReal, jtVecInt, jtMatReal] then
+    if IsBoxedType(C.ResultTypes[K]) then
     begin
       if ResVals = nil then
         SetLength(ResVals, NRes);
@@ -1320,7 +1322,9 @@ begin
       jtBool: Result[K] := BoolValue(ResSlots[K] <> 0);
       jtInt:  Result[K] := IntValue(ResSlots[K]);
       jtReal: Result[K] := RealValue(PDouble(@ResSlots[K])^);
-      jtVecReal, jtVecInt, jtMatReal: Result[K] := ResVals[K];
+    else
+      if IsBoxedType(C.ResultTypes[K]) then
+        Result[K] := ResVals[K];
     end;
 end;
 
@@ -1534,7 +1538,7 @@ begin
   if Code = nil then
     Exit;
   for I := 0 to High(Pos) do
-    if JitTypeOf(Pos[I]) <> TJitCode(Code).ParamTypes[I] then
+    if not JTypeMatches(Pos[I], TJitCode(Code).ParamTypes[I]) then
       Exit;
   if not CapturesFor(F, Code, Caps) then
     Exit;

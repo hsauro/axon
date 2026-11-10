@@ -1,0 +1,20 @@
+2-vector{real}
+  5.0
+  0.0 true 0 true true
+{t: 0.4, y: [0.675; 0.675; 0.675], steps: 4} true 0 true true
+{q: {a: 1.5, b: 2.0, n: 7}, r: {a: 3.0, b: 1.5, n: 1}, sum: 13.5} true 0 true true
+{p: {a: 0.5, b: 0.25, n: 11}, on: false} true 0 true true
+{s: {y: [5.0; 0.0; 0.0], k: 2}, t: {y: [0.0; 0.0; 0.0], k: 1}} true 1 true true
+14.0 true 1 true true
+10 2.0
+4-vector{real}
+  1.0
+  2.0
+  3.0
+  4.0 true 0 true true
+{a: 4.0, b: 1.0, n: 3} true 0 true true
+16.0 true 0 true true
+11.0 true 0 true true
+28.0 true 0 true true
+{a: 1.0, b: 2.0} true 0 true false
+{a: 2} true 0 true false

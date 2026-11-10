@@ -150,16 +150,35 @@ var
   E: TJEntry;
   Lines: TStringList;
   Funcs: TDictionary<string, TFunctionDecl>;
-  Prelude: TDictionary<string, TAxValue>;
+  Prelude, Records: TDictionary<string, TAxValue>;
   Session: TJSession;
+  RT: TRecordTypeObj;
+  FD: TFieldDecl;
+  RV: TAxValue;
 begin
   Lines := TStringList.Create;
   Funcs := TDictionary<string, TFunctionDecl>.Create;
   Prelude := TDictionary<string, TAxValue>.Create;
+  Records := TDictionary<string, TAxValue>.Create;
   try
     for S in Prog.Body do
       if S is TFunctionStmt then
-        Funcs.AddOrSetValue(TFunctionStmt(S).Func.Name, TFunctionStmt(S).Func);
+        Funcs.AddOrSetValue(TFunctionStmt(S).Func.Name, TFunctionStmt(S).Func)
+      else if S is TRecordStmt then
+      begin
+        // The file's record types, as the interpreter defines them (J9).
+        RT := TRecordTypeObj.Create;
+        RT.Name := TRecordStmt(S).Name;
+        for FD in TRecordStmt(S).Fields do
+        begin
+          RT.FieldNames := RT.FieldNames + [FD.Name];
+          RT.FieldTypes := RT.FieldTypes + [FD.TypeRef];
+        end;
+        RV := NothingValue;
+        RV.Kind := vkRecordType;
+        RV.Obj := RT;
+        Records.AddOrSetValue(RT.Name, RV);
+      end;
     DefineBuiltins(
       procedure(Name: string; V: TAxValue)
       begin
@@ -177,6 +196,11 @@ begin
           Result.Kind := rkFunction;
           Result.Decl := D;
           Result.FileName := Prog.FileName;
+        end
+        else if Records.TryGetValue(Name, V) then
+        begin
+          Result.Kind := rkOther;
+          Result.Value := V;
         end
         else if Prelude.TryGetValue(Name, V) then
         begin
@@ -216,6 +240,7 @@ begin
     end;
     Result := Lines.Text;
   finally
+    Records.Free;
     Prelude.Free;
     Funcs.Free;
     Lines.Free;

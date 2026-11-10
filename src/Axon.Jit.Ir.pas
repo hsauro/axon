@@ -58,7 +58,21 @@ unit Axon.Jit.Ir;
 
    A vector or matrix literal of scalar entries builds an array:
 
-     %3 = array.vector{real} 2, 1 (%1, %2)  rows, columns, then the entries row by row *)
+     %3 = array.vector{real} 2, 1 (%1, %2)  rows, columns, then the entries row by row
+
+   Records (J9) are typed by their shape: the field names in order, each
+   field's type, and the declared record type, if any. Each shape is entered
+   once in a process-wide table and gets its own TJType, from jtFirstRecord
+   up, so equal shapes are equal types. A field of a type that does not
+   compile is typed jtNothing (shown as "other"): the record compiles, but
+   the field cannot be used. A record register is a value slot, as an array
+   register is. An instruction can reach into a record through a path of
+   field positions, which the text form shows by name:
+
+     %1 = field.real p.k1                p.k1 (any depth: p.a.b)
+     setfield.real s.t, %2               s.t = %2 (each record on the path made unique first)
+     %3 = load.real s.y, i               s.y[i]: load, store and len take a path too
+     %4 = record record{a: real, b: int} (%1, 2)   a record literal or constructor *)
 
 interface
 
@@ -68,8 +82,22 @@ uses
 
 type
   { jtString only for string literals passed to print and error. The
-    array types follow the scalars. }
-  TJType = (jtNothing, jtBool, jtInt, jtReal, jtString, jtVecReal, jtVecInt, jtMatReal);
+    array types follow the scalars; record shapes (J9) take the numbers from
+    jtFirstRecord up, one per shape (RecordType). }
+  TJType = type Word;
+
+const
+  jtNothing = TJType(0);
+  jtBool = TJType(1);
+  jtInt = TJType(2);
+  jtReal = TJType(3);
+  jtString = TJType(4);
+  jtVecReal = TJType(5);
+  jtVecInt = TJType(6);
+  jtMatReal = TJType(7);
+  jtFirstRecord = TJType(16);
+
+type
 
   TJOperandKind = (jkReg, jkInt, jkReal, jkBool, jkLabel, jkString);
 
@@ -129,7 +157,10 @@ type
     joOp,                         // Dst := Ops.Ops[1] applied to Ops[0] (and Ops[2]) by Axon.Ops; Ops[1] is the token
     joClear,                      // Ops[0] (an array register) := nothing
     joBound,                      // IndexError unless 1 <= Ops[0] <= Ops[1]
-    joArray                       // Dst := a Typ array of Ops[0] rows and Ops[1] columns from Ops[2..] (row by row)
+    joArray,                      // Dst := a Typ array of Ops[0] rows and Ops[1] columns from Ops[2..] (row by row)
+    joField,                      // Dst := the field at Path of the record Ops[0]
+    joSetField,                   // the field at Path of the record Ops[0] := Ops[1]
+    joRecord                      // Dst := a record of shape Typ from Ops (its fields in order)
   );
 
   TJInsn = class
@@ -142,6 +173,9 @@ type
     Dsts: TArray<Integer>;        // joCall: result registers (-1 for one not used)
     Target: TJCallTarget;         // joCall
     Site2: Integer;               // joLoad/joStore with two indices: the second index's site
+    // J9: field positions from the record Ops[0] (joField, joSetField; and
+    // joLoad, joStore and joLen, whose array is then that field).
+    Path: TArray<Integer>;
   end;
 
   TJReg = record
@@ -193,10 +227,36 @@ function BoolOperand(V: Boolean): TJOperand;
 function LabelOperand(L: Integer): TJOperand;
 function StringOperand(const V: string): TJOperand;
 
+type
+  { A record shape: its fields in order, and the declared type, if any. }
+  TJShape = class
+  public
+    Names: TArray<string>;
+    Types: TArray<TJType>;
+    Decl: TRecordTypeObj;       // nil for a record literal's shape
+    DeclRef: IInterface;        // keeps the declared type alive
+    function IndexOf(const Name: string): Integer;
+  end;
+
 function JTypeName(T: TJType): string;
+(* As JTypeName, but a record type is only its declared type's name, or its
+   field names (record{t, y}), for logs and reports. *)
+function ShortTypeName(T: TJType): string;
 function IsArrayType(T: TJType): Boolean; inline;
+function IsRecordType(T: TJType): Boolean;
+{ An array or a record: a value slot in compiled code. }
+function IsBoxedType(T: TJType): Boolean;
+{ The shape of a record type. }
+function ShapeOf(T: TJType): TJShape;
+{ The type of a shape, entering it in the table the first time;
+  jtNothing when the table is full. }
+function RecordType(const Names: TArray<string>; const Types: TArray<TJType>;
+  Decl: TRecordTypeObj): TJType;
 { The JIR type of a value; jtNothing for one that does not compile. }
 function JTypeOfValue(const V: TAxValue): TJType;
+{ Whether V has type T, as JTypeOfValue(V) = T, checked without building a
+  shape; a field of T typed jtNothing accepts any value. }
+function JTypeMatches(const V: TAxValue; T: TJType): Boolean;
 { The element type of an array type. }
 function ElemOf(T: TJType): TJType;
 
@@ -249,12 +309,64 @@ begin
   Result.I := L;
 end;
 
-function JTypeName(T: TJType): string;
-const
-  Names: array[TJType] of string = ('nothing', 'bool', 'int', 'real', 'string',
-    'vector{real}', 'vector{int}', 'matrix{real}');
+var
+  Shapes: TObjectList<TJShape>;
+  ShapeIndex: TDictionary<string, Integer>;
+
+function TJShape.IndexOf(const Name: string): Integer;
 begin
-  Result := Names[T];
+  for Result := 0 to High(Names) do
+    if Names[Result] = Name then
+      Exit;
+  Result := -1;
+end;
+
+function JTypeName(T: TJType): string;
+var
+  Sh: TJShape;
+  K: Integer;
+begin
+  case T of
+    jtNothing: Result := 'nothing';
+    jtBool:    Result := 'bool';
+    jtInt:     Result := 'int';
+    jtReal:    Result := 'real';
+    jtString:  Result := 'string';
+    jtVecReal: Result := 'vector{real}';
+    jtVecInt:  Result := 'vector{int}';
+    jtMatReal: Result := 'matrix{real}';
+  else
+    if not IsRecordType(T) then
+      Exit('?');
+    Sh := ShapeOf(T);
+    if Sh.Decl <> nil then
+      Result := Sh.Decl.Name + '{'
+    else
+      Result := 'record{';
+    for K := 0 to High(Sh.Names) do
+    begin
+      if K > 0 then
+        Result := Result + ', ';
+      if Sh.Types[K] = jtNothing then
+        Result := Result + Sh.Names[K] + ': other'
+      else
+        Result := Result + Sh.Names[K] + ': ' + JTypeName(Sh.Types[K]);
+    end;
+    Result := Result + '}';
+  end;
+end;
+
+function ShortTypeName(T: TJType): string;
+var
+  Sh: TJShape;
+begin
+  if not IsRecordType(T) then
+    Exit(JTypeName(T));
+  Sh := ShapeOf(T);
+  if Sh.Decl <> nil then
+    Result := Sh.Decl.Name
+  else
+    Result := 'record{' + string.Join(', ', Sh.Names) + '}';
 end;
 
 function IsArrayType(T: TJType): Boolean;
@@ -262,9 +374,53 @@ begin
   Result := T in [jtVecReal, jtVecInt, jtMatReal];
 end;
 
+function IsRecordType(T: TJType): Boolean;
+begin
+  Result := (T >= jtFirstRecord) and (T - jtFirstRecord < Shapes.Count);
+end;
+
+function IsBoxedType(T: TJType): Boolean;
+begin
+  Result := IsArrayType(T) or IsRecordType(T);
+end;
+
+function ShapeOf(T: TJType): TJShape;
+begin
+  Result := Shapes[T - jtFirstRecord];
+end;
+
+function RecordType(const Names: TArray<string>; const Types: TArray<TJType>;
+  Decl: TRecordTypeObj): TJType;
+var
+  Key: string;
+  K, Idx: Integer;
+  Sh: TJShape;
+begin
+  Key := IntToHex(NativeInt(Decl), 16);
+  for K := 0 to High(Names) do
+    Key := Key + '|' + Names[K] + ':' + IntToStr(Types[K]);
+  if not ShapeIndex.TryGetValue(Key, Idx) then
+  begin
+    if Shapes.Count >= High(TJType) - jtFirstRecord then
+      Exit(jtNothing);
+    Sh := TJShape.Create;
+    Sh.Names := Copy(Names);
+    Sh.Types := Copy(Types);
+    Sh.Decl := Decl;
+    if Decl <> nil then
+      Sh.DeclRef := Decl;
+    Idx := Shapes.Add(Sh);
+    ShapeIndex.Add(Key, Idx);
+  end;
+  Result := jtFirstRecord + Idx;
+end;
+
 function JTypeOfValue(const V: TAxValue): TJType;
 var
   A: TArrayObj;
+  R: TRecordObj;
+  Types: TArray<TJType>;
+  K: Integer;
 begin
   case V.Kind of
     vkBool: Result := jtBool;
@@ -278,9 +434,43 @@ begin
         else if not A.IsVector and (A.ElemType = etReal) then Result := jtMatReal
         else Result := jtNothing;
       end;
+    vkRecord:
+      begin
+        R := AsRecord(V);
+        SetLength(Types, Length(R.Values));
+        for K := 0 to High(Types) do
+          Types[K] := JTypeOfValue(R.Values[K]);
+        Result := RecordType(R.Names, Types, R.DeclType);
+      end;
   else
     Result := jtNothing;
   end;
+end;
+
+function JTypeMatches(const V: TAxValue; T: TJType): Boolean;
+var
+  R: TRecordObj;
+  Sh: TJShape;
+  K: Integer;
+begin
+  if IsRecordType(T) then
+  begin
+    if V.Kind <> vkRecord then
+      Exit(False);
+    R := AsRecord(V);
+    Sh := ShapeOf(T);
+    if (R.DeclType <> Sh.Decl) or (Length(R.Names) <> Length(Sh.Names)) then
+      Exit(False);
+    for K := 0 to High(Sh.Names) do
+    begin
+      if R.Names[K] <> Sh.Names[K] then
+        Exit(False);
+      if (Sh.Types[K] <> jtNothing) and not JTypeMatches(R.Values[K], Sh.Types[K]) then
+        Exit(False);
+    end;
+    Exit(True);
+  end;
+  Result := (T <> jtNothing) and (JTypeOfValue(V) = T);
 end;
 
 function TJCapture.Text: string;
@@ -380,7 +570,7 @@ const
     'add', 'sub', 'mul', 'neg', 'div', 'pow',
     'eq', 'ne', 'lt', 'le', 'gt', 'ge',
     'not', 'jmp', 'bt', 'bf', 'count', 'elem', 'ret', 'call', 'load', 'store', 'len', 'op',
-    'clear', 'bound', 'array');
+    'clear', 'bound', 'array', 'field', 'setfield', 'record');
 
 procedure TJFunction.Dump(Lines: TStrings);
 var
@@ -436,6 +626,31 @@ var
         Result := Result + ', ';
       Result := Result + OperandText(Ops[K]);
     end;
+  end;
+
+  // The first operand with the instruction's field path: s.y, p.a.b.
+  function PathText(I: TJInsn): string;
+  var
+    K: Integer;
+    T: TJType;
+  begin
+    Result := OperandText(I.Ops[0]);
+    T := Regs[I.Ops[0].Reg].Typ;
+    for K := 0 to High(I.Path) do
+    begin
+      Result := Result + '.' + ShapeOf(T).Names[I.Path[K]];
+      T := ShapeOf(T).Types[I.Path[K]];
+    end;
+  end;
+
+  // The operands, the first one with its path.
+  function PathOperands(I: TJInsn): string;
+  var
+    K: Integer;
+  begin
+    Result := PathText(I);
+    for K := 1 to High(I.Ops) do
+      Result := Result + ', ' + OperandText(I.Ops[K]);
   end;
 
   function CallText(I: TJInsn): string;
@@ -560,6 +775,15 @@ begin
             Line := 'ret'
           else
             Line := 'ret ' + OperandList(Insn.Ops);
+        joRecord:
+          Line := Line + 'record ' + JTypeName(Insn.Typ) + ' (' + OperandList(Insn.Ops) + ')';
+        joField, joSetField:
+          Line := Line + OpNames[Insn.Op] + '.' + JTypeName(Insn.Typ) + ' ' + PathOperands(Insn);
+        joLoad, joStore, joLen:
+          if Length(Insn.Path) > 0 then
+            Line := Line + OpNames[Insn.Op] + '.' + JTypeName(Insn.Typ) + ' ' + PathOperands(Insn)
+          else
+            Line := Line + OpNames[Insn.Op] + '.' + JTypeName(Insn.Typ) + ' ' + OperandList(Insn.Ops);
       else
         Line := Line + OpNames[Insn.Op] + '.' + JTypeName(Insn.Typ) + ' ' + OperandList(Insn.Ops);
       end;
@@ -579,5 +803,13 @@ begin
     TempNumbers.Free;
   end;
 end;
+
+initialization
+  Shapes := TObjectList<TJShape>.Create(True);
+  ShapeIndex := TDictionary<string, Integer>.Create;
+
+finalization
+  ShapeIndex.Free;
+  Shapes.Free;
 
 end.

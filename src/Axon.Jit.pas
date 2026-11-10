@@ -72,6 +72,7 @@ type
   TJitHelpers = record
     Error, CountInt, CountReal, PowReal, Call, Frame, Recursion: Pointer;
     Assign, Move, Clear, MakeUnique, Leave, IndexError, NewArray: Pointer;
+    NewRecord, RecordUnique: Pointer;
   end;
 
 var
@@ -371,6 +372,69 @@ begin
     end;
 end;
 
+(* A record of shape T from its fields in the argument slots (bool, int and
+   real as values, arrays and records by slot address), as EvalRecord builds
+   a literal and CoerceRecord a declared record. For a constructor, Guard is
+   the variable that held the record type when the code was compiled: it
+   must hold it still. 0, or 1 after recording an error. *)
+function RtNewRecord(Dst: PAxValue; T: Int64; Args: PInt64; Guard: PAxValue;
+  Fid, Site: Int64): Int64; cdecl;
+var
+  Sh: TJShape;
+  R: TRecordObj;
+  V: TAxValue;
+  K: Integer;
+  Slot: PInt64;
+begin
+  try
+    Sh := ShapeOf(TJType(T));
+    if (Guard <> nil) and ((Guard^.Kind <> vkRecordType) or (AsRecordType(Guard^) <> Sh.Decl)) then
+    begin
+      Pending(Fid, Site, TypeError, Format('record type %s was redefined after this function ' +
+        'was compiled', [Sh.Decl.Name]));
+      Exit(1);
+    end;
+    R := TRecordObj.Create;
+    V := NothingValue;
+    V.Kind := vkRecord;
+    V.Obj := R;
+    R.Names := Sh.Names;
+    if Sh.Decl <> nil then
+    begin
+      R.DeclType := Sh.Decl;
+      R.DeclRef := Sh.DeclRef;
+    end;
+    SetLength(R.Values, Length(Sh.Names));
+    for K := 0 to High(Sh.Names) do
+    begin
+      Slot := PInt64(PByte(Args) + 8 * K);
+      case Sh.Types[K] of
+        jtBool: R.Values[K] := BoolValue(Slot^ <> 0);
+        jtInt:  R.Values[K] := IntValue(Slot^);
+        jtReal: R.Values[K] := RealValue(PDouble(Slot)^);
+      else
+        R.Values[K] := PAxValue(PPointer(Slot)^)^;
+      end;
+    end;
+    Dst^ := V;
+    Result := 0;
+  except
+    on E: Exception do
+    begin
+      Pending(Fid, Site, '', '');
+      PendExc := AcquireExceptionObject as Exception;
+      Result := 1;
+    end;
+  end;
+end;
+
+{ Copy-on-write before a field write, as MakeUnique: the record is copied
+  (one level) when another value shares it. }
+procedure RtRecordUnique(P: PAxValue); cdecl;
+begin
+  MakeUnique(P^);
+end;
+
 procedure RtIndexError(Fid, Site, Index, Len: Int64); cdecl;
 begin
   Pending(Fid, Site, IndexError, Format('index %d is out of bounds for a dimension of length %d',
@@ -379,30 +443,8 @@ end;
 
 { Whether R has the JIR type T. }
 function HasType(const R: TAxValue; T: TJType): Boolean;
-var
-  A: TArrayObj;
 begin
-  case T of
-    jtBool: Result := R.Kind = vkBool;
-    jtInt:  Result := R.Kind = vkInt;
-    jtReal: Result := R.Kind = vkReal;
-    jtVecReal, jtVecInt, jtMatReal:
-      begin
-        Result := R.Kind = vkArray;
-        if Result then
-        begin
-          A := AsArray(R);
-          case T of
-            jtVecReal: Result := A.IsVector and (A.ElemType = etReal);
-            jtVecInt:  Result := A.IsVector and (A.ElemType = etInt);
-          else
-            Result := not A.IsVector and (A.ElemType = etReal);
-          end;
-        end;
-      end;
-  else
-    Result := False;
-  end;
+  Result := JTypeMatches(R, T);
 end;
 
 { A call through the interpreter: a built-in, a function that is not
@@ -432,10 +474,11 @@ begin
         jtInt:    Boxed[K] := IntValue(Slot^);
         jtReal:   Boxed[K] := RealValue(PDouble(Slot)^);
         jtString: Boxed[K] := StringValue(CS.Strings[K]);
-        jtVecReal, jtVecInt, jtMatReal:
-          Boxed[K] := PAxValue(PPointer(Slot)^)^;
       else
-        Boxed[K] := NothingValue;
+        if IsBoxedType(CS.ArgTypes[K]) then
+          Boxed[K] := PAxValue(PPointer(Slot)^)^     // an array or record: its slot
+        else
+          Boxed[K] := NothingValue;
       end;
     end;
     if CS.IsOp then
@@ -460,7 +503,8 @@ begin
         jtBool: Res^ := Ord(R.B);
         jtInt:  Res^ := R.I;
         jtReal: PDouble(Res)^ := R.R;
-        jtVecReal, jtVecInt, jtMatReal:
+      else
+        if IsBoxedType(CS.ResultTypes[0]) then
           PAxValue(PPointer(Res)^)^ := R;
       end;
     end;
@@ -491,6 +535,8 @@ begin
   Result.Leave := @RtLeave;
   Result.IndexError := @RtIndexError;
   Result.NewArray := @RtNewArray;
+  Result.NewRecord := @RtNewRecord;
+  Result.RecordUnique := @RtRecordUnique;
 end;
 
 { ---- compiling ---- }
@@ -598,13 +644,24 @@ end;
 { The name in logs and reports: with its parameter types when they come
   from the arguments. }
 function DisplayName(E: TJEntry): string;
+var
+  K: Integer;
 begin
   if E.Decl.Name = '' then
     Result := Format('anonymous function at %d:%d', [E.Decl.Line, E.Decl.Col])
   else
     Result := E.Decl.Name;
   if IsSpecialised(E.Decl) then
-    Result := Result + '(' + TypesText(E.ParamTypes) + ')';
+  begin
+    Result := Result + '(';
+    for K := 0 to High(E.ParamTypes) do
+    begin
+      if K > 0 then
+        Result := Result + ', ';
+      Result := Result + ShortTypeName(E.ParamTypes[K]);
+    end;
+    Result := Result + ')';
+  end;
 end;
 
 function JitCompile(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;

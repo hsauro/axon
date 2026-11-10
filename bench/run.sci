@@ -146,6 +146,34 @@ function rob_bdf()
   return ode.solve(rob, [1.0; 0.0; 0.0], [0, 40], method = "bdf", rtol = 1e-8, atol = 1e-12).y
 end
 
+## Records (J9): a simulation step that keeps its state in a record.
+function record_steps(n: int): real
+  s = {t: 0.0, y: ones(10), steps: 0}
+  for k in 1:n
+    s.t = s.t + 0.01
+    for i in 1:length(s.y)
+      s.y[i] = s.y[i] + 0.01 * (s.t - s.y[i])
+    end
+    s.steps = s.steps + 1
+  end
+  return s.y[10] + s.steps
+end
+
+## An ODE whose right-hand side reads a parameter record, passed with params.
+record LVParams
+  a: real
+  b: real
+  c: real
+  d: real
+end
+lv_rec = function(t, y, q)
+  return [q.a*y[1] - q.b*y[1]*y[2]; q.c*y[1]*y[2] - q.d*y[2]]
+end
+function lv_params()
+  return ode.solve(lv_rec, [10.0; 5.0], [0, 50], rtol = 1e-8,
+                   params = LVParams(1.0, 0.1, 0.075, 1.5)).y
+end
+
 # ---------------------------------------------------------------- driver
 
 function pad(s, w)
@@ -186,4 +214,6 @@ row("matmul 60x60 (loops)", function() return matmul(A, B) end)
 row("nbody(1000)", function() return nbody(1000) end)
 row("ode rk45 Lotka-Volterra", lv_rk45)
 row("ode bdf Robertson", rob_bdf)
+row("record_steps(2000)", function() return record_steps(2000) end)
+row("ode rk45, parameter record", lv_params)
 println(pad("matmul 60x60 (BLAS *)", 30), lpad(time.format(time.bench(function() return A * B end).best), 10))

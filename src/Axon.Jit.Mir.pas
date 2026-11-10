@@ -62,8 +62,9 @@ uses
 
 var
   Ctx: TMirContext;
-  // Layout of values and arrays, measured in ComputeLayout.
+  // Layout of values, arrays and records, measured in ComputeLayout.
   LSlotSize, LObjOff, LIntfDelta, LRowsOff, LColsOff, LROff, LIOff, LRcOff: NativeInt;
+  LRecDelta, LValuesOff, LPayOff: NativeInt;
 
 type
   TRefCountAccess = class(TInterfacedObject);   // reaches the protected FRefCount
@@ -71,6 +72,7 @@ type
 procedure ComputeLayout;
 var
   A: TArrayObj;
+  R: TRecordObj;
   I: IInterface;
   V: TAxValue;
 begin
@@ -84,6 +86,15 @@ begin
   LRcOff := NativeInt(@TRefCountAccess(A).FRefCount) - NativeInt(Pointer(A));
   LObjOff := NativeInt(@V.Obj) - NativeInt(@V);
   LSlotSize := SizeOf(TAxValue);
+  I := nil;
+  // Records (J9): the object behind the interface, its field values, and
+  // where a value keeps a bool, int or real (one variant part).
+  R := TRecordObj.Create;
+  I := R;
+  LRecDelta := NativeInt(Pointer(R)) - NativeInt(Pointer(I));
+  LValuesOff := NativeInt(@R.Values) - NativeInt(Pointer(R));
+  LPayOff := NativeInt(@V.I) - NativeInt(@V);
+  Assert((NativeInt(@V.R) - NativeInt(@V) = LPayOff) and (NativeInt(@V.B) - NativeInt(@V) = LPayOff));
   I := nil;
 end;
 
@@ -125,6 +136,8 @@ begin
   MIR_load_external(Ctx, 'rt_leave', H.Leave);
   MIR_load_external(Ctx, 'rt_index_error', H.IndexError);
   MIR_load_external(Ctx, 'rt_new_array', H.NewArray);
+  MIR_load_external(Ctx, 'rt_new_record', H.NewRecord);
+  MIR_load_external(Ctx, 'rt_record_unique', H.RecordUnique);
   for N in ElementaryNames do
     MIR_load_external(Ctx, PAnsiChar(AnsiString('rt_' + N)), ElementaryRealFunction(N));
   MIR_load_external(Ctx, 'rt_atan2', ElementaryRealFunction('atan2'));
@@ -171,6 +184,7 @@ type
     CallProto, CallImport, FrameProto, FrameImport, RecProto, RecImport, D1Proto, D2Proto: TMirItem;
     PtrProto, PtrPtrProto, AssignImport, MoveImport, ClearImport, UniqueImport,
     LeaveProto, LeaveImport, IndexErrProto, IndexErrImport, NewArrayProto, NewArrayImport: TMirItem;
+    NewRecordProto, NewRecordImport, RecUniqueImport: TMirItem;
     // Arrays: the frame of value slots, and the single exit that releases it.
     SlotOf: TArray<Integer>;          // per JIR register: its slot, or -1
     NSlots, JunkSlot: Integer;
@@ -185,6 +199,14 @@ type
     procedure GenElem(I: TJInsn; IsStore: Boolean);
     procedure GenOp(I: TJInsn);
     procedure GenArray(I: TJInsn);
+    // records (J9)
+    function ObjAt(Addr: TMirReg; Delta: NativeInt): TMirReg;
+    procedure UniqueAt(Addr: TMirReg; Delta: NativeInt; Import: TMirItem);
+    function PathAddr(I: TJInsn; Unique: Boolean): TMirReg;
+    function ValueOf(I: TJInsn; Unique: Boolean): TMirReg;
+    procedure GenField(I: TJInsn);
+    procedure GenSetField(I: TJInsn);
+    procedure GenRecord(I: TJInsn);
     procedure SetupResultDests(I: TJInsn; const ResultTypes: TArray<TJType>);
     procedure ClearJunk(I: TJInsn; const ResultTypes: TArray<TJType>);
     function C(const Name: AnsiString): Int32;
@@ -419,7 +441,7 @@ procedure TGen.GenLen(I: TJInsn);
 var
   Obj, T: TMirReg;
 begin
-  Obj := ObjOf(I.Ops[0].Reg);
+  Obj := ObjAt(ValueOf(I, False), LIntfDelta);
   case I.Ops[1].I of
     1: E('mov', [Reg(I.Dst), MemOp(MIR_T_I32, LRowsOff, Obj)]);
     2: E('mov', [Reg(I.Dst), MemOp(MIR_T_I32, LColsOff, Obj)]);
@@ -463,8 +485,7 @@ end;
 procedure TGen.GenElem(I: TJInsn; IsStore: Boolean);
 var
   Arr, NIdx: Integer;
-  Obj, Data, Pos, Rows, Rc: TMirReg;
-  LShared, LReady: TMirInsn;
+  Obj, Data, Pos, Rows, Addr: TMirReg;
   Typ: Int32;
   Off: NativeInt;
   Elem: TAxMirOp;
@@ -474,25 +495,13 @@ begin
     NIdx := Length(I.Ops) - 2
   else
     NIdx := Length(I.Ops) - 1;
+  // The array's value: its register's slot, or the field at the path (each
+  // record on the way made unique first for a store).
+  Addr := ValueOf(I, IsStore);
   if IsStore then
-  begin
     // Copy-on-write, as AssignArraySlot: only when another value shares it.
-    LShared := MIR_new_label(Ctx);
-    LReady := MIR_new_label(Ctx);
-    Obj := ObjOf(Arr);
-    Rc := Scratch(MIR_T_I64);
-    E('mov', [RegOp(Rc), MemOp(MIR_T_I32, LRcOff, Obj)]);
-    E('bgt', [LabelOp(LShared), RegOp(Rc), IntOp(1)]);
-    MIR_append_insn(Ctx, Body, LReady);
-    Deferred.Add(
-      procedure
-      begin
-        MIR_append_insn(Ctx, Body, LShared);
-        E('call', [RefOp(PtrProto), RefOp(UniqueImport), RegOp(SlotAddr(SlotOf[Arr]))]);
-        E('jmp', [LabelOp(LReady)]);
-      end);
-  end;
-  Obj := ObjOf(Arr);
+    UniqueAt(Addr, LIntfDelta, UniqueImport);
+  Obj := ObjAt(Addr, LIntfDelta);
   if I.Typ = jtReal then
   begin
     Typ := MIR_T_D;
@@ -529,6 +538,139 @@ begin
     E('dmov', [Reg(I.Dst), Elem])
   else
     E('mov', [Reg(I.Dst), Elem]);
+end;
+
+{ ---- records (J9) ---- }
+
+{ The object a value at Addr holds (Delta: from its interface to it). }
+function TGen.ObjAt(Addr: TMirReg; Delta: NativeInt): TMirReg;
+begin
+  Result := Scratch(MIR_T_I64);
+  E('mov', [RegOp(Result), MemOp(MIR_T_I64, LObjOff, Addr)]);
+  E('add', [RegOp(Result), RegOp(Result), IntOp(Delta)]);
+end;
+
+{ Copy-on-write of the value at Addr: Import (rt_make_unique for an array,
+  rt_record_unique for a record) when another value shares its object. }
+procedure TGen.UniqueAt(Addr: TMirReg; Delta: NativeInt; Import: TMirItem);
+var
+  Obj, Rc: TMirReg;
+  LShared, LReady: TMirInsn;
+begin
+  LShared := MIR_new_label(Ctx);
+  LReady := MIR_new_label(Ctx);
+  Obj := ObjAt(Addr, Delta);
+  Rc := Scratch(MIR_T_I64);
+  E('mov', [RegOp(Rc), MemOp(MIR_T_I32, LRcOff, Obj)]);
+  E('bgt', [LabelOp(LShared), RegOp(Rc), IntOp(1)]);
+  MIR_append_insn(Ctx, Body, LReady);
+  Deferred.Add(
+    procedure
+    begin
+      MIR_append_insn(Ctx, Body, LShared);
+      E('call', [RefOp(PtrProto), RefOp(Import), RegOp(Addr)]);
+      E('jmp', [LabelOp(LReady)]);
+    end);
+end;
+
+{ The address of the value at the end of I's path, from the slot of its
+  first operand; with Unique, each record on the path is made unique before
+  it is entered, as SetIn does. }
+function TGen.PathAddr(I: TJInsn; Unique: Boolean): TMirReg;
+var
+  P, Obj, Vals, Next: TMirReg;
+  K: Integer;
+begin
+  P := SlotAddr(SlotOf[I.Ops[0].Reg]);
+  for K := 0 to High(I.Path) do
+  begin
+    if Unique then
+      UniqueAt(P, LRecDelta, RecUniqueImport);
+    Obj := ObjAt(P, LRecDelta);
+    Vals := Scratch(MIR_T_I64);
+    E('mov', [RegOp(Vals), MemOp(MIR_T_I64, LValuesOff, Obj)]);
+    Next := Scratch(MIR_T_I64);
+    E('add', [RegOp(Next), RegOp(Vals), IntOp(I.Path[K] * LSlotSize)]);
+    P := Next;
+  end;
+  Result := P;
+end;
+
+{ The array value an element or length instruction works on. }
+function TGen.ValueOf(I: TJInsn; Unique: Boolean): TMirReg;
+begin
+  if Length(I.Path) > 0 then
+    Result := PathAddr(I, Unique)
+  else
+    Result := SlotAddr(SlotOf[I.Ops[0].Reg]);
+end;
+
+{ Dst := the field at the path: an array or record shared into Dst's slot, a
+  number read from the value's variant part. }
+procedure TGen.GenField(I: TJInsn);
+var
+  P: TMirReg;
+begin
+  P := PathAddr(I, False);
+  if IsBoxedType(I.Typ) then
+    E('call', [RefOp(PtrPtrProto), RefOp(AssignImport), RegOp(SlotAddr(SlotOf[I.Dst])), RegOp(P)])
+  else if I.Typ = jtReal then
+    E('dmov', [Reg(I.Dst), MemOp(MIR_T_D, LPayOff, P)])
+  else if I.Typ = jtInt then
+    E('mov', [Reg(I.Dst), MemOp(MIR_T_I64, LPayOff, P)])
+  else
+    E('mov', [Reg(I.Dst), MemOp(MIR_T_U8, LPayOff, P)]);
+end;
+
+{ The field at the path := the value, after making each record on the path
+  unique. The field keeps its kind: only its value changes. }
+procedure TGen.GenSetField(I: TJInsn);
+var
+  P: TMirReg;
+begin
+  P := PathAddr(I, True);
+  if IsBoxedType(I.Typ) then
+    E('call', [RefOp(PtrPtrProto), RefOp(AssignImport), RegOp(P), Opnd(I.Ops[1])])
+  else if I.Typ = jtReal then
+    E('dmov', [MemOp(MIR_T_D, LPayOff, P), Opnd(I.Ops[1])])
+  else if I.Typ = jtInt then
+    E('mov', [MemOp(MIR_T_I64, LPayOff, P), Opnd(I.Ops[1])])
+  else
+    E('mov', [MemOp(MIR_T_U8, LPayOff, P), Opnd(I.Ops[1])]);
+end;
+
+{ A record literal or constructor: the fields in the argument slots, then
+  rt_new_record builds it in the destination slot. }
+procedure TGen.GenRecord(I: TJInsn);
+var
+  K, Site: Integer;
+  T: TJType;
+  St: TMirReg;
+  Guard: NativeInt;
+begin
+  for K := 0 to High(I.Ops) do
+  begin
+    case I.Ops[K].Kind of
+      jkReg:  T := J.Regs[I.Ops[K].Reg].Typ;
+      jkReal: T := jtReal;
+    else
+      T := jtInt;
+    end;
+    if T = jtReal then
+      E('dmov', [MemOp(MIR_T_D, 8 * K, ArgBuf), Opnd(I.Ops[K])])
+    else
+      E('mov', [MemOp(MIR_T_I64, 8 * K, ArgBuf), Opnd(I.Ops[K])]);
+  end;
+  Guard := 0;
+  if (I.Target <> nil) and (I.Target.ValuePtr <> nil) then
+    Guard := NativeInt(I.Target.ValuePtr);
+  Site := I.Site;
+  if Site < 0 then
+    Site := 0;
+  St := Scratch(MIR_T_I64);
+  E('call', [RefOp(NewRecordProto), RefOp(NewRecordImport), RegOp(St),
+    RegOp(SlotAddr(SlotOf[I.Dst])), IntOp(I.Typ), RegOp(ArgBuf), IntOp(Guard), IntOp(Fid), IntOp(Site)]);
+  E('bne', [LabelOp(FailLabel), RegOp(St), IntOp(0)]);
 end;
 
 { An operator on arrays: Axon.Ops through rt_call. }
@@ -597,7 +739,7 @@ var
   K, Slot: Integer;
 begin
   for K := 0 to High(ResultTypes) do
-    if IsArrayType(ResultTypes[K]) then
+    if IsBoxedType(ResultTypes[K]) then
     begin
       if (K <= High(I.Dsts)) and (I.Dsts[K] >= 0) then
         Slot := SlotOf[I.Dsts[K]]
@@ -612,7 +754,7 @@ var
   K: Integer;
 begin
   for K := 0 to High(ResultTypes) do
-    if IsArrayType(ResultTypes[K]) and ((K > High(I.Dsts)) or (I.Dsts[K] < 0)) then
+    if IsBoxedType(ResultTypes[K]) and ((K > High(I.Dsts)) or (I.Dsts[K] < 0)) then
       E('call', [RefOp(PtrProto), RefOp(ClearImport), RegOp(SlotAddr(JunkSlot))]);
 end;
 
@@ -946,7 +1088,7 @@ begin
     joRet:
       begin
         for K := 0 to High(I.Ops) do
-          if IsArrayType(J.ResultTypes[K]) then
+          if IsBoxedType(J.ResultTypes[K]) then
           begin
             // The caller's slot, whose address is in the result slot.
             T := Scratch(MIR_T_I64);
@@ -981,6 +1123,12 @@ begin
       E('call', [RefOp(PtrProto), RefOp(ClearImport), RegOp(SlotAddr(SlotOf[I.Ops[0].Reg]))]);
     joArray:
       GenArray(I);
+    joField:
+      GenField(I);
+    joSetField:
+      GenSetField(I);
+    joRecord:
+      GenRecord(I);
   else
     raise EMirError.CreateFmt('JIT: no code for JIR op %d', [Ord(I.Op)]);
   end;
@@ -1057,6 +1205,11 @@ begin
   V := Vars([MIR_T_P, MIR_T_I64, MIR_T_I64, MIR_T_I64, MIR_T_P], ['dst', 'rows', 'cols', 'isreal', 'args']);
   NewArrayProto := MIR_new_proto_arr(Ctx, 'rt_new_array_p', 0, nil, 5, @V[0]);
   NewArrayImport := MIR_new_import(Ctx, 'rt_new_array');
+  V := Vars([MIR_T_P, MIR_T_I64, MIR_T_P, MIR_T_P, MIR_T_I64, MIR_T_I64],
+    ['dst', 'shape', 'args', 'guard', 'fid', 'site']);
+  NewRecordProto := MIR_new_proto_arr(Ctx, 'rt_new_record_p', 1, @ResI64, 6, @V[0]);
+  NewRecordImport := MIR_new_import(Ctx, 'rt_new_record');
+  RecUniqueImport := MIR_new_import(Ctx, 'rt_record_unique');
   DeclareCalls;
 
   // A slot for every array register, and a junk slot for array results that
@@ -1064,7 +1217,7 @@ begin
   SetLength(SlotOf, J.Regs.Count);
   NSlots := 0;
   for K := 0 to J.Regs.Count - 1 do
-    if IsArrayType(J.Regs[K].Typ) then
+    if IsBoxedType(J.Regs[K].Typ) then
     begin
       SlotOf[K] := NSlots;
       Inc(NSlots);
@@ -1075,7 +1228,7 @@ begin
   for Insn in J.Insns do
     if Insn.Op = joCall then
       for K := 0 to High(Insn.Target.ResultTypes) do
-        if IsArrayType(Insn.Target.ResultTypes[K]) then
+        if IsBoxedType(Insn.Target.ResultTypes[K]) then
           JunkSlot := -2;
   if (NSlots > 0) or (JunkSlot = -2) then
   begin
@@ -1135,6 +1288,11 @@ begin
     begin
       HasCalls := True;
       if MaxArgs < Length(Insn.Ops) - 2 then MaxArgs := Length(Insn.Ops) - 2;
+    end
+    else if Insn.Op = joRecord then
+    begin
+      HasCalls := True;
+      if MaxArgs < Length(Insn.Ops) then MaxArgs := Length(Insn.Ops);
     end;
   if NSlots > 0 then
   begin

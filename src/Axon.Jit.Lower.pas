@@ -68,8 +68,18 @@ unit Axon.Jit.Lower;
      absent outside (TJFunction.LocalNames).
    - Vector and matrix literals whose entries are all numbers.
 
+   - Records (J9), typed by shape (Axon.Jit.Ir). Fields are read and written
+     through paths of field positions fixed at compile time (r.a.b,
+     r.y[i]); a write makes each record on its path unique first, as
+     AssignPath does, and must keep the field's type, since a compiled
+     record cannot change shape (a declared record widens numbers, as its
+     field coercion does). Record literals and constructors of declared
+     types build records. A temporary holding a field's array or record is
+     released right after its use, so it holds no reference the
+     interpreter would not.
+
    Not compiled yet, and rejected: ranges, masks and colons as indices,
-   fields of local records, strings other than print and error arguments,
+   strings other than print and error arguments,
    complex numbers, ranges as values, nested function definitions, try,
    global and keyword arguments.
 
@@ -219,6 +229,7 @@ type
     StmtLine, StmtCol: Integer;          // the innermost statement, for sites
     ReturnFixed, ReturnDeclared: Boolean;
     ReturnLine, ReturnCol: Integer;      // the return that fixed the result types
+    FieldTemps: TList<Integer>;          // temporaries holding a field's array or record
     procedure Reject(const Msg: string; N: TNode); overload;
     procedure Reject(const Fmt: string; const Args: array of const; N: TNode); overload;
     function Site: Integer;
@@ -260,6 +271,19 @@ type
     procedure LowerForEach(S: TForStmt);
     function Capture(E: TExpr; const Path: TArray<string>): TJValue;
     function LowerField(E: TFieldExpr): TJValue;
+    // records (J9)
+    function ResolvePath(BaseTyp: TJType; const Names: TArray<string>; N: TNode;
+      const BaseText: string; out Path: TArray<Integer>; out Declared: Boolean): TJType;
+    function TryFieldPath(E: TExpr; out Base: TJValue; out Path: TArray<Integer>;
+      out Typ: TJType; out Declared: Boolean; Writing: Boolean = False): Boolean;
+    function ArrayLenPath(const Base: TJValue; const Path: TArray<Integer>; Dim: Integer): TJValue;
+    function LowerRecordLit(E: TRecordExpr): TJValue;
+    function LowerConstruct(E: TCallExpr; const R: TJResolved): TJValue;
+    procedure LowerFieldAssign(S: TAssignStmt);
+    procedure ReleaseFieldTemps(const Ops: array of TJOperand);
+    procedure ReleaseTemps(const Ops: array of TJOperand);
+    function TryPathBuiltin(E: TCallExpr; const Name: string; Want: Integer;
+      out Vals: TArray<TJValue>): Boolean;
     function LowerMatrix(E: TMatrixExpr): TJValue;
     procedure CheckCaptures;
     procedure LowerDestructure(S: TDestructureStmt);
@@ -289,7 +313,7 @@ end;
 { A type a variable, parameter or result can have. }
 function Storable(T: TJType): Boolean;
 begin
-  Result := Numeric(T) or IsArrayType(T);
+  Result := Numeric(T) or IsBoxedType(T);
 end;
 
 function Rank(T: TJType): Integer;
@@ -330,6 +354,16 @@ begin
     Result := Format('type %s is not compiled yet', [T.ToString]);
 end;
 
+{ The type names the interpreter knows itself (Coerce): anything else in an
+  annotation names a declared record type. }
+function IsBuiltinTypeName(const N: string): Boolean;
+begin
+  Result := (N = 'bool') or (N = 'int') or (N = 'real') or (N = 'complex') or
+    (N = 'string') or (N = 'nothing') or (N = 'range') or (N = 'function') or
+    (N = 'vector') or (N = 'matrix') or (N = 'sparse') or (N = 'list') or
+    (N = 'record') or (N = 'dict') or (N = 'pointer');
+end;
+
 function MakeValue(Typ: TJType; const Opnd: TJOperand): TJValue;
 begin
   Result.Typ := Typ;
@@ -351,6 +385,17 @@ begin
   end;
 end;
 
+function SameTypes(const A, B: TArray<TJType>): Boolean;
+var
+  K: Integer;
+begin
+  Result := Length(A) = Length(B);
+  if Result then
+    for K := 0 to High(A) do
+      if A[K] <> B[K] then
+        Exit(False);
+end;
+
 { TLowerer }
 
 constructor TLowerer.Create(ADecl: TFunctionDecl; ASession: TJSession; AEntry: TJEntry;
@@ -367,10 +412,12 @@ begin
   Vars := TObjectList<TJVar>.Create(True);
   Scopes := TObjectList<TScopeMap>.Create(True);
   Loops := TList<TLoop>.Create;
+  FieldTemps := TList<Integer>.Create;
 end;
 
 destructor TLowerer.Destroy;
 begin
+  FieldTemps.Free;
   OutsideNames.Free;
   CaptureRegs.Free;
   EndStack.Free;
@@ -566,8 +613,10 @@ begin
       Result := LowerField(TFieldExpr(E))
     else if C = TMatrixExpr then
       Result := LowerMatrix(TMatrixExpr(E))
-    else if (C = TListExpr) or (C = TRecordExpr) then
-      Reject('list and record literals are not compiled', E)
+    else if C = TRecordExpr then
+      Result := LowerRecordLit(TRecordExpr(E))
+    else if C = TListExpr then
+      Reject('list literals are not compiled', E)
     else if C = TStringLit then
       Reject('strings are not compiled', E)
     else if C = TImagLit then
@@ -830,14 +879,25 @@ begin
   Name := TNameExpr(E.Callee).Name;
   if Lookup(Name) <> nil then
     Reject('calls the local variable %s; calls of function values are not compiled', [Name], E);
-  for A in E.Args do
-    if A.Kind <> akPositional then
-      Reject('keyword arguments are not compiled yet', E);
   R := Session.Resolve(Context, Name);
   if R.Kind = rkNone then
     Reject('calls %s, which is not defined', [Name], E);
+  if (R.Kind = rkOther) and (R.Value.Kind = vkRecordType) then
+  begin
+    // A constructor of a declared record type: one record.
+    if (Want >= 0) and (Want <> 1) then
+      Reject('uses %s, which returns one value, where %d are wanted', [Name, Want], E);
+    Result := [LowerConstruct(E, R)];
+    Exit;
+  end;
   if R.Kind = rkOther then
     Reject('calls %s, which is not a function', [Name], E);
+  for A in E.Args do
+    if A.Kind <> akPositional then
+      Reject('keyword arguments are not compiled yet', E);
+  // length(r.y) and size(r.M, ...): read through the path, with no temporary.
+  if (R.Kind = rkBuiltin) and TryPathBuiltin(E, R.Name, Want, Result) then
+    Exit;
 
   // Arguments, left to right. String literals only for print and error.
   SetLength(Args, E.Args.Count);
@@ -887,6 +947,7 @@ begin
   end;
   Insn := F.Emit(joCall, jtNothing, -1, Ops, F.AddSite(E.Line, E.Col));
   Insn.Target := T;
+  ReleaseFieldTemps(Ops);
   SetLength(Insn.Dsts, Length(Results));
   SetLength(Result, 0);
   for K := 0 to High(Results) do
@@ -1165,7 +1226,36 @@ function TLowerer.LowerIndex(E: TIndexExpr): TJValue;
 var
   A, I, J: TJValue;
   Dst: Integer;
+  Path: TArray<Integer>;
+  T: TJType;
+  Declared: Boolean;
+  Insn: TJInsn;
 begin
+  // s.y[i]: the array of a local record's field, read through the path.
+  if TryFieldPath(E.Target, A, Path, T, Declared) then
+  begin
+    if not IsArrayType(T) then
+      Reject('indexing %s is not compiled', [JTypeName(T)], E);
+    Dst := Temp(ElemOf(T));
+    if E.Items.Count = 1 then
+    begin
+      I := LowerIndexItem(E.Items[0], ArrayLenPath(A, Path, 0));
+      Insn := F.Emit(joLoad, ElemOf(T), Dst, [A.Opnd, I.Opnd]);
+    end
+    else if (E.Items.Count = 2) and (T = jtMatReal) then
+    begin
+      I := LowerIndexItem(E.Items[0], ArrayLenPath(A, Path, 1));
+      J := LowerIndexItem(E.Items[1], ArrayLenPath(A, Path, 2));
+      Insn := F.Emit(joLoad, ElemOf(T), Dst, [A.Opnd, I.Opnd, J.Opnd]);
+    end
+    else
+    begin
+      Reject('%s with %d indices, an IndexError', [JTypeName(T), E.Items.Count], E);
+      Insn := nil;
+    end;
+    Insn.Path := Path;
+    Exit(MakeValue(ElemOf(T), RegOperand(Dst)));
+  end;
   A := LowerExpr(E.Target);
   if not IsArrayType(A.Typ) then
     Reject('indexing %s is not compiled', [JTypeName(A.Typ)], E);
@@ -1193,12 +1283,48 @@ var
   T: TIndexExpr;
   Val, A, I, J: TJValue;
   V: TJVar;
-  Elem: TJType;
+  Elem, FT: TJType;
+  Path: TArray<Integer>;
+  Declared: Boolean;
+  Insn: TJInsn;
 begin
   T := TIndexExpr(S.Target);
   Val := LowerExpr(S.Value);
+  if T.Target is TFieldExpr then
+  begin
+    // s.y[i] = x: through the path, each record on it made unique first.
+    if not TryFieldPath(T.Target, A, Path, FT, Declared, True) then
+      Reject('assigns an element of a field of a value that is not a local record', S);
+    if not IsArrayType(FT) then
+      Reject('assigns an element of %s', [JTypeName(FT)], S);
+    Elem := ElemOf(FT);
+    if not Numeric(Val.Typ) then
+      Reject('assigning %s to elements of an array is not compiled yet', [JTypeName(Val.Typ)], S);
+    if Rank(Val.Typ) > Rank(Elem) then
+      Reject('stores %s in %s, which would change its element type', [JTypeName(Val.Typ),
+        JTypeName(FT)], S);
+    Val := Convert(Val, Elem);
+    if T.Items.Count = 1 then
+    begin
+      I := LowerIndexItem(T.Items[0], ArrayLenPath(A, Path, 0));
+      Insn := F.Emit(joStore, Elem, -1, [A.Opnd, I.Opnd, Val.Opnd]);
+    end
+    else if (T.Items.Count = 2) and (FT = jtMatReal) then
+    begin
+      I := LowerIndexItem(T.Items[0], ArrayLenPath(A, Path, 1));
+      J := LowerIndexItem(T.Items[1], ArrayLenPath(A, Path, 2));
+      Insn := F.Emit(joStore, Elem, -1, [A.Opnd, I.Opnd, J.Opnd, Val.Opnd]);
+    end
+    else
+    begin
+      Reject('%s with %d indices, an IndexError', [JTypeName(FT), T.Items.Count], S);
+      Insn := nil;
+    end;
+    Insn.Path := Path;
+    Exit;
+  end;
   if not (T.Target is TNameExpr) then
-    Reject('assignment into a nested element or field is not compiled yet', S);
+    Reject('assignment into a nested element is not compiled yet', S);
   V := Lookup(TNameExpr(T.Target).Name);
   if (V = nil) or not IsAssigned(V) then
     Reject('assigns an element of %s, which is not a local array here', [TNameExpr(T.Target).Name], S);
@@ -1281,6 +1407,7 @@ begin
     F.Emit(joOp, Res, Dst, [L.Opnd, Tok], Site)
   else
     F.Emit(joOp, Res, Dst, [L.Opnd, Tok, R.Opnd], Site);
+  ReleaseFieldTemps([L.Opnd, R.Opnd]);
   Result := MakeValue(Res, RegOperand(Dst));
 end;
 
@@ -1411,22 +1538,358 @@ begin
   Result := MakeValue(T, RegOperand(Reg));
 end;
 
-{ p.a.b: a capture when p is not local; fields of local values do not compile. }
+{ p.a.b: a capture when p is not local; the field of a local record, or of
+  any other record value, read through its path (J9). }
 function TLowerer.LowerField(E: TFieldExpr): TJValue;
 var
-  Path: TArray<string>;
+  Names: TArray<string>;
   X: TExpr;
+  Base: TJValue;
+  Path: TArray<Integer>;
+  T: TJType;
+  Declared: Boolean;
+  Dst: Integer;
+  Insn: TJInsn;
 begin
-  Path := [E.Name];
+  Names := [E.Name];
   X := E.Target;
   while X is TFieldExpr do
   begin
-    Path := [TFieldExpr(X).Name] + Path;
+    Names := [TFieldExpr(X).Name] + Names;
     X := TFieldExpr(X).Target;
   end;
-  if not (X is TNameExpr) or (Lookup(TNameExpr(X).Name) <> nil) then
-    Reject('field access on a local value is not compiled', E);
-  Result := Capture(E, [TNameExpr(X).Name] + Path);
+  if (X is TNameExpr) and (Lookup(TNameExpr(X).Name) = nil) then
+    Exit(Capture(E, [TNameExpr(X).Name] + Names));
+  // The base: a local variable, or any expression that gives a record.
+  Base := LowerExpr(X);
+  T := ResolvePath(Base.Typ, Names, E, '', Path, Declared);
+  Dst := Temp(T);
+  Insn := F.Emit(joField, T, Dst, [Base.Opnd]);
+  Insn.Path := Path;
+  if IsBoxedType(T) then
+    FieldTemps.Add(Dst);
+  Result := MakeValue(T, RegOperand(Dst));
+end;
+
+{ The field positions of Names from a record of type BaseTyp, and the last
+  field's type. A field the shape lacks is the interpreter's FieldError and
+  one of a type that does not compile cannot be used, so both reject.
+  Declared: the record holding the last field is of a declared type. }
+function TLowerer.ResolvePath(BaseTyp: TJType; const Names: TArray<string>; N: TNode;
+  const BaseText: string; out Path: TArray<Integer>; out Declared: Boolean): TJType;
+var
+  K, Idx: Integer;
+  Sh: TJShape;
+  Text: string;
+begin
+  Result := BaseTyp;
+  Text := BaseText;
+  SetLength(Path, Length(Names));
+  Declared := False;
+  for K := 0 to High(Names) do
+  begin
+    if not IsRecordType(Result) then
+    begin
+      if Text = '' then
+        Reject('field access on %s, which is not a record', [JTypeName(Result)], N);
+      Reject('reads field %s of %s, which is %s, not a record', [Names[K], Text,
+        JTypeName(Result)], N);
+    end;
+    Sh := ShapeOf(Result);
+    Idx := Sh.IndexOf(Names[K]);
+    if Idx < 0 then
+      Reject('%s has no field %s, a FieldError', [JTypeName(Result), Names[K]], N);
+    Path[K] := Idx;
+    Declared := Sh.Decl <> nil;
+    Result := Sh.Types[Idx];
+    if Text = '' then Text := Names[K] else Text := Text + '.' + Names[K];
+    if Result = jtNothing then
+      Reject('field %s holds a value of a type that is not compiled', [Text], N);
+  end;
+end;
+
+{ E as a field path on a local record variable: r.a, r.a.b. False when E
+  is not a field expression or its base is not such a variable (a capture,
+  a call); nothing is lowered then. Writing: the path is a write's target. }
+function TLowerer.TryFieldPath(E: TExpr; out Base: TJValue; out Path: TArray<Integer>;
+  out Typ: TJType; out Declared: Boolean; Writing: Boolean): Boolean;
+var
+  Names: TArray<string>;
+  X: TExpr;
+  V: TJVar;
+  Sh: TJShape;
+  Last: TJType;
+  K: Integer;
+begin
+  Result := False;
+  if not (E is TFieldExpr) then
+    Exit;
+  Names := [TFieldExpr(E).Name];
+  X := TFieldExpr(E).Target;
+  while X is TFieldExpr do
+  begin
+    Names := [TFieldExpr(X).Name] + Names;
+    X := TFieldExpr(X).Target;
+  end;
+  if not (X is TNameExpr) then
+    Exit;
+  V := Lookup(TNameExpr(X).Name);
+  if V = nil then
+    Exit;
+  if not IsAssigned(V) then
+    Reject('%s may be read before it is assigned', [V.Name], E);
+  if Writing then
+  begin
+    // A field the record lacks would be added: the shape would change.
+    Last := V.Typ;
+    for K := 0 to High(Names) - 1 do
+      if IsRecordType(Last) and (ShapeOf(Last).IndexOf(Names[K]) >= 0) then
+        Last := ShapeOf(Last).Types[ShapeOf(Last).IndexOf(Names[K])]
+      else
+        Break;
+    if IsRecordType(Last) then
+    begin
+      Sh := ShapeOf(Last);
+      if (Sh.IndexOf(Names[High(Names)]) < 0) and (Sh.Decl = nil) then
+        Reject('adds field %s to %s; a compiled record cannot change shape',
+          [Names[High(Names)], V.Name], E);
+    end;
+  end;
+  Base := MakeValue(V.Typ, RegOperand(V.Reg));
+  Typ := ResolvePath(V.Typ, Names, E, V.Name, Path, Declared);
+  Result := True;
+end;
+
+{ The element count (Dim 0), rows (1) or columns (2) of the array at Path. }
+function TLowerer.ArrayLenPath(const Base: TJValue; const Path: TArray<Integer>; Dim: Integer): TJValue;
+var
+  R: Integer;
+  Insn: TJInsn;
+begin
+  R := Temp(jtInt);
+  Insn := F.Emit(joLen, jtInt, R, [Base.Opnd, IntOperand(Dim)]);
+  Insn.Path := Path;
+  Result := MakeValue(jtInt, RegOperand(R));
+end;
+
+{ length(r.y), size(r.M), size(r.M, d): False when the call is not one of
+  these on a local record's array field. }
+function TLowerer.TryPathBuiltin(E: TCallExpr; const Name: string; Want: Integer;
+  out Vals: TArray<TJValue>): Boolean;
+var
+  Base: TJValue;
+  Path: TArray<Integer>;
+  T: TJType;
+  Declared: Boolean;
+  D: Int64;
+begin
+  Result := False;
+  if not ((Name = 'length') or (Name = 'size')) or (E.Args.Count = 0) or (E.Args.Count > 2) then
+    Exit;
+  if (E.Args.Count = 2) and not (E.Args[1].Value is TIntLit) then
+    Exit;
+  if not TryFieldPath(E.Args[0].Value, Base, Path, T, Declared) or not IsArrayType(T) then
+    Exit;
+  if (Name = 'length') and (E.Args.Count = 1) then
+    Vals := [ArrayLenPath(Base, Path, 0)]
+  else if (Name = 'size') and (E.Args.Count = 1) then
+    Vals := [ArrayLenPath(Base, Path, 1), ArrayLenPath(Base, Path, 2)]
+  else if Name = 'size' then
+  begin
+    D := TIntLit(E.Args[1].Value).Value;
+    if (D <> 1) and (D <> 2) then
+      Exit;
+    Vals := [ArrayLenPath(Base, Path, D)];
+  end
+  else
+    Exit;
+  if (Want >= 0) and (Length(Vals) <> Want) then
+    Reject('uses %s, which returns %d values, where %d are wanted', [Name, Length(Vals), Want], E);
+  Result := True;
+end;
+
+{ After an instruction that used them: the temporaries holding a field's
+  array or record let go of it, as the interpreter's temporary values do. }
+procedure TLowerer.ReleaseFieldTemps(const Ops: array of TJOperand);
+var
+  O: TJOperand;
+begin
+  for O in Ops do
+    if (O.Kind = jkReg) and FieldTemps.Contains(O.Reg) then
+    begin
+      F.Emit(joClear, jtNothing, -1, [O]);
+      FieldTemps.Remove(O.Reg);
+    end;
+end;
+
+{ After an instruction that stored them in a record: temporaries holding an
+  array or record let go of it, so the record's field holds the only
+  reference, as the interpreter's would. }
+procedure TLowerer.ReleaseTemps(const Ops: array of TJOperand);
+var
+  O: TJOperand;
+begin
+  for O in Ops do
+    if (O.Kind = jkReg) and (F.Regs[O.Reg].Name = '') and IsBoxedType(F.Regs[O.Reg].Typ) then
+    begin
+      F.Emit(joClear, jtNothing, -1, [O]);
+      FieldTemps.Remove(O.Reg);
+    end;
+end;
+
+(* {a: x, b: y}: the values in order, then the record (EvalRecord). *)
+function TLowerer.LowerRecordLit(E: TRecordExpr): TJValue;
+var
+  Vals: TArray<TJValue>;
+  Types: TArray<TJType>;
+  Ops: TArray<TJOperand>;
+  K, Dst: Integer;
+  T: TJType;
+begin
+  SetLength(Vals, E.Values.Count);
+  SetLength(Types, E.Values.Count);
+  SetLength(Ops, E.Values.Count);
+  for K := 0 to E.Values.Count - 1 do
+  begin
+    Vals[K] := LowerExpr(E.Values[K]);
+    if not Storable(Vals[K].Typ) then
+      Reject('field %s holds %s, which is not compiled', [E.Names[K], JTypeName(Vals[K].Typ)], E);
+    Types[K] := Vals[K].Typ;
+    Ops[K] := Vals[K].Opnd;
+  end;
+  T := RecordType(E.Names.ToArray, Types, nil);
+  if T = jtNothing then
+    Reject('too many record shapes', E);
+  Dst := Temp(T);
+  F.Emit(joRecord, T, Dst, Ops);
+  ReleaseTemps(Ops);
+  Result := MakeValue(T, RegOperand(Dst));
+end;
+
+{ T(x, y) or T(a = x, b = y) for a declared record type T: the arguments in
+  order, then each field coerced to its declared type (ConstructRecord and
+  CoerceRecord). The constructor is checked to be T still when it runs. }
+function TLowerer.LowerConstruct(E: TCallExpr; const R: TJResolved): TJValue;
+var
+  RT: TRecordTypeObj;
+  Names: TArray<string>;
+  Vals: TArray<TJValue>;
+  Types: TArray<TJType>;
+  Ops: TArray<TJOperand>;
+  A: TArg;
+  NPos, K, P, Dst: Integer;
+  TR: TTypeRef;
+  JT, T: TJType;
+  V: TJValue;
+  R2: TJResolved;
+  What: string;
+  Insn: TJInsn;
+  Tg: TJCallTarget;
+begin
+  RT := AsRecordType(R.Value);
+  NPos := 0;
+  for A in E.Args do
+    case A.Kind of
+      akPositional:
+        begin
+          if NPos >= Length(RT.FieldNames) then
+            Reject('%s has %d fields, got more positional arguments, an ArgumentError',
+              [RT.Name, Length(RT.FieldNames)], E);
+          Names := Names + [RT.FieldNames[NPos]];
+          Vals := Vals + [LowerExpr(A.Value)];
+          Inc(NPos);
+        end;
+      akKeyword:
+        begin
+          for K := 0 to High(Names) do
+            if Names[K] = A.Name then
+              Reject('field %s of %s given twice, an ArgumentError', [A.Name, RT.Name], E);
+          Names := Names + [A.Name];
+          Vals := Vals + [LowerExpr(A.Value)];
+        end;
+    else
+      Reject('"=>" pairs are only accepted by dict(...), a TypeError', E);
+    end;
+  for K := 0 to High(Names) do
+    if RT.IndexOf(Names[K]) < 0 then
+      Reject('record type %s has no field %s, a FieldError', [RT.Name, Names[K]], E);
+  SetLength(Types, Length(RT.FieldNames));
+  SetLength(Ops, Length(RT.FieldNames));
+  for K := 0 to High(RT.FieldNames) do
+  begin
+    P := -1;
+    for NPos := 0 to High(Names) do
+      if Names[NPos] = RT.FieldNames[K] then
+        P := NPos;
+    if P < 0 then
+      Reject('field %s of %s is missing, a FieldError', [RT.FieldNames[K], RT.Name], E);
+    V := Vals[P];
+    TR := RT.FieldTypes[K];
+    What := Format('field "%s" of %s', [RT.FieldNames[K], RT.Name]);
+    if TypeOfRef(TR, JT) then
+      V := Coerce(V, JT, Format('%s, declared %s, is given %s', [What, JTypeName(JT),
+        JTypeName(V.Typ)]), E)
+    else if (TR.Param = nil) and (TR.Name = 'vector') then
+    begin
+      if not (V.Typ in [jtVecReal, jtVecInt]) then
+        Reject('%s, declared vector, is given %s', [What, JTypeName(V.Typ)], E);
+    end
+    else if (TR.Param = nil) and (TR.Name = 'matrix') then
+    begin
+      if V.Typ <> jtMatReal then
+        Reject('%s, declared matrix, is given %s', [What, JTypeName(V.Typ)], E);
+    end
+    else
+    begin
+      // Another declared record type: the value must be of exactly that type.
+      R2 := Session.Resolve(Context, TR.Name);
+      if not ((TR.Param = nil) and (R2.Value.Kind = vkRecordType) and IsRecordType(V.Typ) and
+        (ShapeOf(V.Typ).Decl = AsRecordType(R2.Value))) then
+        Reject('%s: type %s is not compiled here', [What, TR.ToString], E);
+    end;
+    Types[K] := V.Typ;
+    Ops[K] := V.Opnd;
+  end;
+  T := RecordType(Copy(RT.FieldNames), Types, RT);
+  if T = jtNothing then
+    Reject('too many record shapes', E);
+  Dst := Temp(T);
+  Insn := F.Emit(joRecord, T, Dst, Ops, F.AddSite(E.Line, E.Col));
+  // The guard: the name still holds this record type when the code runs.
+  Tg := TJCallTarget.Create;
+  F.Targets.Add(Tg);
+  Tg.Name := RT.Name;
+  Tg.Value := R.Value;
+  Tg.ValuePtr := R.ValuePtr;
+  Insn.Target := Tg;
+  ReleaseTemps(Ops);
+  Result := MakeValue(T, RegOperand(Dst));
+end;
+
+{ r.a = x, r.a.b = x: the value first, then the write through the path. The
+  field keeps its type; a declared record widens a narrower number. }
+procedure TLowerer.LowerFieldAssign(S: TAssignStmt);
+var
+  Val, Base: TJValue;
+  Path: TArray<Integer>;
+  T: TJType;
+  Declared: Boolean;
+  Insn: TJInsn;
+begin
+  Val := LowerExpr(S.Value);
+  if not TryFieldPath(S.Target, Base, Path, T, Declared, True) then
+    Reject('assigns a field of a value that is not a local record', S);
+  if Val.Typ <> T then
+  begin
+    if Declared and Numeric(Val.Typ) and Numeric(T) and (Rank(Val.Typ) < Rank(T)) then
+      Val := Convert(Val, T)
+    else
+      Reject('assigns %s to a field that holds %s; a compiled record cannot change shape',
+        [JTypeName(Val.Typ), JTypeName(T)], S);
+  end;
+  Insn := F.Emit(joSetField, T, -1, [Base.Opnd, Val.Opnd]);
+  Insn.Path := Path;
+  ReleaseTemps([Val.Opnd]);
 end;
 
 { [a; b], [a, b; c, d]: entries that are numbers, evaluated row by row, of
@@ -1632,8 +2095,15 @@ begin
     LowerIndexAssign(S);
     Exit;
   end;
+  if S.Target is TFieldExpr then
+  begin
+    if S.TypeRef <> nil then
+      Reject('only a plain variable can carry a type annotation, a TypeError', S);
+    LowerFieldAssign(S);
+    Exit;
+  end;
   if not (S.Target is TNameExpr) then
-    Reject('assignment to a field is not compiled yet', S);
+    Reject('this assignment target is not compiled', S);
   Name := TNameExpr(S.Target).Name;
   // The value is evaluated before the target is resolved.
   Val := LowerExpr(S.Value);
@@ -1764,7 +2234,7 @@ begin
       F.ResultTypes.Clear;
       F.ResultTypes.AddRange(Types);
     end
-    else if TypeList(Types) <> TypeList(F.ResultTypes.ToArray) then
+    else if not SameTypes(Types, F.ResultTypes.ToArray) then
     begin
       if N = Decl then
         Reject('returns %s at %d:%d but can also reach the end and return nothing',
@@ -2020,6 +2490,12 @@ begin
       Reject('parameter %s: %s', [P.Name, TypeHint(P.TypeRef)], P);
     end;
     T := ParamTypes[K];
+    // Annotated with a declared record type: the argument's shape must be of
+    // the type the annotation names here.
+    if (P.TypeRef <> nil) and IsRecordType(T) and
+      not ((Session.Resolve(Context, P.TypeRef.Name).Value.Kind = vkRecordType) and
+      (ShapeOf(T).Decl = AsRecordType(Session.Resolve(Context, P.TypeRef.Name).Value))) then
+      Reject('parameter %s: the argument is not a %s', [P.Name, P.TypeRef.ToString], P);
     // An unannotated parameter is an untyped variable.
     V := NewVar(P.Name, T, P.TypeRef <> nil, P, 0, True);
     MarkAssigned(V);
@@ -2086,10 +2562,17 @@ begin
   end;
 end;
 
+{ By type number: two record shapes can have the same text. }
 function SignatureKey(Decl: TFunctionDecl; const Types: TArray<TJType>): string;
+var
+  K: Integer;
 begin
-  Result := IntToHex(NativeInt(Decl), 16) + '(' + TypesText(Types) + ')';
+  Result := IntToHex(NativeInt(Decl), 16) + '(';
+  for K := 0 to High(Types) do
+    Result := Result + IntToStr(Types[K]) + ',';
+  Result := Result + ')';
 end;
+
 
 function AnnotatedTypes(Decl: TFunctionDecl): TArray<TJType>;
 var
@@ -2110,7 +2593,8 @@ var
 begin
   for P in Decl.Params do
     if (P.TypeRef = nil) or ((P.TypeRef.Param = nil) and
-      ((P.TypeRef.Name = 'vector') or (P.TypeRef.Name = 'matrix'))) then
+      ((P.TypeRef.Name = 'vector') or (P.TypeRef.Name = 'matrix') or
+      not IsBuiltinTypeName(P.TypeRef.Name))) then
       Exit(True);
   Result := False;
 end;
@@ -2143,6 +2627,10 @@ begin
       ParamTypes[K] := A
     else if (P.TypeRef = nil) and (A <> jtNothing) then
       ParamTypes[K] := A
+    else if (P.TypeRef <> nil) and (P.TypeRef.Param = nil) and
+      not IsBuiltinTypeName(P.TypeRef.Name) and IsRecordType(A) and (ShapeOf(A).Decl <> nil) and
+      (ShapeOf(A).Decl.Name = P.TypeRef.Name) then
+      ParamTypes[K] := A     // a declared record type: checked against the annotation in Run
     else
     begin
       if P.TypeRef <> nil then

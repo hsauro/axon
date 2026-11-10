@@ -303,6 +303,44 @@ What remains per evaluation is mostly the call itself: about 0.4 µs for a compi
 
 The ODE rows compare the right-hand side interpreted and compiled. In both columns the solver loops are J7's native ones. Against the solver as it was before L2, with its loops in Axon, the gains are 31× (175 ms to 5.63 ms) and 108× (122 ms to 1.13 ms).
 
+### J9 — Records
+
+Done Nov 10, 2026: the first step of moving more of the language onto the JIT (CLAUDE.md, "Direction"). Lists follow as J10, on the same groundwork.
+
+**Types: record shapes.** A record compiles as its *shape*: its field names in order, the JIR type of each field, and, for a record of a declared type (`record T … end`), that type. `TJType` becomes an integer type: the existing types keep their numbers, and each shape is entered once in a process-wide table (`Axon.Jit.Ir`) and gets its own number, from 16 up, so equal shapes are equal types and the existing comparisons keep working. The text form is `record{a: real, y: vector{real}}`, or `T{…}` for a declared type. A field of a type the JIT does not compile (a string, a list) is typed `other`: the record still compiles, but that field cannot be read or written.
+
+- **From values.** `JTypeOfValue` gives a record's shape, recursively for nested records. At a call, the interpreter checks the arguments against the compiled types structurally (`JTypeMatches`), without building the shape, so the check costs a comparison per field, not an allocation. An `other` field matches any value.
+- **Specialisation.** An unannotated record parameter takes the argument's shape, as J6 does for arrays. A parameter annotated with a declared record type takes it too, when the argument is a record of that type (checked against the type the annotation names in the function's scope). The session's signature keys use type numbers, not names.
+
+**Values.** A record register is a value slot in the frame, as an array register is (J4): reference-counted, shared on assignment from a variable, moved from a temporary, held by the body for a parameter, released at the single exit. Records pass to and from compiled functions by slot address, and to the interpreter boxed (`RtCall`, `RunCompiled`).
+
+**What compiles.**
+
+- [x] Record parameters (unannotated, or annotated with a declared record type), locals and results (unannotated results; a declared record result type stays rejected for now); whole records read from outside (captures)
+- [x] Field reads `r.a`, `r.a.b`, on locals and parameters: inline, the field's position fixed at compile time. A field missing from the shape (the interpreter's `FieldError`) or of type `other` rejects the function
+- [x] `r.y[i]`, `r.M[i, j]`, `length(r.y)` and `size(r.M, …)` read through the path, without a temporary copy of the array reference, so reference counts and `__copies()` stay the interpreter's
+- [x] Field writes `r.a = x`, `r.a.b = x`, and element writes `r.y[i] = x`, as `AssignPath` does: the value first, then each record on the path made unique if shared (copy-on-write, `MakeUnique`), then the write. The value must have the field's type, since a compiled record cannot change shape; for a declared record a narrower number widens, as the interpreter's field coercion does. Adding a field is rejected
+- [x] Record literals `{a: x, b: y}`, and constructors of declared types `T(x, y)` and `T(a = x, b = y)`, with the declared field types' coercions; a field whose declared type the JIT cannot check rejects the function
+- [x] Passing records to compiled callees (specialised on the shape) and to interpreted ones; `print` of records
+- [x] A temporary holding a field's array or record (an argument `f(r.y)`, an operand `r.y + 1.0`) is released right after its use, so it does not keep a reference the interpreter would not hold
+
+**Not in J9.** Comparing records (`==`), `isa` and `typeof`, adding fields, a declared record result type, records inside lists (J10).
+
+**Runtime helpers.** `rt_new_record(dst, shape, args)` builds a record from its field values in the argument slots, with the declared type set as `CoerceRecord` sets it; `rt_record_unique(slot)` copies a shared record, as `MakeUnique`. Field addresses are computed inline from `TRecordObj`'s layout, measured at start-up in `ComputeLayout` as the array layout is.
+
+**Tests.** `tests/j09`: `.jir` dumps of field reads, writes, paths and construction; results compiled and interpreted (`__jit_mode`) for every construct; copy-on-write (a record shared with another variable, a parameter written, a nested record shared) with `__copies()` for arrays in records; errors (an index out of bounds through a field) with their traces; rejections with their reasons. The whole suite in all three JIT modes.
+
+**Rebinding.** A constructor is checked, when it runs, to be the record type the function was compiled against (the variable that held it, as calls are guarded). A file's record types are defined before it runs, so this matters only in the REPL, where defining a record type again makes a compiled function that constructs it raise `TypeError` (`tests/j09/redefined.repl`).
+
+**Results.** `bench.cmd`, Win64 Release, i9-9900X, Nov 10, 2026; both kernels give identical results compiled and interpreted.
+
+| Kernel | Interpreted | Compiled | Speed-up |
+| --- | --- | --- | --- |
+| `record_steps(2000)`: state `{t, y, steps}`, ten elements of `s.y` updated per step | 67.7 ms | 77.8 µs | 870× |
+| `ode.solve`, Lotka–Volterra, `rk45`, right-hand side reading a declared parameter record passed with `params` | 26.3 ms | 5.33 ms | 5× |
+
+The second row compares the right-hand side interpreted and compiled, as the J8 ODE rows do; compiled, the solver calls it directly. With the JIT forced on, the tests, examples and benchmarks compile 290 functions. Most rejections that remain involve strings and lists, including records with string or list fields that a function reads (the plot module's figure records): J10 and string support.
+
 ## Baseline (today's interpreter)
 
 Measured in J0 before any JIT work: `bench.cmd` on Win64 Release, on an Intel Core i9-9900X at 3.5 GHz. The figures are best of 5 per call, from `time.bench`. The kernels' parameters are annotated, so the JIT can compile them unchanged.
