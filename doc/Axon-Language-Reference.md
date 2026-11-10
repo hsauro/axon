@@ -66,6 +66,7 @@ Nov 7, 2026 · Herbert Sauro
   - [The random module](#the-random-module)
   - [The graphics module](#the-graphics-module)
   - [The ode module](#the-ode-module)
+  - [The antimony module](#the-antimony-module)
   - [The plot module](#the-plot-module)
 - [Modules and foreign functions](#modules-and-foreign-functions)
   - [Modules](#modules)
@@ -937,6 +938,42 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 - **Result.** A record with fields `t` (a vector of the reported times), `y` (a matrix with one column per reported time, so `sol.y[1, :]` is the first component over time), `names`, `status` (`"success"`, or `"event"` when a terminal event stopped the integration), `t_events` and `y_events` (lists with one entry per event function: a vector of the times and a matrix of the states at which it occurred), `nfev` (right-hand-side evaluations), `nsteps` (accepted steps), `method`, and `at`, the dense output: `sol.at(t)` returns the state at any time in the solved range, and `sol.at(v)` for a vector of times returns a matrix with one column per time. A time outside the range raises `DomainError`.
 - **Events.** An event occurs where an event function changes sign in the counted direction; a function that starts at exactly zero does not trigger at the start. RK45 locates the crossing on the dense output; BDF uses CVODE's root finding. A terminal event ends the solution at the event time, which becomes the last reported time when `t_eval` is not given.
 - **Errors.** A right-hand side of the wrong length raises `DimensionError`, and one of the wrong type `TypeError`. An error raised inside `f` or an event function propagates unchanged. A step size that falls below what the precision allows, too many steps, a non-finite solution or a CVODE failure raises `SolverError`. Invalid keywords raise `ArgumentError` or `TypeError`.
+
+### The antimony module
+
+`antimony` is a standard-library module, written in Axon, that reads reaction models in a basic subset of [Antimony](https://tellurium.readthedocs.io/en/latest/antimony.html) and simulates them with `ode.solve`.
+
+```
+J1: 2 A + B -> C; k1*A*B     // a named reaction and its rate law
+C -> ; k2*C                  # unnamed, with an empty product side
+A = 10; B = 5; k1 = 0.1; k2 = 0.05
+```
+
+- **Text.** Statements end at `;` or at the end of a line, and `//` or `#` starts a comment that runs to the end of the line. A statement containing `->` or `=>` is a reaction: an optional name and colon, the reactants, the arrow and the products, each side terms `name` or `coefficient name` joined by `+` (either side may be empty). The statement after a reaction is its rate law, an expression kept as text. Any other statement is an assignment `name = number`. Unnamed reactions are called `_J0`, `_J1`, … in order.
+- **Species and parameters.** Every name in a reaction is a species; an assigned name that is a species gives its initial value, wherever the assignment appears, and the other assigned names are parameters. A species never assigned starts at 0.
+- **Not read.** Boundary species (`$X`), compartments, events, functions, assignments of expressions, and the rest of Antimony. A statement that is not a reaction or a numeric assignment raises `UserError`.
+
+| Function | Result |
+| --- | --- |
+| `load(source: string)` | The model in the text: a `Model` record |
+| `read(path: string)` | The model in a file, read with `io.read_file` |
+| `species_names(model)` | The species, as a list of strings in the order they first appear in the reactions: the order of the rows of `stoichiometry` and of the components of a simulation |
+| `stoichiometry(model)` | The stoichiometry matrix: one row per species and one column per reaction, entry products minus reactants |
+| `initial(model)` | The species' initial values, as a real vector |
+| `rhs(model)` | The right-hand side `f(t, y)` of dy/dt = N v(y) for `ode.solve`, with `y` the species in `species_names` order. The rate laws are made into one function with `parse_function`, which the JIT compiles; a rate law that uses a name other than a species, a parameter or a built-in raises its error (`NameError` or `SyntaxError`) here, with the reaction's name in the message |
+| `simulate(model, t_end: real; t_start: real = 0.0, points: int = 101, method: string = "rk45", rtol: real = 1e-6, atol = 1e-9)` | Solves the model from `t_start` to `t_end` and returns `ode.solve`'s result, reported at `points` evenly spaced times and with the species names as its `names`: `sol.y[i, :]` is species `i` over time. `method = "bdf"` suits stiff models |
+
+A `Model` record has the fields `reactions` (a list of `Reaction` records), `species` (a dictionary from name to initial value, `nothing` when none was assigned) and `parameters` (a dictionary from name to value). A `Reaction` has `name`, `reactants` and `products` (dictionaries from species name to coefficient) and `rate` (the rate law's text). The dictionaries can be changed before simulating, for a parameter scan:
+
+```axon
+import antimony
+m = antimony.load("A -> B; k*A; A = 10; k = 0.5")
+for k in {0.5, 1.0}
+  m.parameters["k"] = k
+  sol = antimony.simulate(m, 2.0, points = 3)
+  println(k, sol.y[1, end])
+end
+```
 
 ### The plot module
 

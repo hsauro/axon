@@ -1033,10 +1033,16 @@ var
   Compiled, Positional: Boolean;
   P: TParam;
   K: Integer;
-  Why: string;
+  Why, Name: string;
   RT: TJType;
   Params: TArray<TJType>;
 begin
+  // An anonymous function is named in messages as the call names it.
+  Name := R.Decl.Name;
+  if (Name = '') and (E.Callee is TNameExpr) then
+    Name := TNameExpr(E.Callee).Name
+  else if Name = '' then
+    Name := 'an anonymous function';
   Compiled := False;
   Why := '';
   Positional := True;
@@ -1088,10 +1094,10 @@ begin
   begin
     if Length(Args) <> Length(Params) then
       Reject('passes %d argument(s) to %s, which takes %d, an ArgumentError',
-        [Length(Args), R.Decl.Name, Length(Params)], E);
+        [Length(Args), Name, Length(Params)], E);
     for K := 0 to High(Args) do
       Args[K] := Coerce(Args[K], Params[K], Format('passes %s to parameter %s of %s, declared %s',
-        [JTypeName(Args[K].Typ), R.Decl.Params[K].Name, R.Decl.Name, JTypeName(Params[K])]), E);
+        [JTypeName(Args[K].Typ), R.Decl.Params[K].Name, Name, JTypeName(Params[K])]), E);
     T.Kind := ckCompiled;
     T.Callee := Callee;
     T.ParamTypes := Params;
@@ -1102,14 +1108,14 @@ begin
   T.Kind := ckInterp;
   for K := 0 to High(Args) do
     if not Storable(Args[K].Typ) then
-      Reject('passes %s to %s, which is not compiled', [JTypeName(Args[K].Typ), R.Decl.Name], E);
+      Reject('passes %s to %s, which is not compiled', [JTypeName(Args[K].Typ), Name], E);
   if (R.Decl.ReturnType <> nil) and TypeOfRef(R.Decl.ReturnType, RT) then
     Result := [RT]
   else if Want < 0 then
     Result := []
   else
     Reject('calls %s, which is not compiled (%s), and whose result type is not declared',
-      [R.Decl.Name, Why], E);
+      [Name, Why], E);
 end;
 
 { ---- arrays ---- }
