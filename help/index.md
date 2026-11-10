@@ -27,6 +27,8 @@ description of Axon. Some sections you may want often:
 | Sparse matrices | [Sparse operands](Axon-Language-Reference.md#sparse-operands) |
 | `linalg`: solve, eig, svd, ... | [The linalg module](Axon-Language-Reference.md#the-linalg-module) |
 | `ode`: differential equations | [The ode module](Axon-Language-Reference.md#the-ode-module) |
+| `nonlin`: nonlinear equations f(x) = 0 | [The nonlin module](Axon-Language-Reference.md#the-nonlin-module) |
+| `antimony`: reaction models, simulation and steady states | [The antimony module](Axon-Language-Reference.md#the-antimony-module) |
 | `plot`: line, scatter, bar, histogram, surface | [The plot module](Axon-Language-Reference.md#the-plot-module) |
 | `random`: uniform, normal and integer random numbers | [The random module](Axon-Language-Reference.md#the-random-module) |
 | `time`: clocks and timing code | [The time module](Axon-Language-Reference.md#the-time-module) |
@@ -62,3 +64,6 @@ Each example opens as your own copy, so you can change it and run it with
 - [Four views: line, bars, histogram and 3D surface in one figure](../examples/16_four_views.sci)
 - [Formatting output, checking types, and reading and writing files](../examples/17_formatting_types_files.sci)
 - [3D scatter plots: three clusters of points in space](../examples/18_scatter3d.sci)
+- [Reaction models in Antimony: a feedback-inhibited pathway](../examples/19_antimony.sci)
+- [Changing a parameter during a simulation](../examples/20_antimony_steps.sci)
+- [Steady states of reaction models](../examples/21_antimony_steady_state.sci)

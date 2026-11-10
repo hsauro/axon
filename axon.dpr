@@ -35,6 +35,8 @@ uses
   Axon.OdeCore in 'src\Axon.OdeCore.pas',
   Axon.FmtCore in 'src\Axon.FmtCore.pas',
   Axon.Native.Cvode in 'src\native\Axon.Native.Cvode.pas',
+  Axon.NonlinCore in 'src\Axon.NonlinCore.pas',
+  Axon.Native.Kinsol in 'src\native\Axon.Native.Kinsol.pas',
   Axon.Graphics in 'src\Axon.Graphics.pas',
   Axon.Packages in 'src\Axon.Packages.pas',
   Axon.Ffi in 'src\Axon.Ffi.pas',

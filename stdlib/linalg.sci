@@ -23,6 +23,10 @@ extern "libopenblas"
                           tau: ptr float64): int32
   function LAPACKE_zgeqrf(layout: int32, m: int32, n: int32, a: ptr complex, lda: int32,
                           tau: ptr complex): int32
+  function LAPACKE_dgeqp3(layout: int32, m: int32, n: int32, a: ptr float64, lda: int32,
+                          jpvt: ptr int32, tau: ptr float64): int32
+  function LAPACKE_zgeqp3(layout: int32, m: int32, n: int32, a: ptr complex, lda: int32,
+                          jpvt: ptr int32, tau: ptr complex): int32
   function LAPACKE_dorgqr(layout: int32, m: int32, n: int32, k: int32, a: ptr float64,
                           lda: int32, tau: ptr float64): int32
   function LAPACKE_zungqr(layout: int32, m: int32, n: int32, k: int32, a: ptr complex,
@@ -278,6 +282,35 @@ export function qr(A)
   end
   check(info, "qr")
   return Q, R
+end
+
+## The QR factorisation with column pivoting: Q (m×k, orthonormal columns),
+## R (k×n, upper) and p, an int vector of column numbers, with
+## A[:, p] = Q * R. The columns are taken largest first, so the diagonal of R
+## decreases in size and shows the rank: the columns p[1:r] are independent.
+export function qrp(A)
+  [m, n] = size(A)
+  k = min(m, n)
+  M = float_matrix(A)
+  cplx = is_complex(M)
+  tau = zeros(max(k, 1))
+  p = int(zeros(max(n, 1)))           # 0: every column free to move
+  if cplx
+    tau = complex(tau)
+    info = LAPACKE_zgeqp3(COL, m, n, M, max(m, 1), p, tau)
+  else
+    info = LAPACKE_dgeqp3(COL, m, n, M, max(m, 1), p, tau)
+  end
+  check(info, "qrp")
+  R = upper(M[1:k, :])
+  Q = M[:, 1:k]
+  if cplx
+    info = LAPACKE_zungqr(COL, m, k, k, Q, max(m, 1), tau)
+  else
+    info = LAPACKE_dorgqr(COL, m, k, k, Q, max(m, 1), tau)
+  end
+  check(info, "qrp")
+  return Q, R, p[1:n]
 end
 
 ## Two values L, U with A = L * U: U upper triangular and L a row permutation

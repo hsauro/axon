@@ -66,6 +66,7 @@ Nov 7, 2026 · Herbert Sauro
   - [The random module](#the-random-module)
   - [The graphics module](#the-graphics-module)
   - [The ode module](#the-ode-module)
+  - [The nonlin module](#the-nonlin-module)
   - [The antimony module](#the-antimony-module)
   - [The plot module](#the-plot-module)
 - [Modules and foreign functions](#modules-and-foreign-functions)
@@ -764,7 +765,7 @@ Like the built-in functions, they are names in the prelude, so a program can ass
 
 ## Standard modules
 
-These modules come with Axon and are imported by name (`import linalg`, `from ode import solve`). `io`, `time`, `random` and `graphics` are core modules written in the interpreter; `linalg`, `fmt`, `ode` and `plot` are standard-library modules written in Axon.
+These modules come with Axon and are imported by name (`import linalg`, `from ode import solve`). `io`, `time`, `random` and `graphics` are core modules written in the interpreter; `linalg`, `fmt`, `ode`, `nonlin`, `antimony` and `plot` are standard-library modules written in Axon.
 
 ### The linalg module
 
@@ -779,6 +780,7 @@ These modules come with Axon and are imported by name (`import linalg`, `from od
 | `eig(A; vectors: bool = false)` | The eigenvalues: a `real` vector when all are real, a `complex` vector otherwise. `eig(A, vectors=true)` returns two values, the eigenvalues and a matrix of eigenvectors |
 | `svd(A)` | Three values `U, s, V` with `A = U*S*V'` (`adjoint` for complex), `s` the vector of singular values in decreasing order and `U`, `V` square |
 | `qr(A)` | Two values `Q, R`: the thin factorisation, `Q` m×k with orthonormal columns and `R` k×n upper triangular, `k = min(m, n)` |
+| `qrp(A)` | Three values `Q, R, p`: the QR factorisation with column pivoting (LAPACK `geqp3`), `A[:, p] = Q * R` with `p` an int vector of column numbers. The columns are taken largest first, so the diagonal of `R` decreases in size and shows the rank |
 | `lu(A)` | Two values `L, U` with `A = L*U`, `U` upper triangular and `L` a row permutation of a unit lower-triangular matrix. For a sparse `A`, which must be square, both are sparse, and the fill-reducing column order is folded into `U`, which is then a column permutation of an upper-triangular matrix |
 | `chol(A)` | Upper-triangular `R` with `A = R'*R` (`adjoint(R)*R` for complex); `DomainError` when `A` is not positive definite |
 | `rank(A; tol: real)` | The number of singular values above `tol`, by default `max(m, n) * eps * max(s)` with `eps = 2.220446049250313e-16` |
@@ -944,9 +946,33 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 - **Advancing in steps.** `ode.integrator(f; method: string = "rk45", rtol: real = 1e-6, atol = 1e-9)` returns an `Integrator` record (`method`, `rtol` and `handle`, a pointer to a solver that keeps its state between calls). `ode.advance(s, t, y, t1; params)` returns y at `t1` from y at `t`, as a vector; `t1` must be later than `t`. The solver steps past `t1` as its step sizes dictate and interpolates y(`t1`), so short intervals do not shorten its steps. It continues from where the last call ended when `t`, `y` and `params` are exactly what that call was given and returned; otherwise (the first call, a changed state or `params`, or the integrator used for another solution in between) it starts afresh from (`t`, `y`), as a new solve would, with RK45 choosing a new first step and CVODE reinitialized. So a loop `y = ode.advance(s, t, y, t + h, params = p)` costs about what one solve costs, and changing `y` or `p` between calls is a clean restart at that time. Events and `t_eval` are for `solve`.
 - **Errors.** A right-hand side of the wrong length raises `DimensionError`, and one of the wrong type `TypeError`. An error raised inside `f` or an event function propagates unchanged. A step size that falls below what the precision allows, too many steps, a non-finite solution or a CVODE failure raises `SolverError`. Invalid keywords raise `ArgumentError` or `TypeError`.
 
+### The nonlin module
+
+`nonlin` is a standard-library module that solves systems of nonlinear equations f(x) = 0 with SUNDIALS KINSOL. Its interface is written in Axon, and the solve runs natively in the interpreter's core module `nonlincore`. `nonlin.solve(f: function, x0; method: string = "linesearch", …)` returns a result record.
+
+- **Problem.** `f(x)` receives a real vector `x` and returns a real vector of the same length (a number for one equation). `x0`, the starting guess, is a real number or vector; it may not be empty.
+- **Method.** Newton's method with a dense direct linear solver, the Jacobian estimated from difference quotients of `f` at every iteration (n calls of `f` per iteration for n unknowns), and no limit on a step's length. `method = "linesearch"` (the default) shortens a step that does not reduce the norm of f(x); `method = "newton"` takes full steps. `f` is called as an ordinary Axon function, so one that compiles (see Compilation) runs as native code.
+- **Keywords.**
+
+| Keyword | Meaning (default) |
+| --- | --- |
+| `ftol: real` | The solve succeeds when every component of f(x) is at most `ftol` in absolute value (`1e-10`); a guess with every component at most `ftol / 100` is returned as it is, after no iterations |
+| `xtol: real` | The solve also stops when a step changes no component of x by more than `xtol` relative to its size, `abs(dx[i]) / (abs(x[i]) + 1)` (`1e-12`); the status is then `"small_step"` |
+| `max_iters: int` | The most Newton iterations (`200`) |
+| `params` | A value of any type passed to `f` as a second argument, `f(x, params)` (`nothing`: `f` takes one argument) |
+
+- **Result.** A record with fields `x` (the solution, a real vector), `status` (`"success"`, or `"small_step"` when the steps stopped changing x before f(x) met `ftol`, which may or may not be a root: check `fnorm`), `fnorm` (the Euclidean norm of f(x)), `nfev` (calls of `f`, those for the Jacobian included) and `niters` (Newton iterations).
+- **Errors.** No solution within `max_iters` iterations, a line search that cannot reduce the norm of f(x), a singular Jacobian, and values of `f` that are not finite at `x0` or at every point tried raise `SolverError`, whose message names the cause and KINSOL's flag (`KIN_MAXITER_REACHED`, `KIN_LSETUP_FAIL`, …). A non-finite value of `f` elsewhere makes KINSOL try a shorter step. A result of the wrong length raises `DimensionError`, and one of the wrong type `TypeError`. An error raised inside `f` propagates unchanged. Invalid arguments raise `ArgumentError`, `TypeError` or `DimensionError`.
+
+```axon
+import nonlin
+r = nonlin.solve(function(x) return [x[1]^2 + x[2]^2 - 4; x[1] - x[2]] end, [1.0; 1.0])
+println(r.status, format(r.x[1], 6), format(r.x[2], 6))
+```
+
 ### The antimony module
 
-`antimony` is a standard-library module, written in Axon, that reads reaction models in a basic subset of [Antimony](https://tellurium.readthedocs.io/en/latest/antimony.html) and simulates them with `ode.solve`.
+`antimony` is a standard-library module, written in Axon, that reads reaction models in a basic subset of [Antimony](https://tellurium.readthedocs.io/en/latest/antimony.html), simulates them with `ode.solve`, finds their steady states with `nonlin.solve`, and analyses their conservation laws (link matrix, reduced Jacobian).
 
 ```
 J1: 2 A + B -> C; k1*A*B     // a named reaction and its rate law
@@ -973,6 +999,10 @@ A = 10; B = 5; k1 = 0.1; k2 = 0.05
 | `step(sim, h: real)` | `sim` advanced by `h > 0` in time, with `ode.advance`: `t` and `y` at the new time. The solver continues from the previous step, and starts afresh only after `set` (or any other change to `y` or `p`), so many short steps cost about what one simulation does |
 | `set(sim, name: string, value: real)` | `sim` with the species or parameter `name` set to `value`, from the next step on. An unknown name raises `NameError` |
 | `value(sim, name: string)` | The current value of the species or parameter `name` |
+| `steady_state(model; guess = nothing, method: string = "reduced", ftol: real = 1e-10, max_iters: int = 200)` | The species' values at which dy/dt = N v(y) = 0, found with `nonlin.solve` from `guess` (by default `initial(model)`), as a record: `y`, `species` (the names, in the order of `y`), and `status`, `fnorm`, `nfev` and `niters` as `nonlin.solve` reports them. Totals the reactions conserve keep their values in `initial(model)`. `method = "reduced"` solves for the independent species of `conservation(model)` only, with y[dep] = L0 y[ind] + T, T = gamma y₀ (a model whose species are all dependent is returned at its initial values). `method = "augmented"` solves for every species: with the columns of `K` an orthonormal basis of the null space of N' (`linalg.null`), the residual N v(y) + K (K'y − K'y₀) is zero exactly when the rates balance and K'y = K'y₀, and its Jacobian is singular exactly when the reduced Jacobian is. Both give the same state. A failure raises `nonlin.solve`'s `SolverError`; another `method` raises `ArgumentError` |
+| `conservation(model)` | The conservation analysis of the stoichiometry matrix N, as a `Conservation` record. The independent species are chosen by QR factorisation of N' with column pivoting (`linalg.qrp`): the first `rank(N)` species pivoted. Fields: `independent` and `dependent` (names, each in the order of `species_names`), `ind` and `dep` (their positions, int vectors), `Nr` (N's rows for the independent species), `L0` (with N[dep, :] = L0 * Nr; entries within 1e-10 of a whole number are rounded to it), `link` (the link matrix, one row per species: N = link * Nr) and `gamma` (the conservation matrix, one row per conservation law and one column per species, gamma * N = 0) |
+| `jacobian(model, y)` | The Jacobian of dy/dt = N v(y) at the species' values `y`, with the model's parameter values: entry (i, j) is the derivative of dy_i/dt with respect to y_j, by central differences with step 6.06e-6 max(abs(y_j), 1). Singular when the model has conservation laws |
+| `reduced_jacobian(model, y)` | The reduced Jacobian Nr (∂v/∂y) link at `y`, rows and columns in the order of `conservation(model).independent`: `jacobian(model, y)[ind, :] * link`. Not singular because of conservation laws; a steady state is stable when all its eigenvalues have negative real parts |
 
 A `Model` record has the fields `reactions` (a list of `Reaction` records), `species` (a dictionary from name to initial value, `nothing` when none was assigned) and `parameters` (a dictionary from name to value). A `Reaction` has `name`, `reactants` and `products` (dictionaries from species name to coefficient) and `rate` (the rate law's text). The dictionaries can be changed before simulating, for a parameter scan:
 

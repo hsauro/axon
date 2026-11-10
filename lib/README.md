@@ -8,6 +8,7 @@ Prebuilt native libraries shipped with Axon. A Win64 build (from the IDE or `bui
 | --- | --- | --- | --- |
 | `libopenblas.dll` | OpenBLAS 0.3.34 (BLAS, LAPACK, LAPACKE), 32-bit integers, `DYNAMIC_ARCH` | `*`, `\` and `linalg` | `bin/libopenblas.dll` from `OpenBLAS-0.3.34-x64.zip`, the official release on github.com/OpenMathLib/OpenBLAS (SHA-256 of the zip `e9cb6134541f36c27346d5fc5995652f060fba227cebbbabcbda5a5a44d7c76b`) |
 | `sundials_cvode.dll` | SUNDIALS CVODE 7.5 (Sept 2025), 64-bit release | M13 `ode` BDF | `CommonCode/SunDials Suite/CVODE7_5_Delphi/Win64/Debug` |
+| `sundials_kinsol.dll` | SUNDIALS KINSOL 7.5 (Sept 2025), 64-bit release; holds its own serial vector, dense matrix and dense solver, and needs only `sundials_core.dll` (a separate build of the same version, which it loads without trouble) | `nonlin.solve`, `antimony.steady_state` | `CommonCode/SunDials Suite/KinSol_7_5_Delphi/Win64/Debug` (SHA-256 `1a4ca99c9394968e5127595d2e701cf661c3fa57153edf034b0c14e55cf87c8d`) |
 | `sundials_core.dll`, `sundials_nvecserial.dll`, `sundials_sunmatrixdense.dll`, `sundials_sunlinsoldense.dll` | SUNDIALS support libraries for CVODE | `sundials_cvode.dll` | same |
 | `sk4d.dll` | Skia (Skia4Delphi build), as shipped with RAD Studio 13 | M13 `graphics` and `plot` | `Studio\37.0\bin64\sk4d.dll` |
 | `mir.dll` | MIR v1.0.0 (`mir.c`, `mir-gen.c`) plus Axon's shim `src/native/axmir.c`; MSVC 2022, static C runtime | L2 JIT (`axon --jit-selftest`) | Built by `tools/build_mir.cmd` from github.com/vnmakarov/mir |
@@ -20,7 +21,7 @@ Prebuilt native libraries shipped with Axon. A Win64 build (from the IDE or `bui
 - **MIR.** `mir.dll` loads on first use, like OpenBLAS, and needs no other DLL. Rebuild it with `tools\build_mir.cmd` after changing `axmir.c`.
 - **Licences.** OpenBLAS, SUNDIALS and Skia are BSD-3-Clause; MIR is MIT. Add the licence texts here before a public release.
 
-Delphi bindings for these libraries already exist in `CommonCode/LAPACKE` and `CommonCode/SunDials Suite`, and serve as references. Axon calls CVODE from Axon code through `extern` (M13), so only the interpreter's own native calls (such as `dgemm` for `*`) need Delphi declarations, in `src/native`.
+Delphi bindings for these libraries already exist in `CommonCode/LAPACKE` and `CommonCode/SunDials Suite`, and serve as references. The interpreter calls CVODE and KINSOL from Delphi (`src/native/Axon.Native.Cvode.pas`, `Axon.Native.Kinsol.pas`), declaring only the functions it uses.
 
 ## macOS (arm64)
 
@@ -30,6 +31,7 @@ Dylibs in `lib/macos/` are deployed next to `axon` in the IDE's app bundle (`too
 | --- | --- | --- | --- |
 | `libopenblas.dylib` | OpenBLAS 0.3.28 (BLAS, LAPACK, LAPACKE), `TARGET=VORTEX`, built without Fortran (`NOFORTRAN=1 C_LAPACK=1`) | `*` and `linalg` | Built on the Mac by `tools/build_openblas_mac.sh` |
 | `libsundials_core.dylib`, `libsundials_cvode.dylib` | SUNDIALS CVODE 7.5.0, arm64 (the vector, dense matrix and dense solver are inside `libsundials_cvode`) | `ode.solve(..., method = "bdf")` | `libsundials_core.7.dylib` and `libsundials_cvode.7.dylib` from `RoadRunner_Delphi_JIT/OSXARM64/Debug`, renamed |
+| `libsundials_kinsol.dylib` | SUNDIALS KINSOL 7.5.0, arm64 (**not yet added**: copy `libsundials_kinsol.7.dylib` from the Mac's SUNDIALS install, `~/sundials-install/lib`, renamed, then rerun `tools/gen_mac_deploy.py`) | `nonlin.solve`, `antimony.steady_state` | the same SUNDIALS build as CVODE |
 | `libmir.dylib` | MIR v1.0.0 (`mir.c`, `mir-gen.c`) plus Axon's shim `src/native/axmir.c`, clang `-O2` | The JIT | Built on the Mac by `tools/build_mir_mac.sh` (with `axmir.c` copied next to it) |
 
 - **No Fortran runtime.** OpenBLAS's C translation of LAPACK means the dylib depends only on system libraries (`otool -L` shows `libSystem`), unlike Homebrew's build, which needs gfortran's runtime dylibs.

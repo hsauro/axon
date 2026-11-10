@@ -15,6 +15,7 @@
 \usepackage{longtable}
 \usepackage{tabularx}
 \usepackage{array}
+\usepackage{amsmath}
 \usepackage[shortlabels]{enumitem}
 \usepackage{caption}
 \usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black,
@@ -1610,6 +1611,59 @@ landed at t = 2.446483  exact: 2.446483
 The stepping loops of both methods run as native code, and so does a
 right-hand side that the JIT compiles (Chapter~\ref{ch:perf}).
 
+\section{Nonlinear equations}\label{sec:nonlin}
+
+\code{nonlin.solve(f, x0)} solves the system $f(x) = 0$, starting from the
+guess \code{x0}. \code{f(x)} receives a real vector and returns a vector of
+the same length (or a number, for one equation). The solver is SUNDIALS
+KINSOL, from the same collection as CVODE: Newton's method, with a Jacobian
+worked out from differences of $f$ at every iteration, and a line search that
+shortens a step when it would not bring $f(x)$ closer to zero.
+
+\ex{nonlinear.sci}
+\begin{axonout}
+status: success  iterations: 5  calls of f: 16
+x = 1.517490  y = 1.302776  |f| = 0.0
+radius = 1.5  x = 1.313295  y = 0.724745
+radius = 2.0  x = 1.517490  y = 1.302776
+radius = 3.0  x = 1.836377  y = 2.372281
+\end{axonout}
+
+The result is a record: \code{x}, the solution as a vector; \code{status},
+\code{"success"}; \code{fnorm}, the size (Euclidean norm) of $f(x)$; and
+\code{nfev} and \code{niters}, the calls of \code{f} and the Newton
+iterations. Each iteration calls \code{f} once more for every unknown, to
+estimate the Jacobian. As with \code{ode.solve}, \code{params} passes a
+value to \code{f} as a second argument.
+
+\begin{longtable}{@{}p{0.3\linewidth}p{0.64\linewidth}@{}}
+\toprule
+Keyword & Meaning (default) \\
+\midrule
+\endhead
+\code{method} & \code{"linesearch"} (default), or \code{"newton"} for full
+  Newton steps \\
+\code{ftol} & Stop when every component of $f(x)$ is within this of zero
+  (\code{1e-10}) \\
+\code{xtol} & Stop when a step changes no component of $x$ by more than this,
+  relative to its size (\code{1e-12}); the status is then
+  \code{"small_step"}, and \code{fnorm} tells whether $x$ is a root \\
+\code{max_iters} & The most Newton iterations (200) \\
+\code{params} & A value passed to \code{f} as a second argument,
+  \code{f(x, params)} \\
+\bottomrule
+\end{longtable}
+
+Newton's method finds a root near the guess, and different guesses can find
+different roots. When it fails, \code{nonlin.solve} raises
+\code{SolverError} and says why: no root within the iterations allowed, a
+singular Jacobian (often a sign that the equations are not independent), or
+values of $f$ that are not finite. The line search makes a poor guess less
+risky, but it can take many short steps along a curved valley; when the
+guess is good, \code{method = "newton"} may need fewer iterations.
+Section~\ref{sec:steady} uses \code{nonlin.solve} for the steady states of
+reaction models.
+
 \section{Random numbers}
 
 The prelude's \code{rand} and the \code{random} module draw from one generator.
@@ -2637,7 +2691,7 @@ assignment gives its initial concentration. Every other assigned name is a
 \emph{parameter}. Statements end at a semicolon or at the end of a line, and
 \code{//} or \code{#} starts a comment.
 
-\section{Running a simulation}
+\section{Running a simulation}\label{sec:sim}
 
 The whole program is short:
 
@@ -3004,6 +3058,180 @@ need.
 A change that the model itself triggers, such as ``when \code{S3} reaches
 2'', is better found with an event (Section~\ref{sec:ode}): solve with a
 terminal event, change the value, and continue from the event's state.
+
+\section{Steady states}\label{sec:steady}
+
+A \emph{steady state} is where the species stop changing: $N v(y) = 0$.
+Rather than simulating until nothing moves, \code{antimony.steady_state}
+solves those equations directly with \code{nonlin.solve}
+(Section~\ref{sec:nonlin}), starting from the initial values:
+
+\ex{pathway_steady.sci}
+\begin{axonout}
+status: success  iterations: 9
+S1 = 0.5527
+S2 = 0.3143
+S3 = 1.2992
+Ki = 4: 3.3505
+\end{axonout}
+
+The values are the ones the time course reached at $t = 10$
+(Section~\ref{sec:sim}), and with \code{Ki} at 4 the steady state is the
+value that the stepped simulation of the last section was approaching. Each
+steady state takes a few milliseconds, so a scan over a parameter can draw
+the whole curve (Figure~\ref{fig:pathway_steady.pdf}).
+
+\fig{pathway_steady.pdf}{0.8}{The steady state of \code{S3} as \code{Ki}
+varies, from \texttt{pathway\_steady.sci}.}
+
+A steady state found this way need not be stable, and a model can have more
+than one; \code{guess} starts the search elsewhere. A simulation shows which
+state the model actually reaches from its initial values, and the Jacobian,
+in the next section, shows whether a steady state is stable.
+
+\section{Conservation laws and the link matrix}\label{sec:conservation}
+
+In many models some totals never change. In \code{A -> B} and
+\code{B -> A}, every reaction turns one molecule into another, so
+\code{A + B} stays at its initial value; an enzyme that is free (\code{E})
+or bound to its substrate (\code{ES}) keeps \code{E + ES} constant. Such a
+total is a \emph{conservation law}, or conserved moiety. It shows in the
+stoichiometry matrix: a row vector $\gamma$ with $\gamma N = 0$ gives
+$\frac{d}{dt}(\gamma y) = \gamma N v = 0$, so $\gamma y$ keeps its initial
+value whatever the rates. A model with $c$ independent conservation laws has
+an $N$ of rank $r = m - c$ for $m$ species, and that causes two problems.
+The equations $N v(y) = 0$ do not fix the steady state, since every total
+has its own; and their Jacobian $\partial (N v) / \partial y$ is singular,
+with $c$ zero eigenvalues, so Newton's method fails and the eigenvalues
+cannot be used to judge stability.
+
+\paragraph{Conservation analysis.} \code{antimony.conservation(model)}
+finds the conservation laws and splits the species in two
+\ref{ref:reder}, \ref{ref:sauro}, \ref{ref:vallab}. The \emph{independent}
+species are $r$ species whose rows of $N$ are linearly independent; their
+rows form the reduced stoichiometry matrix $N_R$ ($r$ rows). Each of the
+$c$ \emph{dependent} species has a row of $N$ that is a combination of the
+independent rows, $N_0 = L_0 N_R$. Ordering the independent species first,
+\[
+  N = \begin{bmatrix} N_R \\ N_0 \end{bmatrix}
+    = \begin{bmatrix} I \\ L_0 \end{bmatrix} N_R = L\, N_R ,
+\]
+where $L$ is the \emph{link matrix}. The conservation laws are the rows of
+$\Gamma = [\,-L_0 \;\; I\,]$, since $\Gamma L = -L_0 + L_0 = 0$ and so
+$\Gamma N = 0$. With $T = \Gamma y_0$, the totals in the initial values,
+\[
+  y_{\mathrm{dep}} = L_0\, y_{\mathrm{ind}} + T ,
+\]
+so the independent species determine the dependent ones.
+
+The module chooses the independent species by QR factorisation of $N^T$
+with column pivoting (\code{linalg.qrp}, LAPACK's \code{dgeqp3}), as
+Vallabhajosyula, Chickarmane and Sauro describe \ref{ref:vallab}.
+The factorisation $N^T P = Q R$ takes the columns of $N^T$, the species'
+rows of $N$, largest first, and the diagonal of $R$ decreases in size: the
+first $r$ entries are clearly non-zero and the rest are zero to rounding,
+which gives the rank. The first $r$ pivoted species are independent. Writing
+\[
+  R = \begin{bmatrix} R_{11} & R_{12} \\ 0 & 0 \end{bmatrix}
+\]
+with $R_{11}$ of size $r \times r$ and $Q_1$ the first $r$ columns of $Q$,
+the independent rows of $N$ are $R_{11}^T Q_1^T$ and the dependent ones
+$R_{12}^T Q_1^T$, so
+\[
+  L_0 = (R_{11}^{-1} R_{12})^T ,
+\]
+one triangular solve. Entries within $10^{-10}$ of a whole number are
+rounded to it, since for integer stoichiometry they are integers. The
+record lists both sets of species in the model's order, with \code{link}
+and \code{gamma} indexed by species in that order.
+
+\paragraph{The reduced steady state.} \code{steady_state} solves for the
+$r$ independent species only. For a trial $y_{\mathrm{ind}}$ it fills in
+$y_{\mathrm{dep}} = L_0 y_{\mathrm{ind}} + T$ and evaluates the rates of
+change of the independent species, $N_R\, v(y)$. Those $r$ equations in $r$
+unknowns have the Jacobian
+\[
+  J_R = N_R \, \frac{\partial v}{\partial y}\, L ,
+\]
+the \emph{reduced Jacobian}, which is not singular at an isolated steady
+state. This is the standard method, and the default
+(\code{method = "reduced"}).
+
+\ex{conservation.sci}
+\begin{axonout}
+species: {"S", "E", "ES", "P"}
+independent: {"S", "ES", "P"}  dependent: {"E"}
+L0: 0.0  -1.0  0.0    gamma: 0.0  1.0  1.0  0.0
+total: 1.0
+reduced: 0.8333  0.7500  0.2500  2.0000   iterations: 2
+augmented: 0.8333  0.7500  0.2500  2.0000   iterations: 2
+J:  -7.3504  -0.8163  -0.5000  0.0000
+Jr: -7.3504  -0.8163  -0.5000
+\end{axonout}
+
+$L_0 = [\,0 \;\; {-1} \;\; 0\,]$ says that $E = -ES + T$: the conservation
+law is \code{E + ES}, with total 1.
+
+\paragraph{Without choosing species: the augmented system.}
+\code{method = "augmented"} solves for every species instead. Let the
+columns of $K$ be an orthonormal basis of the null space of $N^T$
+(\code{linalg.null(N')}, from the singular value decomposition), so that
+$K^T N = 0$ and $K^T K = I$; the totals are then $K^T y$, and the module
+solves the square system
+\[
+  F(y) = N v(y) + K \,(K^T y - K^T y_0) = 0 .
+\]
+The first term lies in the column space of $N$ and the second in the
+column space of $K$, which are orthogonal complements. So $F(y) = 0$ only
+when both terms vanish: the rates balance, $N v(y) = 0$, and the totals
+keep their values, $K^T y = K^T y_0$. The Jacobian
+\[
+  J_F = N \frac{\partial v}{\partial y} + K K^T
+\]
+is not singular exactly when $J_R$ is not. If $J_F z = 0$, multiplying by
+$K^T$ gives $K^T z = 0$, so $z$ lies in the column space of $N$, which is
+that of $L$: $z = L z_R$. Then $J_F z = L N_R \,(\partial v / \partial y)\,
+L z_R = L J_R z_R = 0$, and since $L$ has full column rank, $J_R z_R = 0$.
+The converse follows the same way. In effect the term $K K^T$ replaces the
+$c$ zero eigenvalues of $N \partial v / \partial y$ by non-zero ones while
+leaving the dynamics within each conservation class alone.
+
+The two methods find the same steady state. The reduced system has $c$
+fewer unknowns, so each Newton iteration costs $c$ fewer evaluations of the
+rates, and it gives $J_R$, the matrix whose eigenvalues decide stability.
+The augmented system needs no choice of independent species and no link
+matrix: only a basis of the null space, and a residual that is one line of
+code. The references below reduce the system. The nearest published
+relative of the augmented form is the ``augmented system'' of chemical
+reaction network theory, in which conservation laws replace a chosen set
+of dependent rows of $N v(y) = 0$ \ref{ref:augmented}; adding the
+orthogonal term instead avoids choosing which rows to replace.
+
+\paragraph{Jacobians and stability.} \code{antimony.jacobian(model, y)}
+returns $\partial (N v) / \partial y$ at the species' values \code{y}, by
+central differences of the right-hand side, with one row and column per
+species; with conservation laws it is singular, as the zero among its
+eigenvalues shows. \code{antimony.reduced_jacobian(model, y)} returns $J_R$,
+with rows and columns in the order of the independent species. A steady
+state is stable when every eigenvalue of $J_R$ has a negative real part, as
+here. The eigenvalues of $J_R$ are those of the full Jacobian without its
+$c$ zeros.
+
+\paragraph{Further reading.}
+
+\begin{enumerate}[label={[\arabic*]}, leftmargin=2.2em]
+\item\label{ref:reder} C.~Reder. Metabolic control theory: a structural
+  approach. \emph{Journal of Theoretical Biology} 135(2):175--201, 1988.
+\item\label{ref:sauro} H.~M.~Sauro and B.~Ingalls. Conservation analysis in
+  biochemical networks: computational issues for software writers.
+  \emph{Biophysical Chemistry} 109(1):1--15, 2004.
+\item\label{ref:vallab} R.~R.~Vallabhajosyula, V.~Chickarmane and
+  H.~M.~Sauro. Conservation analysis of large biochemical networks.
+  \emph{Bioinformatics} 22(3):346--353, 2006.
+\item\label{ref:augmented} For the augmented system of reaction network
+  theory, see for example \emph{Newton--Okounkov bodies of chemical reaction
+  systems}, arXiv:2203.03840, 2022.
+\end{enumerate}
 
 \section{What the case study shows}
 
@@ -3506,5 +3734,6 @@ opens as your own copy to change and run.
 \shipped{18_scatter3d.sci}
 \shipped{19_antimony.sci}
 \shipped{20_antimony_steps.sci}
+\shipped{21_antimony_steady_state.sci}
 
 \end{document}
