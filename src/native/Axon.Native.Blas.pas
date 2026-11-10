@@ -45,6 +45,20 @@ function BlasAvailable: Boolean;
 { A symbol of OpenBLAS, or nil. }
 function OpenBlasSymbol(const Name: string): Pointer;
 
+(* Sets the thread count of a library just loaded, if it is OpenBLAS (it
+   exports openblas_set_num_threads); both OpenBlasHandle and extern's
+   library loading call it. OpenBLAS starts one thread per logical CPU, but
+   its LAPACK factorisations (LU, eigenvalues, SVD) slow down badly with many
+   threads, while the matrix product gains little beyond a few: measured on
+   a 10-core i9-9900X, LU of 500x500 took 47 ms on 20 threads and 6 ms on 4.
+   So the count is capped at DefaultBlasThreads, unless the user chose one
+   with OPENBLAS_NUM_THREADS or OMP_NUM_THREADS; linalg.set_threads changes
+   it from a program. *)
+procedure ConfigureOpenBlas(Lib: NativeUInt);
+
+const
+  DefaultBlasThreads = 4;
+
 implementation
 
 uses
@@ -64,6 +78,8 @@ begin
     Handle := LoadNativeLibrary(ExtractFilePath(ParamStr(0)) + LibraryName);
     if Handle = 0 then
       Handle := LoadNativeLibrary(LibraryName);
+    if Handle <> 0 then
+      ConfigureOpenBlas(Handle);
   end;
   Result := Handle;
 end;
@@ -73,6 +89,23 @@ begin
   if OpenBlasHandle = 0 then
     Exit(nil);
   Result := NativeSymbol(Handle, Name);
+end;
+
+procedure ConfigureOpenBlas(Lib: NativeUInt);
+type
+  TGetThreads = function: Int32; cdecl;
+  TSetThreads = procedure(N: Int32); cdecl;
+var
+  GetThreads: TGetThreads;
+  SetThreads: TSetThreads;
+begin
+  if (GetEnvironmentVariable('OPENBLAS_NUM_THREADS') <> '') or
+    (GetEnvironmentVariable('OMP_NUM_THREADS') <> '') then
+    Exit;
+  @GetThreads := NativeSymbol(Lib, 'openblas_get_num_threads');
+  @SetThreads := NativeSymbol(Lib, 'openblas_set_num_threads');
+  if Assigned(GetThreads) and Assigned(SetThreads) and (GetThreads() > DefaultBlasThreads) then
+    SetThreads(DefaultBlasThreads);
 end;
 
 function BlasAvailable: Boolean;

@@ -35,6 +35,8 @@ extern "libopenblas"
   function LAPACKE_zgelsd(layout: int32, m: int32, n: int32, nrhs: int32, a: ptr complex,
                           lda: int32, b: ptr complex, ldb: int32, s: ptr float64,
                           rcond: float64, rank: ref int32): int32
+  function openblas_get_num_threads(): int32
+  function openblas_set_num_threads(n: int32)
 end
 
 COL = 102                          # LAPACK_COL_MAJOR
@@ -90,6 +92,26 @@ function singular_values(A)
   check(info, "svd")
   if info > 0 error("DomainError", "svd: the SVD did not converge") end
   return s
+end
+
+# ---------------------------------------------------------------- threads
+
+## The number of threads OpenBLAS uses for the matrix product and LAPACK.
+## Axon caps it at 4 when the program starts (unless OPENBLAS_NUM_THREADS or
+## OMP_NUM_THREADS is set): more threads speed up large products a little,
+## but slow the factorisations behind \, inv, det, eig and svd.
+export function threads()
+  return int(openblas_get_num_threads())
+end
+
+## Sets the number of threads OpenBLAS uses, from 1 up; it limits the count
+## to what OpenBLAS supports. For a program dominated by large matrix
+## products, more threads can help; for many factorisations, fewer.
+export function set_threads(n)
+  if typeof(n) != "int" or n < 1
+    error("ArgumentError", "linalg.set_threads: n must be a positive int, got " + string(n))
+  end
+  openblas_set_num_threads(n)
 end
 
 # ---------------------------------------------------------------- solving

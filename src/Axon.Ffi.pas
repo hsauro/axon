@@ -79,7 +79,7 @@ implementation
 uses
   System.Rtti, System.TypInfo, System.SyncObjs,
   Axon.Errors, Axon.Ops, Axon.Complex, Axon.Platform, Axon.Packages,
-  Axon.Native.Callbacks;
+  Axon.Native.Callbacks, Axon.Native.Blas;
 
 var
   AllDescs: TObjectList<TCDesc>;
@@ -281,6 +281,7 @@ begin
     if H <> 0 then
     begin
       Libraries.Add(C, H);
+      ConfigureOpenBlas(H);   // OpenBLAS's thread count, if it is OpenBLAS
       Break;
     end;
     if Tried <> '' then Tried := Tried + ', ';

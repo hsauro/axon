@@ -785,6 +785,8 @@ These modules come with Axon and are imported by name (`import linalg`, `from od
 | `null(A; tol: real)` | An orthonormal basis of the null space, as the columns of a matrix: the right singular vectors whose singular values are not above `tol`, by default the same tolerance as `rank` |
 | `norm(x; p=2)` | For a vector the p-norm, with `p` a positive number or `"inf"`; for a matrix the 2-norm (largest singular value), `p=1` (largest column sum), `"inf"` (largest row sum) or `"fro"` (Frobenius) |
 | `expm(A)` | The matrix exponential, by scaling and squaring with a degree-13 Padé approximant |
+| `threads()` | The number of threads OpenBLAS uses for the matrix product (`*`) and LAPACK. Axon caps it at 4 when OpenBLAS loads, unless the environment variable `OPENBLAS_NUM_THREADS` or `OMP_NUM_THREADS` sets it: more threads speed up large products a little, but slow the factorisations behind `\`, `inv`, `det`, `eig` and `svd` |
+| `set_threads(n: int)` | Sets that number of threads, from 1 up (OpenBLAS limits it to what it supports); a non-positive or non-`int` `n` raises `ArgumentError` |
 
 Decompositions that fail to converge raise `DomainError`. Apart from `lu` and `solve`, the functions accept a sparse matrix by working on `full(A)`.
 
