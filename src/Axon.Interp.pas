@@ -194,6 +194,7 @@ type
     function EvalMulti(E: TExpr; Scope: TScope): TAxValues;
     function EvalCallMulti(E: TCallExpr; Scope: TScope): TAxValues;
     function CallBuiltin(B: TBuiltinObj; E: TCallExpr; Scope: TScope): TAxValues;
+    function ExecAppendAssign(S: TAssignStmt; Scope: TScope): Boolean;
     function Invoke(F: TFunctionObj; const Pos: TAxValues;
       const KwNames: TArray<string>; const KwValues: TAxValues): TAxValues;
   public
@@ -879,6 +880,8 @@ begin
       EvalMulti(TExprStmt(S).Expr, Scope)
     else if C = TAssignStmt then
     begin
+      if ExecAppendAssign(TAssignStmt(S), Scope) then
+        Exit;
       Target := TAssignStmt(S).Target;
       V := Eval(TAssignStmt(S).Value, Scope);
       if not (Target is TNameExpr) then
@@ -1032,6 +1035,70 @@ begin
     Result := B.MultiFn(Args)
   else
     Result := [B.Fn(Args)];
+end;
+
+(* Runs `v = append(v, x)` (v a plain variable, append the built-in) so that
+   the list or vector grows in place: v's value is taken out of its cell while
+   append runs, which leaves it with a single reference unless something else
+   shares it. Arguments are evaluated in the usual order and errors are
+   located at the call, as EvalCallMulti does. False when S has another form,
+   and S then runs as usual. *)
+function TInterpreter.ExecAppendAssign(S: TAssignStmt; Scope: TScope): Boolean;
+var
+  Call: TCallExpr;
+  Name: string;
+  Cell: TVarCell;
+  Callee, Old, X, V: TAxValue;
+begin
+  Result := False;
+  if (S.TypeRef <> nil) or not (S.Target is TNameExpr) or not (S.Value is TCallExpr) then
+    Exit;
+  Call := TCallExpr(S.Value);
+  if not (Call.Callee is TNameExpr) or (TNameExpr(Call.Callee).Name <> 'append') or
+    (Call.Args.Count <> 2) or (Call.Args[0].Kind <> akPositional) or
+    (Call.Args[1].Kind <> akPositional) or not (Call.Args[0].Value is TNameExpr) then
+    Exit;
+  Name := TNameExpr(S.Target).Name;
+  if TNameExpr(Call.Args[0].Value).Name <> Name then
+    Exit;
+  // The cell the assignment writes is the one the argument reads.
+  Cell := FindCellForWrite(Name, Scope);
+  if (Cell = nil) or Cell.ReadOnly then
+    Exit;
+  try
+    Callee := Eval(Call.Callee, Scope);
+    if (Callee.Kind <> vkBuiltin) or (AsBuiltin(Callee).Name <> 'append') then
+      Exit;
+    Result := True;
+    Old := Cell.Value;
+    X := Eval(Call.Args[1].Value, Scope);
+    if (Old.Obj = nil) or (Cell.Value.Obj <> Old.Obj) then
+      // Not a list or vector, or evaluating x assigned v: append to the
+      // value v had before, as usual.
+      Store(Cell, AppendValue(Old, X), Name, Scope)
+    else
+    begin
+      Cell.Value := NothingValue;
+      try
+        if AppendInPlace(Old, X) then
+          V := Old
+        else
+          V := AppendValue(Old, X);
+        Store(Cell, V, Name, Scope);
+      except
+        // Put v back. Growing in place keeps v's type, so only a value built
+        // by AppendValue can fail to store, and Old is then v's old value.
+        Cell.Value := Old;
+        raise;
+      end;
+    end;
+  except
+    on E: EAxonError do
+    begin
+      E.Locate(FFile, Call.Line, Call.Col);
+      raise;
+    end;
+  end;
 end;
 
 function DescribeFunction(F: TFunctionObj): string;

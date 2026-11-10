@@ -36,6 +36,7 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - `src/Axon.Ops.pas`: operators, promotion, checked integer arithmetic. Array and range operands are passed on to `Axon.Arrays`.
 - `src/Axon.Arrays.pas`: dense arrays. `TArrayObj` (declared in `Axon.Values`) is column-major, with one typed buffer per element type. This unit holds literals, broadcasting, `MatMul`, transpose, index resolution and reductions. Elementwise operations call the scalar operators per element.
 - Assignment to `a[i].f[j] = v` and similar goes through `AssignPath`/`SetIn`. `SetIn` walks the path, calling `MakeUnique` on each level before writing; that function copies one level of a list, record or dictionary when it is shared. Arrays at the leaf go to `AssignArraySlot`.
+- `v = append(v, x)` statements run through `TInterpreter.ExecAppendAssign`: the value is taken out of `v`'s cell while `AppendInPlace` (`Axon.Builtins`) grows the list or vector in place if its reference count is then 1 and no wider element type is needed; otherwise `AppendValue` builds a new value, as the plain call does. The JIT rejects calls to `append`, so this is interpreter-only.
 - Copy-on-write: `AssignArraySlot` clones an array when `RefCount > 1`. Never keep an extra `TAxValue` copy of the target array alive while deciding, or every write will copy. `__copies()` counts clones for tests.
 - `src/Axon.Complex.pas`: complex arithmetic and principal-value functions
 - `src/Axon.Builtins.pas`: prelude functions

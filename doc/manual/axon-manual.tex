@@ -877,6 +877,11 @@ An index outside the array is an \code{IndexError}: reading never wraps around
 and assigning never grows an array. To add elements, use \code{append(v, x)} or
 a literal such as \code{[v; x]}, which return a new array.
 
+To build a vector one element at a time, write \code{v = append(v, x)}. When
+nothing else shares \code{v}'s value, that statement adds to it in place, so
+the loop's time grows in proportion to the vector's length. \code{v = [v; x]}
+copies the whole vector every time, which gets slow for long vectors.
+
 \section{Strings}
 
 Strings are written in double quotes, joined with \code{+}, and indexed by
@@ -1135,7 +1140,9 @@ println(fact(20), factorial(20))
 Three kinds of collection hold values of any type.
 
 \paragraph{Lists} are written in braces and index like vectors.
-\code{append(l, x)} returns a new list with \code{x} added.
+\code{append(l, x)} returns a new list with \code{x} added; as for
+vectors, \code{l = append(l, x)} adds to \code{l} in place, so building a long
+list in a loop stays fast.
 
 \paragraph{Records} have named fields, read and set with a dot. Assigning a new
 field adds it.

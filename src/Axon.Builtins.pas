@@ -40,6 +40,15 @@ procedure EndOpenLine;
   bits. nil for another name. }
 function ElementaryRealFunction(const Name: string): Pointer;
 
+{ append(V, X) for the statement `v = append(v, x)`. AppendInPlace adds X to
+  V's own list or vector when V holds the only reference to it and X needs
+  no wider element type, and returns True; otherwise it changes nothing and
+  returns False, and the caller uses AppendValue, which builds a new value.
+  Growing in place is what makes building a list or vector by appending
+  cost time in proportion to its length rather than its square. }
+function AppendInPlace(var V: TAxValue; const X: TAxValue): Boolean;
+function AppendValue(const V, X: TAxValue): TAxValue;
+
 implementation
 
 uses
@@ -1316,6 +1325,74 @@ begin
   else
     RaiseFmt(TypeError, 'append works on lists and vectors, got %s', [TypeName(Args[0])]);
   end;
+end;
+
+function AppendValue(const V, X: TAxValue): TAxValue;
+begin
+  Result := BAppend([V, X]);
+end;
+
+function AppendInPlace(var V: TAxValue; const X: TAxValue): Boolean;
+var
+  L: TListObj;
+  A, XA: TArrayObj;
+  HX: TAxValue;
+  XType: TElemType;
+  N, M, K: Integer;
+begin
+  Result := False;
+  case V.Kind of
+    vkList:
+      begin
+        L := AsList(V);
+        if L.RefCount <> 1 then
+          Exit;
+        // SetLength copies Items first if another list shares them.
+        N := Length(L.Items);
+        SetLength(L.Items, N + 1);
+        L.Items[N] := X;
+      end;
+    vkArray:
+      begin
+        A := AsArray(V);
+        if (A.RefCount <> 1) or not A.IsVector or (A.Cols <> 1) then
+          Exit;
+        XA := nil;
+        if IsArrayLike(X) then
+        begin
+          XA := ToArray(X);
+          HX := ArrayValue(XA);
+          XType := XA.ElemType;
+          M := XA.Count;
+        end
+        else if NumRank(X) >= 0 then
+        begin
+          XType := ElemTypeOf(X);
+          M := 1;
+        end
+        else
+          Exit;
+        // A wider X changes the element type: leave that to AppendValue.
+        if XType > A.ElemType then
+          Exit;
+        N := A.Count;
+        case A.ElemType of
+          etBool:    SetLength(A.B, N + M);
+          etInt:     SetLength(A.I, N + M);
+          etReal:    SetLength(A.R, N + M);
+          etComplex: SetLength(A.C, N + M);
+        end;
+        A.Rows := N + M;
+        if XA = nil then
+          A.Put(N, X)
+        else
+          for K := 0 to M - 1 do
+            A.Put(N + K, XA.Get(K));
+      end;
+  else
+    Exit;
+  end;
+  Result := True;
 end;
 
 function NeedDict(const Fn: string; const V: TAxValue): TDictObj;
