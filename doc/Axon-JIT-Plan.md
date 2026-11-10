@@ -341,6 +341,45 @@ Done Nov 10, 2026: the first step of moving more of the language onto the JIT (C
 
 The second row compares the right-hand side interpreted and compiled, as the J8 ODE rows do; compiled, the solver calls it directly. With the JIT forced on, the tests, examples and benchmarks compile 290 functions. Most rejections that remain involve strings and lists, including records with string or list fields that a function reads (the plot module's figure records): J10 and string support.
 
+### J10 — Lists
+
+Done Nov 10, 2026, after J9, on the same groundwork.
+
+**Types: lists of one element type.** A list compiles when all its elements have one compiled type: `list{real}`, `list{vector{real}}`, `list{record{t: real, y: vector{real}}}`, and lists of lists. Its type is entered in the type table as record shapes are. A list mixing types does not compile. The empty list is `list{?}`, a list whose element type is not known yet; at a call, an empty list also matches any `list{T}`, since code compiled for elements of type T handles no elements as well.
+
+- **`{}` followed by appends.** The common pattern is `l = {}`, then `l = append(l, x)` in a loop. When a variable that holds `list{?}` from an empty literal is then given a `list{T}`, the lowering notes T for that literal and lowers the function again, so the literal is `list{T}` from the start. Other uses of an empty list whose element type stays unknown reject the function.
+- **Checks at a call.** Checking that a list argument is uniform looks at every element, as a record check looks at every field. A list's element type could be remembered, but every in-place change of a list in the interpreter would then have to forget it, and a missed one would let compiled code read an element as the wrong type; so J10 checks, and a cache can follow if the cost shows up.
+- **Annotations.** A parameter annotated plain `list` takes the argument's list type, as plain `vector` does.
+
+**Values.** A list register is a value slot, as arrays and records are (J4, J9).
+
+**What compiles.**
+
+- [x] List parameters, locals, results and captures; lists inside records, and records inside lists
+- [x] Literals `{a, b, c}` of one type, and `{}` as above
+- [x] `l[i]` and `l[end]` with an int index, checked as the interpreter checks it (`IndexError` at the index); `length(l)` inline; through a record's field too (`s.items[i]`, `length(s.items)`)
+- [x] `l[i] = x` with x of the element type, the list copied first if shared (`MakeUnique`); a value of another type would make the list mixed, and rejects the function
+- [x] `append(l, x)`, and `l = append(l, x)` growing the list in place when nothing else holds it, as the interpreter's `ExecAppendAssign` does
+- [x] `for x in l`, holding the list for the loop as the interpreter does
+- [x] `l[i].a`: a field of a record element, read (writing through a list element waits)
+
+**Not in J10.** Ranges and masks as list indices (sublists), `l[i].a = x` and other writes through an element, comparing lists, `sort` and the other built-ins on lists, dictionaries.
+
+**Runtime helpers.** `rt_new_list(dst, elem, args, n)`, `rt_list_append(dst, src, arg, elem, in_place)`, `rt_list_unique(slot)`. Elements are read and written inline from `TListObj`'s items, whose length sits before the first element (measured at start-up).
+
+**Tests.** `tests/j10`, in the style of `tests/j09`: dumps; results and copies against the interpreter (shared lists written, a parameter appended to, appends in place); `{}` then appends; lists of records and records holding lists; errors; rejections. The whole suite in all three JIT modes.
+
+**Results.** `bench.cmd`, Win64 Release, i9-9900X, Nov 10, 2026; all identical compiled and interpreted.
+
+| Kernel | Interpreted | Compiled | Speed-up |
+| --- | --- | --- | --- |
+| `list_build_sum(10000)`: `l = {}`, 10000 appends, then `for x in l` sums | 22.5 ms | 1.15 ms | 20× |
+| `particles(100, 50)`: a list of 100 records `{x, v}`, each replaced by a new record per step | 15.9 ms | 1.71 ms | 9× |
+
+The speed-ups are smaller than for loops over numbers because the work is allocation: an append grows the list's items by one (about 110 ns, the same `SetLength` the interpreter's in-place append uses), and the particles kernel builds a record per element per step. Reading is fast: summing a list of 10000 reals takes 19.6 µs, 2 ns per element, the check of the argument at the call included. That check looks at every element, so for numbers it is a tight loop over the elements' kinds (`JTypeMatches`): before that, it took 142 µs. A list could remember its element type, or keep spare capacity for appends; neither is needed yet.
+
+With the JIT forced on, the tests, examples and benchmarks compile 321 functions (290 after J9). The commonest rejections left are function values passed as arguments, strings (and lists of strings), `global` and `typeof`.
+
 ## Baseline (today's interpreter)
 
 Measured in J0 before any JIT work: `bench.cmd` on Win64 Release, on an Intel Core i9-9900X at 3.5 GHz. The figures are best of 5 per call, from `time.bench`. The kernels' parameters are annotated, so the JIT can compile them unchanged.

@@ -65,6 +65,7 @@ var
   // Layout of values, arrays and records, measured in ComputeLayout.
   LSlotSize, LObjOff, LIntfDelta, LRowsOff, LColsOff, LROff, LIOff, LRcOff: NativeInt;
   LRecDelta, LValuesOff, LPayOff: NativeInt;
+  LListDelta, LItemsOff, LDynLenOff: NativeInt;
 
 type
   TRefCountAccess = class(TInterfacedObject);   // reaches the protected FRefCount
@@ -73,6 +74,7 @@ procedure ComputeLayout;
 var
   A: TArrayObj;
   R: TRecordObj;
+  L: TListObj;
   I: IInterface;
   V: TAxValue;
 begin
@@ -95,6 +97,16 @@ begin
   LValuesOff := NativeInt(@R.Values) - NativeInt(Pointer(R));
   LPayOff := NativeInt(@V.I) - NativeInt(@V);
   Assert((NativeInt(@V.R) - NativeInt(@V) = LPayOff) and (NativeInt(@V.B) - NativeInt(@V) = LPayOff));
+  I := nil;
+  // Lists (J10): the object, its items, and the length a dynamic array keeps
+  // before its first element.
+  L := TListObj.Create;
+  I := L;
+  LListDelta := NativeInt(Pointer(L)) - NativeInt(Pointer(I));
+  LItemsOff := NativeInt(@L.Items) - NativeInt(Pointer(L));
+  SetLength(L.Items, 3);
+  LDynLenOff := -SizeOf(NativeInt);
+  Assert(PNativeInt(NativeInt(Pointer(L.Items)) + LDynLenOff)^ = 3);
   I := nil;
 end;
 
@@ -138,6 +150,9 @@ begin
   MIR_load_external(Ctx, 'rt_new_array', H.NewArray);
   MIR_load_external(Ctx, 'rt_new_record', H.NewRecord);
   MIR_load_external(Ctx, 'rt_record_unique', H.RecordUnique);
+  MIR_load_external(Ctx, 'rt_new_list', H.NewList);
+  MIR_load_external(Ctx, 'rt_list_append', H.ListAppend);
+  MIR_load_external(Ctx, 'rt_list_unique', H.ListUnique);
   for N in ElementaryNames do
     MIR_load_external(Ctx, PAnsiChar(AnsiString('rt_' + N)), ElementaryRealFunction(N));
   MIR_load_external(Ctx, 'rt_atan2', ElementaryRealFunction('atan2'));
@@ -185,6 +200,7 @@ type
     PtrProto, PtrPtrProto, AssignImport, MoveImport, ClearImport, UniqueImport,
     LeaveProto, LeaveImport, IndexErrProto, IndexErrImport, NewArrayProto, NewArrayImport: TMirItem;
     NewRecordProto, NewRecordImport, RecUniqueImport: TMirItem;
+    NewListProto, NewListImport, AppendProto, AppendImport, ListUniqueImport: TMirItem;
     // Arrays: the frame of value slots, and the single exit that releases it.
     SlotOf: TArray<Integer>;          // per JIR register: its slot, or -1
     NSlots, JunkSlot: Integer;
@@ -207,6 +223,14 @@ type
     procedure GenField(I: TJInsn);
     procedure GenSetField(I: TJInsn);
     procedure GenRecord(I: TJInsn);
+    // lists (J10)
+    function BaseType(I: TJInsn): TJType;
+    function OperandType(const O: TJOperand): TJType;
+    procedure PutArg(K: Integer; const O: TJOperand);
+    procedure GenListLen(I: TJInsn);
+    procedure GenListElem(I: TJInsn; IsStore: Boolean);
+    procedure GenList(I: TJInsn);
+    procedure GenAppend(I: TJInsn);
     procedure SetupResultDests(I: TJInsn; const ResultTypes: TArray<TJType>);
     procedure ClearJunk(I: TJInsn; const ResultTypes: TArray<TJType>);
     function C(const Name: AnsiString): Int32;
@@ -441,6 +465,11 @@ procedure TGen.GenLen(I: TJInsn);
 var
   Obj, T: TMirReg;
 begin
+  if IsListType(BaseType(I)) then
+  begin
+    GenListLen(I);
+    Exit;
+  end;
   Obj := ObjAt(ValueOf(I, False), LIntfDelta);
   case I.Ops[1].I of
     1: E('mov', [Reg(I.Dst), MemOp(MIR_T_I32, LRowsOff, Obj)]);
@@ -490,6 +519,11 @@ var
   Off: NativeInt;
   Elem: TAxMirOp;
 begin
+  if IsListType(BaseType(I)) then
+  begin
+    GenListElem(I, IsStore);
+    Exit;
+  end;
   Arr := I.Ops[0].Reg;
   if IsStore then
     NIdx := Length(I.Ops) - 2
@@ -671,6 +705,115 @@ begin
   E('call', [RefOp(NewRecordProto), RefOp(NewRecordImport), RegOp(St),
     RegOp(SlotAddr(SlotOf[I.Dst])), IntOp(I.Typ), RegOp(ArgBuf), IntOp(Guard), IntOp(Fid), IntOp(Site)]);
   E('bne', [LabelOp(FailLabel), RegOp(St), IntOp(0)]);
+end;
+
+{ ---- lists (J10) ---- }
+
+{ The type of the value an instruction's path leads to (its first operand's
+  type when it has no path). }
+function TGen.BaseType(I: TJInsn): TJType;
+var
+  K: Integer;
+begin
+  Result := J.Regs[I.Ops[0].Reg].Typ;
+  for K := 0 to High(I.Path) do
+    Result := ShapeOf(Result).Types[I.Path[K]];
+end;
+
+function TGen.OperandType(const O: TJOperand): TJType;
+begin
+  case O.Kind of
+    jkReg:  Result := J.Regs[O.Reg].Typ;
+    jkReal: Result := jtReal;
+    jkBool: Result := jtBool;
+  else
+    Result := jtInt;
+  end;
+end;
+
+{ Argument slot K := O: a number as itself, an array, record or list by its
+  slot's address. }
+procedure TGen.PutArg(K: Integer; const O: TJOperand);
+begin
+  if OperandType(O) = jtReal then
+    E('dmov', [MemOp(MIR_T_D, 8 * K, ArgBuf), Opnd(O)])
+  else
+    E('mov', [MemOp(MIR_T_I64, 8 * K, ArgBuf), Opnd(O)]);
+end;
+
+{ length(l): the length a dynamic array keeps before its first element, or
+  0 when it has none (a nil array). }
+procedure TGen.GenListLen(I: TJInsn);
+var
+  Obj, Items: TMirReg;
+  LDone: TMirInsn;
+begin
+  Obj := ObjAt(ValueOf(I, False), LListDelta);
+  Items := Scratch(MIR_T_I64);
+  E('mov', [RegOp(Items), MemOp(MIR_T_I64, LItemsOff, Obj)]);
+  LDone := MIR_new_label(Ctx);
+  E('mov', [Reg(I.Dst), IntOp(0)]);
+  E('beq', [LabelOp(LDone), RegOp(Items), IntOp(0)]);
+  E('mov', [Reg(I.Dst), MemOp(MIR_T_I64, LDynLenOff, Items)]);
+  MIR_append_insn(Ctx, Body, LDone);
+end;
+
+{ l[i], read or written; the index is already checked. A write makes the
+  list unique first. An element is a value: a number in its variant part, an
+  array, record or list shared. }
+procedure TGen.GenListElem(I: TJInsn; IsStore: Boolean);
+var
+  Addr, Obj, Items, P: TMirReg;
+begin
+  Addr := ValueOf(I, IsStore);
+  if IsStore then
+    UniqueAt(Addr, LListDelta, ListUniqueImport);
+  Obj := ObjAt(Addr, LListDelta);
+  Items := Scratch(MIR_T_I64);
+  E('mov', [RegOp(Items), MemOp(MIR_T_I64, LItemsOff, Obj)]);
+  // The element's value: items + (i - 1) * slot size.
+  P := Scratch(MIR_T_I64);
+  E('sub', [RegOp(P), Opnd(I.Ops[1]), IntOp(1)]);
+  E('mul', [RegOp(P), RegOp(P), IntOp(LSlotSize)]);
+  E('add', [RegOp(P), RegOp(P), RegOp(Items)]);
+  if IsStore then
+  begin
+    if IsBoxedType(I.Typ) then
+      E('call', [RefOp(PtrPtrProto), RefOp(AssignImport), RegOp(P), Opnd(I.Ops[2])])
+    else if I.Typ = jtReal then
+      E('dmov', [MemOp(MIR_T_D, LPayOff, P), Opnd(I.Ops[2])])
+    else if I.Typ = jtInt then
+      E('mov', [MemOp(MIR_T_I64, LPayOff, P), Opnd(I.Ops[2])])
+    else
+      E('mov', [MemOp(MIR_T_U8, LPayOff, P), Opnd(I.Ops[2])]);
+  end
+  else if IsBoxedType(I.Typ) then
+    E('call', [RefOp(PtrPtrProto), RefOp(AssignImport), RegOp(SlotAddr(SlotOf[I.Dst])), RegOp(P)])
+  else if I.Typ = jtReal then
+    E('dmov', [Reg(I.Dst), MemOp(MIR_T_D, LPayOff, P)])
+  else if I.Typ = jtInt then
+    E('mov', [Reg(I.Dst), MemOp(MIR_T_I64, LPayOff, P)])
+  else
+    E('mov', [Reg(I.Dst), MemOp(MIR_T_U8, LPayOff, P)]);
+end;
+
+{ A list literal: the elements in the argument slots, then rt_new_list. }
+procedure TGen.GenList(I: TJInsn);
+var
+  K: Integer;
+begin
+  for K := 0 to High(I.Ops) do
+    PutArg(K, I.Ops[K]);
+  E('call', [RefOp(NewListProto), RefOp(NewListImport), RegOp(SlotAddr(SlotOf[I.Dst])),
+    IntOp(ListElem(I.Typ)), RegOp(ArgBuf), IntOp(Length(I.Ops))]);
+end;
+
+{ append: the value in the first argument slot, then rt_list_append. }
+procedure TGen.GenAppend(I: TJInsn);
+begin
+  PutArg(0, I.Ops[1]);
+  E('call', [RefOp(AppendProto), RefOp(AppendImport), RegOp(SlotAddr(SlotOf[I.Dst])),
+    Opnd(I.Ops[0]), RegOp(ArgBuf), IntOp(OperandType(I.Ops[1])), IntOp(I.Ops[2].I)]);
 end;
 
 { An operator on arrays: Axon.Ops through rt_call. }
@@ -1129,6 +1272,10 @@ begin
       GenSetField(I);
     joRecord:
       GenRecord(I);
+    joList:
+      GenList(I);
+    joAppend:
+      GenAppend(I);
   else
     raise EMirError.CreateFmt('JIT: no code for JIR op %d', [Ord(I.Op)]);
   end;
@@ -1210,6 +1357,13 @@ begin
   NewRecordProto := MIR_new_proto_arr(Ctx, 'rt_new_record_p', 1, @ResI64, 6, @V[0]);
   NewRecordImport := MIR_new_import(Ctx, 'rt_new_record');
   RecUniqueImport := MIR_new_import(Ctx, 'rt_record_unique');
+  V := Vars([MIR_T_P, MIR_T_I64, MIR_T_P, MIR_T_I64], ['dst', 'elem', 'args', 'n']);
+  NewListProto := MIR_new_proto_arr(Ctx, 'rt_new_list_p', 0, nil, 4, @V[0]);
+  NewListImport := MIR_new_import(Ctx, 'rt_new_list');
+  V := Vars([MIR_T_P, MIR_T_P, MIR_T_P, MIR_T_I64, MIR_T_I64], ['dst', 'src', 'arg', 't', 'inplace']);
+  AppendProto := MIR_new_proto_arr(Ctx, 'rt_list_append_p', 0, nil, 5, @V[0]);
+  AppendImport := MIR_new_import(Ctx, 'rt_list_append');
+  ListUniqueImport := MIR_new_import(Ctx, 'rt_list_unique');
   DeclareCalls;
 
   // A slot for every array register, and a junk slot for array results that
@@ -1289,10 +1443,15 @@ begin
       HasCalls := True;
       if MaxArgs < Length(Insn.Ops) - 2 then MaxArgs := Length(Insn.Ops) - 2;
     end
-    else if Insn.Op = joRecord then
+    else if Insn.Op in [joRecord, joList] then
     begin
       HasCalls := True;
       if MaxArgs < Length(Insn.Ops) then MaxArgs := Length(Insn.Ops);
+    end
+    else if Insn.Op = joAppend then
+    begin
+      HasCalls := True;
+      if MaxArgs < 1 then MaxArgs := 1;
     end;
   if NSlots > 0 then
   begin

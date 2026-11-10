@@ -174,6 +174,38 @@ function lv_params()
                    params = LVParams(1.0, 0.1, 0.075, 1.5)).y
 end
 
+## Lists (J10): build a list of reals by appending, then sum it.
+function list_build_sum(n: int): real
+  l = {}
+  for k in 1:n
+    l = append(l, k * 0.5)
+  end
+  s = 0.0
+  for x in l
+    s = s + x
+  end
+  return s
+end
+
+## A list of records (particles), stepped and summed.
+function particles(n: int, steps: int): real
+  ps = {}
+  for k in 1:n
+    ps = append(ps, {x: k * 1.0, v: 0.5})
+  end
+  for s in 1:steps
+    for k in 1:length(ps)
+      p = ps[k]
+      ps[k] = {x: p.x + 0.01 * p.v, v: p.v * 0.999}
+    end
+  end
+  total = 0.0
+  for p in ps
+    total = total + p.x
+  end
+  return total
+end
+
 # ---------------------------------------------------------------- driver
 
 function pad(s, w)
@@ -216,4 +248,6 @@ row("ode rk45 Lotka-Volterra", lv_rk45)
 row("ode bdf Robertson", rob_bdf)
 row("record_steps(2000)", function() return record_steps(2000) end)
 row("ode rk45, parameter record", lv_params)
+row("list_build_sum(10000)", function() return list_build_sum(10000) end)
+row("particles(100, 50)", function() return particles(100, 50) end)
 println(pad("matmul 60x60 (BLAS *)", 30), lpad(time.format(time.bench(function() return A * B end).best), 10))

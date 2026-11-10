@@ -78,6 +78,12 @@ unit Axon.Jit.Lower;
      released right after its use, so it holds no reference the
      interpreter would not.
 
+   - Lists (J10) whose elements have one type, list{T}. The empty literal
+     is list{?}; when a variable holding it is then given a list{T} (by an
+     append), the lowering notes T for that literal and starts again
+     (EJitRetry), so the literal is list{T} from the start. l = append(l, x)
+     appends in place, as ExecAppendAssign does.
+
    Not compiled yet, and rejected: ranges, masks and colons as indices,
    strings other than print and error arguments,
    complex numbers, ranges as values, nested function definitions, try,
@@ -99,6 +105,9 @@ type
     Line, Col: Integer;
     constructor Create(const Msg: string; ALine, ACol: Integer);
   end;
+
+  { Lowering starts again with a new hint (an empty list literal's type). }
+  EJitRetry = class(Exception);
 
   TJResolvedKind = (rkNone, rkFunction, rkBuiltin, rkOther);
 
@@ -202,6 +211,7 @@ type
     Typ: TJType;
     Declared: Boolean;       // annotated: assignments widen to Typ
     Line, Col: Integer;      // where the type was fixed
+    EmptyOrigin: TExpr;      // list{?}: the empty literal it was first given (J10)
   end;
 
   TScopeMap = TDictionary<string, TJVar>;
@@ -230,6 +240,7 @@ type
     ReturnFixed, ReturnDeclared: Boolean;
     ReturnLine, ReturnCol: Integer;      // the return that fixed the result types
     FieldTemps: TList<Integer>;          // temporaries holding a field's array or record
+    EmptyRegs: TDictionary<Integer, TExpr>;   // registers holding an empty list literal
     procedure Reject(const Msg: string; N: TNode); overload;
     procedure Reject(const Fmt: string; const Args: array of const; N: TNode); overload;
     function Site: Integer;
@@ -284,6 +295,11 @@ type
     procedure ReleaseTemps(const Ops: array of TJOperand);
     function TryPathBuiltin(E: TCallExpr; const Name: string; Want: Integer;
       out Vals: TArray<TJValue>): Boolean;
+    // lists (J10)
+    function LowerListLit(E: TListExpr): TJValue;
+    function AppendType(const L, X: TJValue; N: TNode): TJType;
+    function TryAppendAssign(S: TAssignStmt): Boolean;
+    procedure ListMismatch(V: TJVar; const Val: TJValue);
     function LowerMatrix(E: TMatrixExpr): TJValue;
     procedure CheckCaptures;
     procedure LowerDestructure(S: TDestructureStmt);
@@ -300,6 +316,7 @@ type
     procedure CheckBodyShape(Body: TStmtList);
   public
     ParamTypes: TArray<TJType>;        // from the entry
+    Hints: TDictionary<TExpr, TJType>;  // empty list literals' types, from earlier attempts
     constructor Create(ADecl: TFunctionDecl; ASession: TJSession; AEntry: TJEntry; AContext: TObject);
     destructor Destroy; override;
     function Run: TJFunction;
@@ -413,10 +430,12 @@ begin
   Scopes := TObjectList<TScopeMap>.Create(True);
   Loops := TList<TLoop>.Create;
   FieldTemps := TList<Integer>.Create;
+  EmptyRegs := TDictionary<Integer, TExpr>.Create;
 end;
 
 destructor TLowerer.Destroy;
 begin
+  EmptyRegs.Free;
   FieldTemps.Free;
   OutsideNames.Free;
   CaptureRegs.Free;
@@ -513,11 +532,21 @@ begin
       [JTypeName(Val.Typ), V.Name, JTypeName(V.Typ)]), N)
   else
   begin
-    if Val.Typ <> V.Typ then
+    // An empty list is a list of any element type (J10).
+    if (Val.Typ <> V.Typ) and IsListType(Val.Typ) and IsListType(V.Typ) and
+      (ListElem(Val.Typ) = jtNothing) then
+      // keeps V's type
+    else if Val.Typ <> V.Typ then
+    begin
+      ListMismatch(V, Val);
       Reject('%s is %s at %d:%d and %s at %d:%d', [V.Name, JTypeName(V.Typ), V.Line, V.Col,
         JTypeName(Val.Typ), N.Line, N.Col], N);
+    end;
     W := Val;
   end;
+  // The variable's first value an empty literal: remember it, for a hint.
+  if (V.EmptyOrigin = nil) and (W.Opnd.Kind = jkReg) and EmptyRegs.ContainsKey(W.Opnd.Reg) then
+    V.EmptyOrigin := EmptyRegs[W.Opnd.Reg];
   Move(V.Reg, W);
   MarkAssigned(V);
 end;
@@ -616,7 +645,7 @@ begin
     else if C = TRecordExpr then
       Result := LowerRecordLit(TRecordExpr(E))
     else if C = TListExpr then
-      Reject('list literals are not compiled', E)
+      Result := LowerListLit(TListExpr(E))
     else if C = TStringLit then
       Reject('strings are not compiled', E)
     else if C = TImagLit then
@@ -914,6 +943,23 @@ begin
 
   if (R.Kind = rkBuiltin) and TryInlineBuiltin(E, R.Name, Args, Want, Result) then
     Exit;
+
+  // append(l, x) on a list: a new list (J10).
+  if (R.Kind = rkBuiltin) and (R.Name = 'append') and (Length(Args) = 2) and
+    IsListType(Args[0].Typ) then
+  begin
+    if (Want >= 0) and (Want <> 1) then
+      Reject('uses append, which returns one value, where %d are wanted', [Want], E);
+    K := Temp(AppendType(Args[0], Args[1], E));
+    F.Emit(joAppend, F.Regs[K].Typ, K, [Args[0].Opnd, Args[1].Opnd, IntOperand(0)]);
+    ReleaseTemps([Args[1].Opnd]);
+    ReleaseFieldTemps([Args[0].Opnd]);
+    if Want < 0 then
+      Result := []
+    else
+      Result := [MakeValue(F.Regs[K].Typ, RegOperand(K))];
+    Exit;
+  end;
 
   T := TJCallTarget.Create;
   F.Targets.Add(T);
@@ -1234,6 +1280,21 @@ begin
   // s.y[i]: the array of a local record's field, read through the path.
   if TryFieldPath(E.Target, A, Path, T, Declared) then
   begin
+    if IsListType(T) then
+    begin
+      // s.items[i]: an element of a list in a record (J10).
+      if E.Items.Count <> 1 then
+        Reject('a list takes one index, got %d, an IndexError', [E.Items.Count], E);
+      if ListElem(T) = jtNothing then
+        Reject('indexes an empty list, an IndexError', E);
+      Dst := Temp(ListElem(T));
+      I := LowerIndexItem(E.Items[0], ArrayLenPath(A, Path, 0));
+      Insn := F.Emit(joLoad, ListElem(T), Dst, [A.Opnd, I.Opnd]);
+      Insn.Path := Path;
+      if IsBoxedType(ListElem(T)) then
+        FieldTemps.Add(Dst);
+      Exit(MakeValue(ListElem(T), RegOperand(Dst)));
+    end;
     if not IsArrayType(T) then
       Reject('indexing %s is not compiled', [JTypeName(T)], E);
     Dst := Temp(ElemOf(T));
@@ -1257,6 +1318,21 @@ begin
     Exit(MakeValue(ElemOf(T), RegOperand(Dst)));
   end;
   A := LowerExpr(E.Target);
+  if IsListType(A.Typ) then
+  begin
+    // l[i]: one int index, checked as the interpreter checks it (J10).
+    if E.Items.Count <> 1 then
+      Reject('a list takes one index, got %d, an IndexError', [E.Items.Count], E);
+    if ListElem(A.Typ) = jtNothing then
+      Reject('indexes an empty list, an IndexError', E);
+    Dst := Temp(ListElem(A.Typ));
+    I := LowerIndexItem(E.Items[0], ArrayLen(A, 0));
+    F.Emit(joLoad, ListElem(A.Typ), Dst, [A.Opnd, I.Opnd]);
+    ReleaseFieldTemps([A.Opnd]);
+    if IsBoxedType(ListElem(A.Typ)) then
+      FieldTemps.Add(Dst);
+    Exit(MakeValue(ListElem(A.Typ), RegOperand(Dst)));
+  end;
   if not IsArrayType(A.Typ) then
     Reject('indexing %s is not compiled', [JTypeName(A.Typ)], E);
   Dst := Temp(ElemOf(A.Typ));
@@ -1273,6 +1349,7 @@ begin
   end
   else
     Reject('%s with %d indices, an IndexError', [JTypeName(A.Typ), E.Items.Count], E);
+  ReleaseFieldTemps([A.Opnd]);
   Result := MakeValue(ElemOf(A.Typ), RegOperand(Dst));
 end;
 
@@ -1295,6 +1372,20 @@ begin
     // s.y[i] = x: through the path, each record on it made unique first.
     if not TryFieldPath(T.Target, A, Path, FT, Declared, True) then
       Reject('assigns an element of a field of a value that is not a local record', S);
+    if IsListType(FT) then
+    begin
+      // s.items[i] = x (J10): x of the element type, the list made unique.
+      if T.Items.Count <> 1 then
+        Reject('a list takes one index, got %d, an IndexError', [T.Items.Count], S);
+      if Val.Typ <> ListElem(FT) then
+        Reject('stores %s in %s, which would mix its element types', [JTypeName(Val.Typ),
+          JTypeName(FT)], S);
+      I := LowerIndexItem(T.Items[0], ArrayLenPath(A, Path, 0));
+      Insn := F.Emit(joStore, ListElem(FT), -1, [A.Opnd, I.Opnd, Val.Opnd]);
+      Insn.Path := Path;
+      ReleaseTemps([Val.Opnd]);
+      Exit;
+    end;
     if not IsArrayType(FT) then
       Reject('assigns an element of %s', [JTypeName(FT)], S);
     Elem := ElemOf(FT);
@@ -1328,6 +1419,20 @@ begin
   V := Lookup(TNameExpr(T.Target).Name);
   if (V = nil) or not IsAssigned(V) then
     Reject('assigns an element of %s, which is not a local array here', [TNameExpr(T.Target).Name], S);
+  if IsListType(V.Typ) then
+  begin
+    // l[i] = x (J10): x of the element type, the list made unique first.
+    if T.Items.Count <> 1 then
+      Reject('a list takes one index, got %d, an IndexError', [T.Items.Count], S);
+    if Val.Typ <> ListElem(V.Typ) then
+      Reject('stores %s in %s, which would mix its element types', [JTypeName(Val.Typ),
+        JTypeName(V.Typ)], S);
+    A := MakeValue(V.Typ, RegOperand(V.Reg));
+    I := LowerIndexItem(T.Items[0], ArrayLen(A, 0));
+    F.Emit(joStore, ListElem(V.Typ), -1, [A.Opnd, I.Opnd, Val.Opnd]);
+    ReleaseTemps([Val.Opnd]);
+    Exit;
+  end;
   if not IsArrayType(V.Typ) then
     Reject('assigns an element of %s, which is %s', [V.Name, JTypeName(V.Typ)], S);
   Elem := ElemOf(V.Typ);
@@ -1419,6 +1524,15 @@ var
   D: Int64;
 begin
   Result := False;
+  if (Length(Args) = 1) and (Name = 'length') and IsListType(Args[0].Typ) then
+  begin
+    // The number of elements of a list.
+    Vals := [ArrayLen(Args[0], 0)];
+    ReleaseFieldTemps([Args[0].Opnd]);
+    if (Want >= 0) and (Want <> 1) then
+      Reject('uses length, which returns one value, where %d are wanted', [Want], E);
+    Exit(True);
+  end;
   if (Length(Args) = 0) or not IsArrayType(Args[0].Typ) then
     Exit;
   if (Name = 'length') and (Length(Args) = 1) then
@@ -1452,9 +1566,17 @@ var
   Elem: TJType;
 begin
   A := LowerExpr(S.Iter);
-  if not IsArrayType(A.Typ) then
-    Reject('for over %s is not compiled', [JTypeName(A.Typ)], S);
-  Elem := ElemOf(A.Typ);
+  if IsListType(A.Typ) then
+  begin
+    // for x in l (J10): its elements, which must have a known type.
+    Elem := ListElem(A.Typ);
+    if Elem = jtNothing then
+      Reject('for over an empty list whose element type is not known', S);
+  end
+  else if not IsArrayType(A.Typ) then
+    Reject('for over %s is not compiled', [JTypeName(A.Typ)], S)
+  else
+    Elem := ElemOf(A.Typ);
   Hidden := Temp(A.Typ);
   F.Emit(joMov, A.Typ, Hidden, [A.Opnd]);
   A := MakeValue(A.Typ, RegOperand(Hidden));
@@ -1566,6 +1688,12 @@ begin
   Dst := Temp(T);
   Insn := F.Emit(joField, T, Dst, [Base.Opnd]);
   Insn.Path := Path;
+  // A temporary base (l[i] in l[i].a) lets go of its record at once.
+  if (Base.Opnd.Kind = jkReg) and (F.Regs[Base.Opnd.Reg].Name = '') and IsBoxedType(Base.Typ) then
+  begin
+    F.Emit(joClear, jtNothing, -1, [Base.Opnd]);
+    FieldTemps.Remove(Base.Opnd.Reg);
+  end;
   if IsBoxedType(T) then
     FieldTemps.Add(Dst);
   Result := MakeValue(T, RegOperand(Dst));
@@ -1688,7 +1816,9 @@ begin
     Exit;
   if (E.Args.Count = 2) and not (E.Args[1].Value is TIntLit) then
     Exit;
-  if not TryFieldPath(E.Args[0].Value, Base, Path, T, Declared) or not IsArrayType(T) then
+  if not TryFieldPath(E.Args[0].Value, Base, Path, T, Declared) then
+    Exit;
+  if not (IsArrayType(T) or (IsListType(T) and (Name = 'length'))) then
     Exit;
   if (Name = 'length') and (E.Args.Count = 1) then
     Vals := [ArrayLenPath(Base, Path, 0)]
@@ -1864,6 +1994,121 @@ begin
   Insn.Target := Tg;
   ReleaseTemps(Ops);
   Result := MakeValue(T, RegOperand(Dst));
+end;
+
+(* {a, b, c} of one element type, or the empty list (J10): list{?}, unless an
+  earlier attempt found its type (Hints). *)
+function TLowerer.LowerListLit(E: TListExpr): TJValue;
+var
+  Vals: TArray<TJValue>;
+  Ops: TArray<TJOperand>;
+  K, Dst: Integer;
+  T, Elem: TJType;
+begin
+  SetLength(Vals, E.Items.Count);
+  SetLength(Ops, E.Items.Count);
+  for K := 0 to E.Items.Count - 1 do
+  begin
+    Vals[K] := LowerExpr(E.Items[K]);
+    if not Storable(Vals[K].Typ) then
+      Reject('a list of %s is not compiled', [JTypeName(Vals[K].Typ)], E);
+    if Vals[K].Typ <> Vals[0].Typ then
+      Reject('a list of %s and %s; a list mixing types is not compiled',
+        [JTypeName(Vals[0].Typ), JTypeName(Vals[K].Typ)], E);
+    Ops[K] := Vals[K].Opnd;
+  end;
+  if Length(Vals) > 0 then
+    Elem := Vals[0].Typ
+  else if not Hints.TryGetValue(E, T) then
+    Elem := jtNothing
+  else
+    Elem := ListElem(T);
+  T := ListType(Elem);
+  if T = jtNothing then
+    Reject('too many list and record types', E);
+  Dst := Temp(T);
+  F.Emit(joList, T, Dst, Ops);
+  ReleaseTemps(Ops);
+  if Length(Vals) = 0 then
+    EmptyRegs.AddOrSetValue(Dst, E);
+  Result := MakeValue(T, RegOperand(Dst));
+end;
+
+(* The type of append(l, x): l's type, or list{type of x} for an empty list. *)
+function TLowerer.AppendType(const L, X: TJValue; N: TNode): TJType;
+var
+  Elem: TJType;
+begin
+  if not Storable(X.Typ) then
+    Reject('appends %s to a list, which is not compiled', [JTypeName(X.Typ)], N);
+  Elem := ListElem(L.Typ);
+  if Elem = jtNothing then
+    Result := ListType(X.Typ)
+  else if (Elem = X.Typ) or (IsListType(Elem) and IsListType(X.Typ) and (ListElem(X.Typ) = jtNothing)) then
+    Result := L.Typ
+  else
+  begin
+    Reject('appends %s to %s; a list mixing types is not compiled', [JTypeName(X.Typ),
+      JTypeName(L.Typ)], N);
+    Result := jtNothing;
+  end;
+  if Result = jtNothing then
+    Reject('too many list and record types', N);
+end;
+
+(* V, first given an empty literal, is now given a list{T}: note T for that
+  literal and lower again (EJitRetry). Nothing for any other mismatch. *)
+procedure TLowerer.ListMismatch(V: TJVar; const Val: TJValue);
+begin
+  if (V.EmptyOrigin <> nil) and IsListType(V.Typ) and (ListElem(V.Typ) = jtNothing) and
+    IsListType(Val.Typ) and (ListElem(Val.Typ) <> jtNothing) and
+    not Hints.ContainsKey(V.EmptyOrigin) then
+  begin
+    Hints.Add(V.EmptyOrigin, Val.Typ);
+    raise EJitRetry.Create('retry');
+  end;
+end;
+
+{ l = append(l, x) with l a local list: the list grows in place when nothing
+  else holds it, as ExecAppendAssign does. False for any other assignment. }
+function TLowerer.TryAppendAssign(S: TAssignStmt): Boolean;
+var
+  Call: TCallExpr;
+  V: TJVar;
+  R: TJResolved;
+  X, L: TJValue;
+  T: TJType;
+begin
+  Result := False;
+  if not (S.Value is TCallExpr) then
+    Exit;
+  Call := TCallExpr(S.Value);
+  if not (Call.Callee is TNameExpr) or (TNameExpr(Call.Callee).Name <> 'append') or
+    (Call.Args.Count <> 2) or (Call.Args[0].Kind <> akPositional) or
+    (Call.Args[1].Kind <> akPositional) or not (Call.Args[0].Value is TNameExpr) or
+    (TNameExpr(Call.Args[0].Value).Name <> TNameExpr(S.Target).Name) then
+    Exit;
+  V := Lookup(TNameExpr(S.Target).Name);
+  if (V = nil) or not IsAssigned(V) or not IsListType(V.Typ) then
+    Exit;
+  if Lookup('append') <> nil then
+    Exit;
+  R := Session.Resolve(Context, 'append');
+  if (R.Kind <> rkBuiltin) or (R.Name <> 'append') then
+    Exit;
+  L := MakeValue(V.Typ, RegOperand(V.Reg));
+  X := LowerExpr(Call.Args[1].Value);
+  T := AppendType(L, X, Call);
+  if T <> V.Typ then
+  begin
+    ListMismatch(V, MakeValue(T, L.Opnd));
+    Reject('%s is %s at %d:%d and %s at %d:%d', [V.Name, JTypeName(V.Typ), V.Line, V.Col,
+      JTypeName(T), S.Line, S.Col], S);
+  end;
+  F.Emit(joAppend, T, V.Reg, [L.Opnd, X.Opnd, IntOperand(1)]);
+  ReleaseTemps([X.Opnd]);
+  MarkAssigned(V);
+  Result := True;
 end;
 
 { r.a = x, r.a.b = x: the value first, then the write through the path. The
@@ -2105,6 +2350,8 @@ begin
   if not (S.Target is TNameExpr) then
     Reject('this assignment target is not compiled', S);
   Name := TNameExpr(S.Target).Name;
+  if (S.TypeRef = nil) and TryAppendAssign(S) then
+    Exit;
   // The value is evaluated before the target is resolved.
   Val := LowerExpr(S.Value);
   if S.TypeRef <> nil then
@@ -2593,7 +2840,7 @@ var
 begin
   for P in Decl.Params do
     if (P.TypeRef = nil) or ((P.TypeRef.Param = nil) and
-      ((P.TypeRef.Name = 'vector') or (P.TypeRef.Name = 'matrix') or
+      ((P.TypeRef.Name = 'vector') or (P.TypeRef.Name = 'matrix') or (P.TypeRef.Name = 'list') or
       not IsBuiltinTypeName(P.TypeRef.Name))) then
       Exit(True);
   Result := False;
@@ -2624,6 +2871,9 @@ begin
       ParamTypes[K] := A
     else if (P.TypeRef <> nil) and (P.TypeRef.Param = nil) and (P.TypeRef.Name = 'matrix') and
       (A = jtMatReal) then
+      ParamTypes[K] := A
+    else if (P.TypeRef <> nil) and (P.TypeRef.Param = nil) and (P.TypeRef.Name = 'list') and
+      IsListType(A) then
       ParamTypes[K] := A
     else if (P.TypeRef = nil) and (A <> jtNothing) then
       ParamTypes[K] := A
@@ -2659,7 +2909,8 @@ function TJSession.Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: 
 var
   L: TLowerer;
   Key: string;
-  N: Integer;
+  N, Attempt: Integer;
+  Hints: TDictionary<TExpr, TJType>;
 begin
   Key := SignatureKey(Decl, ParamTypes);
   if Entries.TryGetValue(Key, Result) then
@@ -2685,23 +2936,42 @@ begin
     Result.RejectCol := Decl.Col;
     Exit;
   end;
-  L := TLowerer.Create(Decl, Self, Result, FuncObj);
-  L.ParamTypes := ParamTypes;
+  // Empty list literals' types found by one attempt are used by the next.
+  Hints := TDictionary<TExpr, TJType>.Create;
   try
-    try
-      Result.Func := L.Run;
-      Result.State := esLowered;
-    except
-      on E: EJitReject do
-      begin
-        Result.State := esRejected;
-        Result.Reason := E.Message;
-        Result.RejectLine := E.Line;
-        Result.RejectCol := E.Col;
+    for Attempt := 1 to 8 do
+    begin
+      L := TLowerer.Create(Decl, Self, Result, FuncObj);
+      L.ParamTypes := ParamTypes;
+      L.Hints := Hints;
+      try
+        try
+          Result.Func := L.Run;
+          Result.State := esLowered;
+          Break;
+        except
+          on E: EJitReject do
+          begin
+            Result.State := esRejected;
+            Result.Reason := E.Message;
+            Result.RejectLine := E.Line;
+            Result.RejectCol := E.Col;
+            Break;
+          end;
+          on EJitRetry do
+          begin
+            Result.State := esRejected;
+            Result.Reason := 'the element types of its empty lists are not settled';
+            Result.RejectLine := Decl.Line;
+            Result.RejectCol := Decl.Col;
+          end;
+        end;
+      finally
+        L.Free;
       end;
     end;
   finally
-    L.Free;
+    Hints.Free;
   end;
 end;
 

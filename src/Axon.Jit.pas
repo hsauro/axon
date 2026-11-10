@@ -73,6 +73,7 @@ type
     Error, CountInt, CountReal, PowReal, Call, Frame, Recursion: Pointer;
     Assign, Move, Clear, MakeUnique, Leave, IndexError, NewArray: Pointer;
     NewRecord, RecordUnique: Pointer;
+    NewList, ListAppend, ListUnique: Pointer;
   end;
 
 var
@@ -435,6 +436,60 @@ begin
   MakeUnique(P^);
 end;
 
+{ A value of type T from an 8-byte argument slot: a number as itself, an
+  array, record or list by the address of its slot. }
+function BoxSlot(Slot: PInt64; T: TJType): TAxValue;
+begin
+  case T of
+    jtBool: Result := BoolValue(Slot^ <> 0);
+    jtInt:  Result := IntValue(Slot^);
+    jtReal: Result := RealValue(PDouble(Slot)^);
+  else
+    Result := PAxValue(PPointer(Slot)^)^;
+  end;
+end;
+
+{ A list literal (J10): N elements of type Elem in the argument slots. }
+procedure RtNewList(Dst: PAxValue; Elem: Int64; Args: PInt64; N: Int64); cdecl;
+var
+  Items: TAxValues;
+  K: Integer;
+begin
+  SetLength(Items, N);
+  for K := 0 to N - 1 do
+    Items[K] := BoxSlot(PInt64(PByte(Args) + 8 * K), TJType(Elem));
+  Dst^ := ListValue(Items);
+end;
+
+{ append(src, x), x of type T in the argument slot, into Dst. With InPlace
+  (l = append(l, x), Dst = Src), the list grows in place when nothing else
+  holds it, as ExecAppendAssign's AppendInPlace does; otherwise a new list,
+  as BAppend builds it. }
+procedure RtListAppend(Dst, Src: PAxValue; Arg: PInt64; T, InPlace: Int64); cdecl;
+var
+  X: TAxValue;
+  L: TListObj;
+  N: Integer;
+begin
+  X := BoxSlot(Arg, TJType(T));
+  L := AsList(Src^);
+  if (InPlace <> 0) and (Dst = Src) and (L.RefCount = 1) then
+  begin
+    N := Length(L.Items);
+    SetLength(L.Items, N + 1);
+    L.Items[N] := X;
+  end
+  else
+    Dst^ := ListValue(L.Items + [X]);
+end;
+
+{ Copy-on-write before an element write, as MakeUnique: a shared list is
+  copied (one level). }
+procedure RtListUnique(P: PAxValue); cdecl;
+begin
+  MakeUnique(P^);
+end;
+
 procedure RtIndexError(Fid, Site, Index, Len: Int64); cdecl;
 begin
   Pending(Fid, Site, IndexError, Format('index %d is out of bounds for a dimension of length %d',
@@ -537,6 +592,9 @@ begin
   Result.NewArray := @RtNewArray;
   Result.NewRecord := @RtNewRecord;
   Result.RecordUnique := @RtRecordUnique;
+  Result.NewList := @RtNewList;
+  Result.ListAppend := @RtListAppend;
+  Result.ListUnique := @RtListUnique;
 end;
 
 { ---- compiling ---- }

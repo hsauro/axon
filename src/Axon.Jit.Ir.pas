@@ -72,7 +72,15 @@ unit Axon.Jit.Ir;
      %1 = field.real p.k1                p.k1 (any depth: p.a.b)
      setfield.real s.t, %2               s.t = %2 (each record on the path made unique first)
      %3 = load.real s.y, i               s.y[i]: load, store and len take a path too
-     %4 = record record{a: real, b: int} (%1, 2)   a record literal or constructor *)
+     %4 = record record{a: real, b: int} (%1, 2)   a record literal or constructor
+
+   Lists (J10) of one element type are list{T}, entered in the same table;
+   list{?} is the empty list, whose element type is not known. A list
+   register is a value slot. load, store and len work on lists as on
+   vectors:
+
+     %5 = list list{real} (%1, 2.5)      a list literal
+     l = append l, x, 1                  append; 1: in place when nothing else holds l *)
 
 interface
 
@@ -160,7 +168,9 @@ type
     joArray,                      // Dst := a Typ array of Ops[0] rows and Ops[1] columns from Ops[2..] (row by row)
     joField,                      // Dst := the field at Path of the record Ops[0]
     joSetField,                   // the field at Path of the record Ops[0] := Ops[1]
-    joRecord                      // Dst := a record of shape Typ from Ops (its fields in order)
+    joRecord,                     // Dst := a record of shape Typ from Ops (its fields in order)
+    joList,                       // Dst := a list of type Typ from Ops
+    joAppend                      // Dst := append(Ops[0], Ops[1]); Ops[2] = 1: in place if unique
   );
 
   TJInsn = class
@@ -228,13 +238,16 @@ function LabelOperand(L: Integer): TJOperand;
 function StringOperand(const V: string): TJOperand;
 
 type
-  { A record shape: its fields in order, and the declared type, if any. }
+  (* A record shape: its fields in order, and the declared type, if any; or
+     (IsList) a list type: its element type, jtNothing for list{?}. *)
   TJShape = class
   public
     Names: TArray<string>;
     Types: TArray<TJType>;
     Decl: TRecordTypeObj;       // nil for a record literal's shape
     DeclRef: IInterface;        // keeps the declared type alive
+    IsList: Boolean;
+    Elem: TJType;
     function IndexOf(const Name: string): Integer;
   end;
 
@@ -244,7 +257,12 @@ function JTypeName(T: TJType): string;
 function ShortTypeName(T: TJType): string;
 function IsArrayType(T: TJType): Boolean; inline;
 function IsRecordType(T: TJType): Boolean;
-{ An array or a record: a value slot in compiled code. }
+function IsListType(T: TJType): Boolean;
+(* The element type of a list type; jtNothing for list{?}. *)
+function ListElem(T: TJType): TJType;
+(* The list type with elements of type Elem (jtNothing: list{?}). *)
+function ListType(Elem: TJType): TJType;
+{ An array, a record or a list: a value slot in compiled code. }
 function IsBoxedType(T: TJType): Boolean;
 { The shape of a record type. }
 function ShapeOf(T: TJType): TJShape;
@@ -336,6 +354,12 @@ begin
     jtVecInt:  Result := 'vector{int}';
     jtMatReal: Result := 'matrix{real}';
   else
+    if IsListType(T) then
+    begin
+      if ListElem(T) = jtNothing then
+        Exit('list{?}');
+      Exit('list{' + JTypeName(ListElem(T)) + '}');
+    end;
     if not IsRecordType(T) then
       Exit('?');
     Sh := ShapeOf(T);
@@ -360,6 +384,12 @@ function ShortTypeName(T: TJType): string;
 var
   Sh: TJShape;
 begin
+  if IsListType(T) then
+  begin
+    if ListElem(T) = jtNothing then
+      Exit('list{?}');
+    Exit('list{' + ShortTypeName(ListElem(T)) + '}');
+  end;
   if not IsRecordType(T) then
     Exit(JTypeName(T));
   Sh := ShapeOf(T);
@@ -376,12 +406,44 @@ end;
 
 function IsRecordType(T: TJType): Boolean;
 begin
-  Result := (T >= jtFirstRecord) and (T - jtFirstRecord < Shapes.Count);
+  Result := (T >= jtFirstRecord) and (T - jtFirstRecord < Shapes.Count) and
+    not Shapes[T - jtFirstRecord].IsList;
+end;
+
+function IsListType(T: TJType): Boolean;
+begin
+  Result := (T >= jtFirstRecord) and (T - jtFirstRecord < Shapes.Count) and
+    Shapes[T - jtFirstRecord].IsList;
+end;
+
+function ListElem(T: TJType): TJType;
+begin
+  Result := Shapes[T - jtFirstRecord].Elem;
+end;
+
+function ListType(Elem: TJType): TJType;
+var
+  Key: string;
+  Idx: Integer;
+  Sh: TJShape;
+begin
+  Key := 'list|' + IntToStr(Elem);
+  if not ShapeIndex.TryGetValue(Key, Idx) then
+  begin
+    if Shapes.Count >= High(TJType) - jtFirstRecord then
+      Exit(jtNothing);
+    Sh := TJShape.Create;
+    Sh.IsList := True;
+    Sh.Elem := Elem;
+    Idx := Shapes.Add(Sh);
+    ShapeIndex.Add(Key, Idx);
+  end;
+  Result := jtFirstRecord + Idx;
 end;
 
 function IsBoxedType(T: TJType): Boolean;
 begin
-  Result := IsArrayType(T) or IsRecordType(T);
+  Result := IsArrayType(T) or IsRecordType(T) or IsListType(T);
 end;
 
 function ShapeOf(T: TJType): TJShape;
@@ -421,6 +483,8 @@ var
   R: TRecordObj;
   Types: TArray<TJType>;
   K: Integer;
+  Items: TAxValues;
+  E: TJType;
 begin
   case V.Kind of
     vkBool: Result := jtBool;
@@ -442,6 +506,20 @@ begin
           Types[K] := JTypeOfValue(R.Values[K]);
         Result := RecordType(R.Names, Types, R.DeclType);
       end;
+    vkList:
+      begin
+        // One element type for all, or the list does not compile.
+        Items := AsList(V).Items;
+        if Length(Items) = 0 then
+          Exit(ListType(jtNothing));
+        E := JTypeOfValue(Items[0]);
+        if E = jtNothing then
+          Exit(jtNothing);
+        for K := 1 to High(Items) do
+          if not JTypeMatches(Items[K], E) then
+            Exit(jtNothing);
+        Result := ListType(E);
+      end;
   else
     Result := jtNothing;
   end;
@@ -452,7 +530,41 @@ var
   R: TRecordObj;
   Sh: TJShape;
   K: Integer;
+  Items: TAxValues;
+  E: TJType;
+  Kind: TValueKind;
 begin
+  if IsListType(T) then
+  begin
+    // Every element of the element type; an empty list matches any list type.
+    if V.Kind <> vkList then
+      Exit(False);
+    Items := AsList(V).Items;
+    if Length(Items) = 0 then
+      Exit(True);
+    E := ListElem(T);
+    if E = jtNothing then
+      Exit(False);
+    // Numbers: a tight loop over the elements' kinds.
+    case E of
+      jtBool: Kind := vkBool;
+      jtInt:  Kind := vkInt;
+      jtReal: Kind := vkReal;
+    else
+      Kind := vkNothing;
+    end;
+    if Kind <> vkNothing then
+    begin
+      for K := 0 to High(Items) do
+        if Items[K].Kind <> Kind then
+          Exit(False);
+      Exit(True);
+    end;
+    for K := 0 to High(Items) do
+      if not JTypeMatches(Items[K], E) then
+        Exit(False);
+    Exit(True);
+  end;
   if IsRecordType(T) then
   begin
     if V.Kind <> vkRecord then
@@ -570,7 +682,7 @@ const
     'add', 'sub', 'mul', 'neg', 'div', 'pow',
     'eq', 'ne', 'lt', 'le', 'gt', 'ge',
     'not', 'jmp', 'bt', 'bf', 'count', 'elem', 'ret', 'call', 'load', 'store', 'len', 'op',
-    'clear', 'bound', 'array', 'field', 'setfield', 'record');
+    'clear', 'bound', 'array', 'field', 'setfield', 'record', 'list', 'append');
 
 procedure TJFunction.Dump(Lines: TStrings);
 var
@@ -777,6 +889,10 @@ begin
             Line := 'ret ' + OperandList(Insn.Ops);
         joRecord:
           Line := Line + 'record ' + JTypeName(Insn.Typ) + ' (' + OperandList(Insn.Ops) + ')';
+        joList:
+          Line := Line + 'list ' + JTypeName(Insn.Typ) + ' (' + OperandList(Insn.Ops) + ')';
+        joAppend:
+          Line := Line + 'append ' + OperandList(Insn.Ops);
         joField, joSetField:
           Line := Line + OpNames[Insn.Op] + '.' + JTypeName(Insn.Typ) + ' ' + PathOperands(Insn);
         joLoad, joStore, joLen:

@@ -3081,13 +3081,16 @@ through to array elements, as in \code{s.y[i] = s.y[i] + h * s.t}. A record's
 type is its shape, its field names and the types of their values, so a
 function that adds a field to a record, or gives a field a value of another
 type, stays interpreted. A simulation step that keeps its state in a record
-runs as fast as one written with separate variables.
+runs as fast as one written with separate variables. Lists compile when their
+elements all have one type: \code|l = {}| followed by
+\code{l = append(l, x)} in a loop, indexing, \code{length}, element writes
+and \code{for x in l}, for lists of numbers, arrays, records or lists.
 
 \paragraph{What stays interpreted.} Functions that use strings (other than in
-\code{print} and \code{println}), lists, dictionaries, complex numbers,
-\code{try}, \code{global}, or indexing with ranges, colons or masks,
-functions that change a record's shape, and functions whose variables change
-type. They still run correctly, at the
+\code{print} and \code{println}), lists that mix types, dictionaries,
+complex numbers, \code{try}, \code{global}, or indexing with ranges, colons
+or masks, functions that change a record's shape, and functions whose
+variables change type. They still run correctly, at the
 interpreter's speed.
 
 \paragraph{Seeing what happened.} In the IDE, the Output pane lists after each
@@ -3446,9 +3449,10 @@ dictionaries, so their functions stay interpreted.
 
 In practice: put the work in functions. The JIT compiles a function at its
 first call when it uses numbers, \code{bool}s and real or integer arrays;
-code at the top level of a script, and functions that use lists,
-dictionaries or strings, run interpreted. Records compile, as long as a
-function keeps each record's fields and their types. \menu{Run}~$\rightarrow$~\menu{Use JIT
+code at the top level of a script, and functions that use dictionaries or
+strings, run interpreted. Records and lists compile, as long as a function
+keeps each record's fields and their types, and each list's elements of one
+type. \menu{Run}~$\rightarrow$~\menu{Use JIT
 Compiler} with the JIT report on (Section~\ref{sec:ide-jit}) shows which
 functions were compiled, and why any were not. Extending the JIT to more of
 the language, rather than speeding up the interpreter, is the plan for
