@@ -1,0 +1,2 @@
+TypeError: append works on lists and vectors, not matrices: got a 2×2 matrix
+  at err_append_matrix.sci:2:5

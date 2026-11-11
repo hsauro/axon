@@ -1,0 +1,2 @@
+ArgumentError: graphics.save, item 1: unknown cap "flat" (butt, round, square)
+  at err_graphics_cap.sci:3:1

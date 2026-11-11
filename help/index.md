@@ -30,6 +30,7 @@ description of Axon. Some sections you may want often:
 | `nonlin`: nonlinear equations f(x) = 0 | [The nonlin module](Axon-Language-Reference.md#the-nonlin-module) |
 | `antimony`: reaction models, simulation and steady states | [The antimony module](Axon-Language-Reference.md#the-antimony-module) |
 | `plot`: line, scatter, bar, histogram, surface | [The plot module](Axon-Language-Reference.md#the-plot-module) |
+| `draw`: shapes, images, a turtle and L-systems on a blank canvas | [The draw module](Axon-Language-Reference.md#the-draw-module) |
 | `random`: uniform, normal and integer random numbers | [The random module](Axon-Language-Reference.md#the-random-module) |
 | `time`: clocks and timing code | [The time module](Axon-Language-Reference.md#the-time-module) |
 | `graphics`: drawing to PNG, SVG, PDF | [The graphics module](Axon-Language-Reference.md#the-graphics-module) |
@@ -67,3 +68,6 @@ Each example opens as your own copy, so you can change it and run it with
 - [Reaction models in Antimony: a feedback-inhibited pathway](../examples/19_antimony.sci)
 - [Changing a parameter during a simulation](../examples/20_antimony_steps.sci)
 - [Steady states of reaction models](../examples/21_antimony_steady_state.sci)
+- [Fractals: Koch snowflake, Sierpinski triangle, a tree and nested circles](../examples/22_fractals.sci)
+- [The Mandelbrot set, as an image](../examples/23_mandelbrot.sci)
+- [L-systems and the turtle](../examples/24_lsystems.sci)

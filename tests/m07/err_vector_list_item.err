@@ -1,0 +1,2 @@
+TypeError: vector: list item 2 has type string, not a number
+  at err_vector_list_item.sci:3:5

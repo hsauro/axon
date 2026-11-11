@@ -29,7 +29,7 @@ const
     'output-and-text-functions: split join trim ltrim rtrim upper lower contains ' +
       'startswith endswith find replace repeat',
     'strings-1: string',
-    'vectors-and-matrices: zeros ones eye rand linspace size length reshape ' +
+    'vectors-and-matrices: zeros ones eye rand linspace vector size length reshape ' +
       'eltype sum prod mean min max all any',
     'numeric-promotion: int floor ceil round real complex div mod',
     'elementary-functions: sqrt exp log log10 log2 sin cos tan asin acos atan atan2 ' +

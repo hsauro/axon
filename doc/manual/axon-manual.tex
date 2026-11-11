@@ -723,7 +723,9 @@ element by element. \code{+} and \code{-} are always elementwise.
 \paragraph{Making arrays.} \code{zeros(m, n)}, \code{ones(m, n)} and
 \code{eye(n)} make matrices, and \code{zeros(n)} and \code{ones(n)} vectors;
 \code{linspace(a, b, n)} gives n equally spaced points and \code{rand(m, n)}
-uniform random numbers. Arrays can be joined as blocks inside a literal.
+uniform random numbers. \code{vector()} is an empty vector, and
+\code{vector(x)} turns a list of numbers, a range or a matrix into a vector.
+Arrays can be joined as blocks inside a literal.
 
 \begin{axon}
 x = linspace(0.0, 1.0, 5)
@@ -879,10 +881,25 @@ An index outside the array is an \code{IndexError}: reading never wraps around
 and assigning never grows an array. To add elements, use \code{append(v, x)} or
 a literal such as \code{[v; x]}, which return a new array.
 
-To build a vector one element at a time, write \code{v = append(v, x)}. When
-nothing else shares \code{v}'s value, that statement adds to it in place, so
-the loop's time grows in proportion to the vector's length. \code{v = [v; x]}
-copies the whole vector every time, which gets slow for long vectors.
+To build a vector one element at a time, start from \code{v = vector()},
+an empty vector, and write \code{v = append(v, x)}. When nothing else shares
+\code{v}'s value, that statement adds to it in place, so the loop's time grows
+in proportion to the vector's length. \code{v = [v; x]} copies the whole
+vector every time, which gets slow for long vectors. Start from
+\code{vector()}, not \code{zeros(0, 1)}: that is a $0 \times 1$ matrix, and
+\code{append} does not grow matrices.
+
+\begin{axon}
+ts = vector()
+for k in 1:4
+  ts = append(ts, k / 2)
+end
+println(ts')
+\end{axon}
+\begin{axonout}
+1(*@\texttimes@*)4 matrix{real}
+  0.5  1.0  1.5  2.0
+\end{axonout}
 
 \section{Strings}
 
@@ -2449,8 +2466,133 @@ true
 
 The plot module is written in Axon (\texttt{stdlib/plot.sci}) over the
 \code{graphics} module, which draws lists of lines, polygons, rectangles,
-markers and text to PNG, SVG or PDF. \code{graphics} can be used directly for
-drawings that are not charts; the Language Reference describes its scenes.
+circles, arcs, images, markers and text to PNG, SVG or PDF. For drawings that
+are not charts, the \code{draw} module of the next section is the easier way
+in; the Language Reference describes \code{graphics} scenes in full.
+
+\section{Drawing on a canvas}\label{sec:draw}
+
+The \code{draw} module draws on a blank canvas, with no axes: lines, shapes,
+text and images, a turtle, and L-systems. It suits diagrams, patterns and
+fractals, anything that is a picture rather than a chart.
+
+\paragraph{A first drawing.} \code{draw.canvas} starts a drawing.
+\code{width} and \code{height} give its size in points (1/72 inch). Positions
+are measured from the lower-left corner, with \emph{y pointing up}, as on
+graph paper:
+
+\ex{canvas_first.sci}
+
+\fig{canvas_first.pdf}{0.38}{A line, a circle and a rectangle, from
+\texttt{canvas\_first.sci}.}
+
+Each function draws one thing:
+
+\begin{itemize}
+\item \code{draw.line(x1, y1, x2, y2)} joins two points;
+\item \code{draw.circle(x, y, r)} takes the centre and the radius;
+\item \code{draw.rect(x, y, w, h)} takes the lower-left corner, the width
+  and the height.
+\end{itemize}
+
+Shapes are drawn in the order they are given, so later ones cover earlier
+ones.
+\code{draw.save} writes the drawing to a PNG, SVG or PDF file, which is how
+the figures in this manual are made. In the IDE, \code{draw.show()} puts it in
+the plot pane instead, and a drawing that was never shown or saved appears
+there by itself when the program ends.
+
+\paragraph{Choosing the view.} The \code{view} keyword chooses which part of
+the plane the canvas shows, as \code{[xmin, xmax, ymin, ymax]}. Everything is
+then drawn in those units, so mathematical shapes can be drawn as they are
+written:
+
+\ex{canvas_view.sci}
+
+\fig{canvas_view.pdf}{0.3}{Axes, the unit circle and $y = x^3$, in a view from
+$-1.2$ to $1.2$, from \texttt{canvas\_view.sci}.}
+
+\code{draw.polyline(x, y)} joins the points of two vectors in turn, so a
+curve is a polyline through many points, here 100 from \code{linspace}.
+\code{draw.points} puts a marker at each point, and \code{draw.text} writes
+text, starting at the point by default or, with \code{anchor = "end"}, ending
+there. Sizes of text and markers and widths of lines stay in points whatever
+the view, so a line 2 points wide looks the same in any view. Keep the view's
+width and height in the proportion of the canvas's, as here (both square), or
+circles come out as ellipses.
+
+\paragraph{Colours and line widths.} Every shape takes keywords for its look,
+as Figure~\ref{fig:canvas_style.pdf} shows:
+
+\fig{canvas_style.pdf}{0.55}{Line widths, colours, a dashed line and round
+ends, and filled shapes, from \texttt{canvas\_style.sci}.}
+
+\ex{canvas_style.sci}
+
+\begin{longtable}{@{}p{0.2\linewidth}p{0.74\linewidth}@{}}
+\toprule
+Keyword & Meaning \\
+\midrule
+\endhead
+\code{color} & The colour of a line, or of a shape's outline (black by
+  default) \\
+\code{width} & The line's width in points (1 by default) \\
+\code{fill} & The colour inside a closed shape: \code{rect}, \code{circle},
+  \code{ellipse}, \code{polygon} (none by default) \\
+\code{dash} & A dashed line: \code{[8, 4]} draws 8 points, then leaves a gap
+  of 4 \\
+\code{cap} & The ends of a line: \code{"butt"} (square, the default),
+  \code{"round"} or \code{"square"} (extended by half the width) \\
+\bottomrule
+\end{longtable}
+
+A colour can be written three ways: a name such as \code{"red"},
+\code{"blue"} or \code{"orange"} (the Language Reference lists them), a
+hexadecimal code \code|"#2ca02c"| as in web pages, or a vector
+\code{[r, g, b]} of red, green and blue parts from 0 to 1. A fourth part,
+\code{[r, g, b, a]}, sets the opacity: 1 is solid, 0.5 half see-through, as
+in the three overlapping circles. \code{"none"} draws nothing, which is how
+the orange circle has a fill and no outline. Because a colour can be a
+vector, it can also be computed, as the tree in the next example is.
+
+\paragraph{Putting it together.} Functions that call themselves draw
+fractals naturally, a compiled function can fill an image pixel by pixel, and
+an L-system grows a plant from a few rewriting rules:
+
+\ex{drawing.sci}
+\begin{axonout}
+6263 symbols in the plant
+\end{axonout}
+
+\fig{drawing.pdf}{0.95}{A recursive tree, an L-system plant and a Julia set,
+from \texttt{drawing.sci}.}
+
+The other shapes work as the ones above: \code{draw.polygon(x, y)} closes a
+shape through the points, \code{draw.ellipse} and \code{draw.arc} draw ovals
+and parts of circles, and \code{draw.points} draws markers.
+
+\paragraph{Images.} \code{draw.image(M)} draws a matrix as pixels, row 1 at
+the top, in a rectangle of the view (the whole view by default), each value
+coloured by a colour map: \code{"viridis"}, \code{"gray"}, \code{"hsv"} (a
+cyclic rainbow), or a matrix whose rows are colours. NaN values take
+\code{nan_color}, which here paints the points that never escape black. The
+Julia set's 90\,000 escape counts come from a function with typed parameters,
+which the JIT compiles.
+
+\paragraph{The turtle.} \code{draw.turtle} places a turtle with a pen;
+\code{forward}, \code{back}, \code{left} and \code{right} steer it,
+\code{pen} sets its colour and width, \code{penup} and \code{pendown} lift
+and lower the pen, and \code{push} and \code{pop} save and return to a
+position, for branches. \code{draw.lsystem(axiom, rules, n)} rewrites a
+string \code{n} times, and \code{draw.lsystem_draw(s, step, angle)} has the
+turtle draw it: \code{F} moves forward drawing, \code{+} and \code{-} turn,
+\code{[} and \code{]} start and end a branch, and other letters, such as the
+plant's \code{X}, only steer the rewriting. \code{draw.lsystem_path} returns
+the points instead, to scale or place before drawing.
+
+The Welcome tab's examples 22 to 24 draw a Koch snowflake, a Sierpinski
+triangle and nested circles, the Mandelbrot set with a magnified detail, and
+six L-systems, including the dragon and Hilbert curves.
 
 % ===================================================================
 \chapter{Writing a module}\label{ch:module}
@@ -3415,6 +3557,8 @@ Function & Result \\
 \code{rand()}, \code{rand(n: int)}, \code{rand(m: int, n: int)} & Uniform random reals in
   $[0, 1)$ \\
 \code{linspace(a: real, b: real, n: int)} & n equally spaced points from a to b \\
+\code{vector()}, \code{vector(x)} & An empty real vector; or x as a vector: a list
+  of numbers, a range, a matrix column by column, or a number \\
 \code{range(n)}, \code{range(a, b)}, \code{range(a, b, h)} & \code{1:n}, or the
   range \code{a:h:b} in reading order (step 1 if left out) \\
 \code{size(A)}, \code{size(A, d: int)} & The row and column counts as two values,
@@ -3751,5 +3895,8 @@ opens as your own copy to change and run.
 \shipped{19_antimony.sci}
 \shipped{20_antimony_steps.sci}
 \shipped{21_antimony_steady_state.sci}
+\shipped{22_fractals.sci}
+\shipped{23_mandelbrot.sci}
+\shipped{24_lsystems.sci}
 
 \end{document}

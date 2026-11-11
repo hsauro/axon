@@ -1162,6 +1162,29 @@ begin
       Result := [jtMatReal];
     end;
   end
+  else if Name = 'vector' then
+  begin
+    // vector() and vector(x) through the interpreter's routine, the result
+    // type following from x's: real or int elements; a bool vector is not a
+    // compiled type.
+    if N = 0 then
+      Result := [jtVecReal]
+    else
+    begin
+      NeedArgs(1);
+      A := Args[0];
+      if (A.Typ = jtVecReal) or (A.Typ = jtMatReal) or (A.Typ = jtReal) then
+        Result := [jtVecReal]
+      else if (A.Typ = jtVecInt) or (A.Typ = jtInt) then
+        Result := [jtVecInt]
+      else if IsListType(A.Typ) and (ListElem(A.Typ) in [jtReal, jtNothing]) then
+        Result := [jtVecReal]
+      else if IsListType(A.Typ) and (ListElem(A.Typ) = jtInt) then
+        Result := [jtVecInt]
+      else
+        Reject('vector of %s is not compiled', [JTypeName(A.Typ)], E);
+    end;
+  end
   else if Name = 'sum' then
   begin
     NeedArgs(1);

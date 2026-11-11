@@ -1,0 +1,2 @@
+ArgumentError: graphics.save, item 1: unknown colormap "rainbow" (viridis, gray, hsv, or a matrix of [r, g, b] rows)
+  at err_graphics_colormap.sci:3:1

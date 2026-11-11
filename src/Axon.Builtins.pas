@@ -1679,6 +1679,7 @@ var
   HA, HX: TAxValue;
   Values: TAxValues;
   K: Integer;
+  Msg: string;
 begin
   case Args[0].Kind of
     vkList:
@@ -1688,7 +1689,17 @@ begin
         A := ToArray(Args[0]);
         HA := ArrayValue(A);
         if not A.IsVector then
-          RaiseError(TypeError, 'append works on lists and vectors, not matrices');
+        begin
+          // The size, and for the shapes that are usually a mistake, the fix:
+          // zeros(0, 1) written for an empty vector, or a single row or column.
+          Msg := Format('append works on lists and vectors, not matrices: got a %d'#$00D7'%d matrix',
+            [A.Rows, A.Cols]);
+          if A.Count = 0 then
+            Msg := Msg + '; start from vector(), an empty vector'
+          else if (A.Rows = 1) or (A.Cols = 1) then
+            Msg := Msg + '; vector(m) turns a single row or column m into a vector';
+          RaiseError(TypeError, Msg);
+        end;
         SetLength(Values, A.Count);
         for K := 0 to A.Count - 1 do
           Values[K] := A.Get(K);
@@ -1711,6 +1722,50 @@ end;
 function AppendValue(const V, X: TAxValue): TAxValue;
 begin
   Result := BAppend([V, X]);
+end;
+
+{ vector() and vector(x): an empty real vector, or x as a vector. x may be a
+  vector (returned as it is), a matrix (its elements in column-major order,
+  as m[:]), a range, a list of numbers (the element type the widest present,
+  real for an empty list) or a number (a vector of length 1). }
+function BVector(const Args: TAxValues): TAxValue;
+var
+  A: TArrayObj;
+  H: TAxValue;
+  Values: TAxValues;
+  K: Integer;
+begin
+  if Length(Args) = 0 then
+    Exit(ArrayValue(TArrayObj.Create(etReal, 0, 1, True)));
+  case Args[0].Kind of
+    vkArray, vkRange:
+      begin
+        A := ToArray(Args[0]);
+        H := ArrayValue(A);
+        if A.IsVector then
+          Exit(H);
+        SetLength(Values, A.Count);
+        for K := 0 to A.Count - 1 do
+          Values[K] := A.Get(K);
+        Result := BuildArray(A.Count, 1, True, Values, A.ElemType);
+      end;
+    vkList:
+      begin
+        Values := AsList(Args[0]).Items;
+        for K := 0 to High(Values) do
+          if NumRank(Values[K]) < 0 then
+            RaiseFmt(TypeError, 'vector: list item %d has type %s, not a number',
+              [K + 1, TypeName(Values[K])]);
+        Result := BuildArray(Length(Values), 1, True, Values, etReal);
+      end;
+    vkBool, vkInt, vkReal, vkComplex:
+      Result := BuildArray(1, 1, True, [Args[0]], etReal);
+    vkSparse:
+      RaiseError(TypeError, 'vector of a sparse matrix: use vector(full(S))');
+  else
+    RaiseFmt(TypeError, 'vector needs a list of numbers, a range, an array or a number, got %s',
+      [TypeName(Args[0])]);
+  end;
 end;
 
 function AppendInPlace(var V: TAxValue; const X: TAxValue): Boolean;
@@ -2291,6 +2346,7 @@ begin
   Add('full', BFull, 1, 1);
   AddMulti('splu', BSplu, 1, 1);
   Add('append', BAppend, 2, 2);
+  Add('vector', BVector, 0, 1);
   Add('sort', BSort, 1, 2);
   Add('sortperm', BSortperm, 1, 2);
   Add('get', BGet, 3, 3);

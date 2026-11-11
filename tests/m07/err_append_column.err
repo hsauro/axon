@@ -1,0 +1,2 @@
+TypeError: append works on lists and vectors, not matrices: got a 3×1 matrix; vector(m) turns a single row or column m into a vector
+  at err_append_column.sci:4:5

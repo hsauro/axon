@@ -65,6 +65,7 @@ Nov 7, 2026 · Herbert Sauro
   - [The time module](#the-time-module)
   - [The random module](#the-random-module)
   - [The graphics module](#the-graphics-module)
+  - [The draw module](#the-draw-module)
   - [The ode module](#the-ode-module)
   - [The nonlin module](#the-nonlin-module)
   - [The antimony module](#the-antimony-module)
@@ -314,7 +315,7 @@ Mixed arithmetic promotes along `bool` → `int` → `real` → `complex`. Nothi
 - **Concatenation.** Entries of a matrix literal may themselves be matrices, which are concatenated as blocks. Every row must have the same total width, and each block within a row the same height, or a `DimensionError` is raised.
 - **Empty matrix.** `[]` is a 0×0 `real` matrix.
 - **Vector literals.** A literal whose rows each hold exactly one entry, every entry a scalar, a vector or a range, is a vector made by stacking them: `[5]` is a vector of length 1 and `[v; 7]` appends 7 to the vector `v`. Any other literal is a matrix built by block concatenation, in which a vector or range counts as an n×1 block and an empty `[]` block is skipped. Entries must be numbers or `bool`s; anything else raises `TypeError`. The element type is the widest of the entries' types, a vector with no elements counting too, so `[zeros(0); 5]` is a `real` vector and a loop that grows `v = [v; k]` from `zeros(0)` stays `real`; a skipped `[]` block adds no type, so `[[]; 5]` is an `int` vector.
-- **Constructors.** `zeros(m, n)` and `ones(m, n)` give m×n `real` matrices, and `zeros(n)` and `ones(n)` give vectors of length n. `eye(n)` is the n×n identity and `eye(m, n)` its m×n form. `rand()`, `rand(n)` and `rand(m, n)` give uniform reals in [0, 1), from the generator of the random module, so `random.seed` makes them repeat. `linspace(a, b, n)` gives a `real` vector of n points from a to b inclusive. A negative or non-integer size raises `ArgumentError`.
+- **Constructors.** `zeros(m, n)` and `ones(m, n)` give m×n `real` matrices, and `zeros(n)` and `ones(n)` give vectors of length n. `eye(n)` is the n×n identity and `eye(m, n)` its m×n form. `rand()`, `rand(n)` and `rand(m, n)` give uniform reals in [0, 1), from the generator of the random module, so `random.seed` makes them repeat. `linspace(a, b, n)` gives a `real` vector of n points from a to b inclusive. `vector()` is an empty `real` vector, the usual start for a vector built with `append`, and `vector(x)` converts to a vector: a list of numbers (element type the widest present, `real` for an empty list), a range, a matrix (its elements in column-major order, as `m[:]`), or a number (a vector of length 1); a vector is returned as it is. A negative or non-integer size raises `ArgumentError`; `vector` of anything else, or of a list holding a non-number, raises `TypeError`.
 - **Size.** `size(A)` returns two values, the row and column counts, so it is used as `[m, n] = size(A)`; a vector has n rows and 1 column, and a scalar is 1×1. `size(A, 1)` and `size(A, 2)` return one count. `length(A)` is the total number of elements, which is also the value of `end` in a single (linear) index.
 - **Shape helpers.** `reshape(A, m, n)` returns an m×n matrix holding the elements of `A` in column-major order, and `reshape(A, n)` a vector; the element count must match, or `DimensionError` is raised. `eltype(A)` gives the element type of an array (`"bool"`, `"int"`, `"real"` or `"complex"`), or the type of a scalar number.
 - **Reductions.** `sum`, `prod`, `mean`, `min`, `max`, `all` and `any` on one array reduce over every element to a scalar. `sum(A, d)`, `prod(A, d)` and `mean(A, d)` reduce along dimension `d`: `mean(A, 1)` is the 1×n row of column means and `mean(A, 2)` the m×1 column of row means. `min(a, b)` and `max(a, b)` with two arguments work elementwise with broadcasting. `min` and `max` of an empty array raise `ArgumentError`; `all` of an empty array is `true` and `any` is `false`. `all` and `any` need `bool` elements.
@@ -486,7 +487,7 @@ Indices are 1-based. Each position in an index list accepts one of these forms:
 
 ### Lists, records and dictionaries
 
-- **Lists** index like vectors. A range index returns a sublist, and a scalar index returns the element. `l[k] = x` replaces an element, and a range or index-list selection can be assigned a list of the same length. `append(l, x)` returns a new list with `x` added at the end; `append(v, x)` does the same for a vector, with `x` a scalar or a vector. The statement `v = append(v, x)`, with `v` a variable, adds to `v`'s value in place when nothing else shares that value, so a loop that builds a list or vector this way takes time in proportion to its length. Values that shared `v` before the append never see the change, as with any assignment. Appending a wider element (a `real` to an `int` vector) builds a new vector. `v = [v; x]` always copies `v`.
+- **Lists** index like vectors. A range index returns a sublist, and a scalar index returns the element. `l[k] = x` replaces an element, and a range or index-list selection can be assigned a list of the same length. `append(l, x)` returns a new list with `x` added at the end; `append(v, x)` does the same for a vector, with `x` a scalar or a vector. The statement `v = append(v, x)`, with `v` a variable, adds to `v`'s value in place when nothing else shares that value, so a loop that builds a list or vector this way takes time in proportion to its length. Values that shared `v` before the append never see the change, as with any assignment. Appending a wider element (a `real` to an `int` vector) builds a new vector. `v = [v; x]` always copies `v`. `append` on a matrix raises `TypeError`, even one with a single row or column (`vector(m)` makes it a vector); the empty vector to start from is `vector()` (or `zeros(0)`), since `zeros(0, 1)` is a 0×1 matrix.
 - **Records** use only `.` field access. Reading a field that does not exist raises `FieldError`. Assigning to a field that does not exist raises `FieldError` for a declared record type and adds the field for a literal record.
 - **Declared record types.** `record T … end` binds `T` in the outermost scope of the enclosing function or module, like a named function. A value of type `T` is made either by calling `T` with every field, by position in declaration order or by keyword (`LVParams(a = 1.0, b = 0.1, c = 0.075, d = 1.5)`), or by checking a literal record against the annotation `T` (`p: LVParams = {a: 1.0, …}`). Either way the fields must match the declaration exactly, missing or extra fields raise `FieldError`, and each field is checked and widened against its type. Assigning to a field of a declared record checks the new value against the field's type. `typeof` of such a record is the type's name.
 - **Dictionaries** use `d[key]`. A missing key raises `KeyError`, and `get(d, key, default)` avoids that. `d[key] = x` adds or replaces an entry. Keys are strings or real numbers (`int`, `real` or `bool`); numeric keys compare by value, so `1` and `1.0` are the same key, and any other key raises `TypeError`. Entries keep their insertion order. `keys(d)` returns the keys as a list, `haskey(d, key)` tests for one, and `length(d)` counts entries. `=>` pairs are accepted only by `dict(...)`; anywhere else they raise `TypeError`.
@@ -642,6 +643,7 @@ These functions, and the constants `pi` and `e`, are always available, without a
 | `eye(n: int)`, `eye(m: int, n: int)` | The identity matrix |
 | `rand()`, `rand(n: int)`, `rand(m: int, n: int)` | Uniform random reals in [0, 1); `random.seed` makes them repeat |
 | `linspace(a: real, b: real, n: int)` | A `real` vector of n points from a to b inclusive |
+| `vector()`, `vector(x)` | An empty `real` vector; or `x` as a vector: a list of numbers, a range, a matrix's elements in column-major order, or a number as a vector of length 1 |
 | `range(n)`, `range(start, stop)`, `range(start, stop, step)` | `1:n`, or the range `start:step:stop` (step 1 by default) written in reading order: `range(0, 1, 0.1)` is `0:0.1:1` |
 | `size(A)`, `size(A, d: int)` | The row and column counts as two values (`[m, n] = size(A)`), or the count along dimension d |
 | `length(x)` | The number of elements of an array, list, string or dictionary |
@@ -765,7 +767,7 @@ Like the built-in functions, they are names in the prelude, so a program can ass
 
 ## Standard modules
 
-These modules come with Axon and are imported by name (`import linalg`, `from ode import solve`). `io`, `time`, `random` and `graphics` are core modules written in the interpreter; `linalg`, `fmt`, `ode`, `nonlin`, `antimony` and `plot` are standard-library modules written in Axon.
+These modules come with Axon and are imported by name (`import linalg`, `from ode import solve`). `io`, `time`, `random` and `graphics` are core modules written in the interpreter; `linalg`, `fmt`, `ode`, `nonlin`, `antimony`, `plot` and `draw` are standard-library modules written in Axon.
 
 ### The linalg module
 
@@ -881,22 +883,28 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 
 ### The graphics module
 
-`graphics` is a core module that renders a scene to a file through the Skia library. It is the drawing layer under `plot`. Skia loads at the first call that needs it; when it cannot be loaded, that call raises `ForeignError` and the rest of the language is unaffected. On Windows Skia is the shipped `sk4d.dll`; on macOS it is linked into the interpreter.
+`graphics` is a core module that renders a scene to a file through the Skia library. It is the drawing layer under `plot` and `draw`. Skia loads at the first call that needs it; when it cannot be loaded, that call raises `ForeignError` and the rest of the language is unaffected. On Windows Skia is the shipped `sk4d.dll`; on macOS it is linked into the interpreter.
 
 - **`save(scene: record, path: string)`** writes the scene to `path`, whose extension chooses the format: `.png` (raster), `.svg` or `.pdf` (vector, with text kept as text). Any other extension raises `ArgumentError`, and a file that cannot be written raises `IOError`.
 - **`show(scene: record)`** and **`show(scene: record, data)`** render the scene to a PNG and show it, and return the file's path. With `data`, a front end also gets the value as JSON next to the PNG, under the same name with the extension `.json`; `plot.show` passes the figure record, which the IDE draws in its interactive chart. When the environment variable `AXON_SHOW_DIR` is set, as it is for programs run from the IDE, the file is written there and a line holding U+0003, `show `, and the path is written to standard error, so the front end can display it while the program runs. Otherwise the file goes to a temporary folder and opens in the system's image viewer; if no viewer can be started, it raises `ForeignError`.
 - **`text_width(text: string, size: real)`** and **`text_width(text: string, size: real, font: string)`** return the width in points of the text as drawn, for layout.
-- **Scenes.** A scene is a record with `width` and `height` in points (1/72 inch; default 640 by 480), `background` (a colour, default `"white"`), `scale` (pixels per point for PNG, default 1) and `items`, a list of item records drawn in order. Coordinates run from the top-left corner with y pointing down.
+- **Scenes.** A scene is a record with `width` and `height` in points (1/72 inch; default 640 by 480), `background` (a colour, default `"white"`), `scale` (pixels per point for PNG, default 1) and `items`, a list of item records drawn in order. Coordinates run from the top-left corner with y pointing down; angles are in degrees and count anticlockwise as seen on the page. (The `draw` module works in coordinates with y pointing up.)
 - **Items.** Each item has a `kind`:
 
 | Kind | Fields (defaults) |
 | --- | --- |
-| `"line"` or `"polyline"` | `x`, `y` (vectors of equal length), `color` (`"black"`), `width` (1), `dash` (a vector of on and off lengths, or `nothing`); a non-finite point breaks the line |
-| `"polygon"` | `x`, `y`, `fill` (`"none"`), `color` (`"none"`, the outline), `width` (1), `dash` |
+| `"line"` or `"polyline"` | `x`, `y` (vectors of equal length), `color` (`"black"`), `width` (1), `dash` (a vector of on and off lengths, or `nothing`), `cap`, `join`; a non-finite point breaks the line |
+| `"polygon"` | `x`, `y`, `fill` (`"none"`), `color` (`"none"`, the outline), `width` (1), `dash`, `join` |
 | `"rect"` | `x`, `y`, `w`, `h`, and `fill`, `color`, `width` and `dash` as for a polygon |
+| `"circle"` | `x`, `y` (the centre), `r`, `fill` (`"none"`), `color` (`"black"`, the outline), `width` (1), `dash` |
+| `"ellipse"` | `x`, `y`, `rx`, `ry` (the semi-axes), `angle` (0, turning it about its centre), and `fill`, `color`, `width` and `dash` as for a circle |
+| `"arc"` | `x`, `y`, `r`, `start` (0) and `sweep` (360), in degrees anticlockwise from the positive x direction; `color` (`"black"`), `width`, `dash`, `cap`; with `wedge` (`false`) set, the arc is closed through the centre into a pie slice, which `fill` fills |
+| `"image"` | A matrix drawn as pixels, row 1 at the top, into the rectangle `x`, `y` (0), `w`, `h` (by default one point per pixel). Either `values`, coloured by `colormap` (`"viridis"`, `"gray"`, `"hsv"`, or a matrix whose rows are `[r, g, b]` or `[r, g, b, a]` colours, evenly spaced) from `vmin` to `vmax` (by default the least and greatest finite values), non-finite values taking `nan_color` (`"none"`); or `red`, `green`, `blue` and optionally `alpha`, matrices of one size with components from 0 to 1. `smooth` (`false`) blends neighbouring pixels when the image is scaled; otherwise each pixel is a sharp square |
 | `"markers"` | `x`, `y`, `shape` (`"circle"`, `"square"`, `"diamond"`, `"triangle"`, `"plus"` or `"cross"`), `size` (6, the width), `color` (`"black"`), `fill` (the colour) |
 | `"text"` | `x`, `y`, `text`, `size` (10), `color`, `font` (`"sans-serif"`; also `"serif"`, `"monospace"` or a family name), `bold` (`false`), `anchor` (`"start"`, `"middle"` or `"end"`), `baseline` (`"alphabetic"`, `"middle"`, `"top"` or `"bottom"`), `angle` (degrees anticlockwise) |
-| `"group"` | `items`; `dx` and `dy` (default 0), which shift the group; and `clip` (a record `{x, y, w, h}` or `nothing`) that limits drawing to a rectangle, in the shifted coordinates |
+| `"group"` | `items`; `dx` and `dy` (default 0), which shift the group; `angle` (0), which turns it anticlockwise about its origin; `scale` (a number or `[sx, sy]`), which sizes it; and `clip` (a record `{x, y, w, h}` or `nothing`) that limits drawing to a rectangle. A point p of an item is drawn at (`dx`, `dy`) + R(`angle`) S p; the clip and the items are in the group's own coordinates |
+
+- **Strokes.** `cap` is the shape of a line's ends: `"butt"` (the default), `"round"` or `"square"`. `join` is the shape of its corners: `"round"` (the default), `"miter"` or `"bevel"`.
 
 - **Colours** are names (below), `"#rrggbb"`, `"#rrggbbaa"` (the last two digits the opacity), `"none"` (transparent), or a real vector `[r, g, b]` or `[r, g, b, a]` with components from 0 to 1. Anything else raises `ArgumentError`. The first ten names are the colours `plot` gives series in turn, in that order, so `color = "blue"` matches the first default colour:
 
@@ -918,7 +926,41 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 | `"lightgray"` | `#d3d3d3` |
 | `"darkgray"` | `#404040` |
 
-- **Checks.** A field of the wrong type raises `TypeError`, a missing required field `FieldError`, `x` and `y` of different lengths `DimensionError`, and an unknown kind, shape, anchor or baseline `ArgumentError`. Each message names the item by its position.
+- **Checks.** A field of the wrong type raises `TypeError`, a missing required field `FieldError`, `x` and `y` of different lengths `DimensionError`, and an unknown kind, shape, anchor, baseline, cap, join or colour map `ArgumentError`, as does a negative radius. An image needs `values` or all of `red`, `green` and `blue` (`FieldError`), and its colour matrices must have one size (`DimensionError`). Each message names the item by its position.
+
+### The draw module
+
+`draw` is a standard-library module, written in Axon over `graphics`, for drawing on a blank canvas: lines, shapes, text and images, a turtle, and L-systems. It keeps a current canvas, as `plot` keeps a current figure.
+
+- **Coordinates.** `canvas(; width = 640, height = 480, view = nothing, background = "white")` starts a new canvas of `width` by `height` points that shows the rectangle `view = [xmin, xmax, ymin, ymax]` of the plane (by default `[0, width, 0, height]`), with **y pointing up**. Every drawing function takes coordinates in the view; line widths, marker and text sizes are in points. With different scales along x and y, a circle is drawn as the ellipse it becomes, and the angles of ellipses and arcs are exact only when the scales are equal. A canvas that has something drawn and was not shown is shown when a new one starts and when the program ends, as with `plot`. Drawing without a canvas starts one with the defaults.
+- **Showing.** `show(; scale = 2.0)` shows the canvas (in the IDE's plot pane), `save(path; scale = 2.0)` writes it as PNG, SVG or PDF, and `scene(; scale = 2.0)` returns it as a `graphics` scene record.
+
+| Function | Draws |
+| --- | --- |
+| `line(x1, y1, x2, y2; color = "black", width = 1.0, dash, cap = "butt")` | A line segment |
+| `polyline(x, y; color, width, dash, cap, join = "round")` | A line through the points; a NaN breaks it |
+| `polygon(x, y; fill = "none", color = "black", width, join)` | A closed shape; `color = "none"` for no outline |
+| `rect(x, y, w, h; fill, color, width)` | A rectangle with lower-left corner (x, y) |
+| `circle(x, y, r; fill, color, width)` | A circle |
+| `ellipse(x, y, rx, ry; angle = 0.0, fill, color, width)` | An ellipse turned `angle` degrees anticlockwise |
+| `arc(x, y, r, start, sweep; color, width, wedge = false, fill)` | An arc from `start` through `sweep` degrees anticlockwise; with `wedge`, a pie slice |
+| `points(x, y; shape = "circle", size = 4.0, color, fill)` | Markers, as the `graphics` item `"markers"` |
+| `text(x, y, s; size = 12.0, color, anchor = "start", angle = 0.0, font, bold)` | Text, centred vertically on y |
+| `image(values; x, y, w, h, colormap = "viridis", vmin, vmax, nan_color = "none", smooth = false)` | A matrix as pixels in the rectangle with lower-left corner (x, y) (by default the whole view), row 1 at the top |
+| `image_rgb(red, green, blue; alpha, x, y, w, h, smooth)` | An image from colour matrices |
+
+- **The turtle.** A turtle walks the canvas with a pen. `turtle(; x, y, heading = 90.0)` puts it at (x, y) (by default the middle of the view) facing `heading` degrees anticlockwise from the x direction (90 is up), pen down, black and 1 point wide. `forward(d)` and `back(d)` move it, drawing when the pen is down; `left(a)` and `right(a)` turn it by `a` degrees; `penup()` and `pendown()`; `pen(; color, width)` sets the pen for what follows; `goto(x, y)` moves straight to a point; `set_heading(a)`; `where()` returns `x, y, heading`; `push()` saves the position and heading and `pop()` returns to them without drawing (`ArgumentError` when nothing was pushed). Consecutive moves with one pen make one polyline, with round ends and corners.
+- **L-systems.** `lsystem(axiom, rules, n)` rewrites the string `axiom` `n` times: `rules` is a dictionary from a character to the string that replaces it at each step, and characters without a rule stay. `lsystem_path(s, angle; step = 1.0, heading = 90.0, draw = "FG", move = "f")` returns the points the string `s` traces from (0, 0), as two vectors `xs, ys` with NaN where the line breaks: the characters in `draw` move forward `step` drawing, those in `move` move forward without drawing, `+` and `-` turn left and right by `angle` degrees, `|` turns round, `[` saves the position and heading and `]` returns to them; any other character, such as the X of many L-systems, does nothing. `lsystem_draw(s, step, angle; draw = "FG", move = "f")` draws the string with the turtle from its position and heading.
+
+```axon
+import draw
+draw.canvas(width = 300, height = 300, view = [-1, 1, -1, 1])
+draw.circle(0, 0, 0.9, fill = "yellow")
+s = draw.lsystem("F", dict("F" => "F+F-F-F+F"), 3)
+[xs, ys] = draw.lsystem_path(s, 90, step = 0.06, heading = 0)
+draw.polyline(xs - 0.81, ys - 0.3, color = "blue", width = 1.5)
+draw.save("_tmp_koch.svg")
+```
 
 ### The ode module
 

@@ -1,0 +1,2 @@
+TypeError: append works on lists and vectors, not matrices: got a 0×1 matrix; start from vector(), an empty vector
+  at err_append_empty_matrix.sci:4:6

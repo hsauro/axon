@@ -1,0 +1,2 @@
+TypeError: vector needs a list of numbers, a range, an array or a number, got string
+  at err_vector_string.sci:2:5

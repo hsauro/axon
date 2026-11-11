@@ -1,0 +1,2 @@
+DimensionError: graphics.save, item 1: green is 2×3 but red is 2×2
+  at err_graphics_image_shape.sci:4:1
