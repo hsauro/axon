@@ -1,0 +1,2 @@
+ArgumentError: graphics.frame: the count of items sent must not be negative
+  at err_graphics_frame_sent.sci:3:1

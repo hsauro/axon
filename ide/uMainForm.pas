@@ -56,9 +56,22 @@ uses
   FMX.Controls.Presentation, FMX.Edit, FMX.Memo,
   uSkiaCodeEditor, uCodeEditorTypes, uFindBar, uProcessRunner, uRunReport,
   uRhoMarkdownViewer, uPreferences, uRefSections, Axon.Version, SkPlotPaintBox,
-  uFigureChart, Rho3DPlot, uFigureChart3D, uFigureGrid, uFigureExport;
+  uFigureChart, Rho3DPlot, uFigureChart3D, uFigureGrid, uFigureExport,
+  System.Skia, FMX.Skia, Axon.Scene;
 
 type
+  { A figure in the history: a scene from the display channel (with the
+    plot figure record as JSON, for the interactive charts, when it came
+    from plot.show), or a PNG file (one a run saved, or from an axon that
+    reported figures by file). }
+  TFigureEntry = class
+  public
+    Scene: TScene;           // owned, or nil
+    Json: string;
+    Path: string;
+    destructor Destroy; override;
+  end;
+
   { Text colours of the output panes, per theme. }
   TPanePalette = record
     Text, Error, Note, Link: TAlphaColor;
@@ -87,10 +100,12 @@ type
     FPlotChart: TSkPlotPaintBox;   // 2-D figures, interactive
     FPlot3D: TRho3DPlot;           // 3-D figures, interactive
     FPlotGrid: TControl;           // figures with subplots: a grid of charts, or nil
+    FPlotScene: TSkPaintBox;       // scenes from the display channel, drawn to fit
+    FShownScene: TScene;           // the scene FPlotScene draws (an entry's), or nil
     FPlotCaption: TLabel;
     // Figure history: every figure shown or picked up, oldest first; the
     // pane shows FFigureIndex, which the arrow buttons move.
-    FFigures: TStringList;
+    FFigures: TObjectList<TFigureEntry>;
     FFigureIndex: Integer;
     FFigurePrev, FFigureNext, FFigureClear, FFigureSave, FFigureCopy: TSpeedButton;
     FFigurePos: TLabel;
@@ -173,6 +188,13 @@ type
     // Preferences
     FPrefs: TIdePreferences;
     FFigureShown: Boolean;     // since the current run or REPL command started
+    // Animation frames (graphics.frame): the newest frame's file, whether a
+    // display of it is queued, and whether the last history entry is the
+    // current animation (updated in place by each frame).
+    FAnimPending: string;          // a frame's file (marker lines), or ''
+    FAnimBytes: TBytes;            // a frame's scene (display channel), or nil
+    FAnimQueued: Boolean;
+    FAnimActive: Boolean;
     procedure BuildUI;
     procedure BuildReplPane(Parent: TFmxObject);
     function ReplWorkDir: string;
@@ -253,6 +275,16 @@ type
     procedure LoadLayout(Ini: TCustomIniFile);
     procedure SaveLayout(Ini: TCustomIniFile);
     function TryShowFigure(const Line: string): Boolean;
+    function TryShowFrame(const Line: string): Boolean;
+    procedure ShowPendingFrame;
+    function AnimEntry(Make: Boolean): TFigureEntry;
+    procedure ApplyPendingFrame;
+    procedure AddToFrame(const Payload: TBytes);
+    procedure DisplayMessage(Kind: Byte; const Payload: TBytes);
+    procedure AddEntry(Entry: TFigureEntry);
+    procedure ShowOnly(View: TControl);
+    procedure PlotSceneDraw(ASender: TObject; const ACanvas: ISkCanvas; const ADest: TRectF;
+      const AOpacity: Single);
     procedure BuildMenu;
     function AddMenuItem(Parent: TFmxObject; const Text, ShortCut: string;
       Handler: TNotifyEvent): TMenuItem;
@@ -470,14 +502,16 @@ begin
   FDocs := TObjectList<TDocument>.Create(True);
   FFrames := TList<TFrame>.Create;
   FRecent := TStringList.Create;
-  FFigures := TStringList.Create;
+  FFigures := TObjectList<TFigureEntry>.Create(True);
   FFigureIndex := -1;
   FRunner := TProcessRunner.Create;
   FRunner.OnOutput := RunOutput;
   FRunner.OnExit := RunExit;
+  FRunner.OnDisplay := DisplayMessage;
   FRepl := TProcessRunner.Create;
   FRepl.OnOutput := ReplOutput;
   FRepl.OnExit := ReplExit;
+  FRepl.OnDisplay := DisplayMessage;
   FReplHistory := TStringList.Create;
   FHelpRunner := TProcessRunner.Create;
   FHelpRunner.OnOutput := HelpOutput;
@@ -570,6 +604,7 @@ begin
   if not FSettingsSaved then
     SaveSettings;
   FRecent.Free;
+  FShownScene := nil;
   FFigures.Free;
   FFrames.Free;
   FDocs.Free;
@@ -752,6 +787,14 @@ begin
   FPlot3D.Align := TAlignLayout.Client;
   FPlot3D.Margins.Rect := TRectF.Create(4, 4, 4, 4);
   FPlot3D.Visible := False;
+  // Scenes from graphics.show, draw.show and draw.frame (the display
+  // channel), drawn with Axon.Scene, the code axon saves pictures with.
+  FPlotScene := TSkPaintBox.Create(Self);
+  FPlotScene.Parent := Right;
+  FPlotScene.Align := TAlignLayout.Client;
+  FPlotScene.Margins.Rect := TRectF.Create(4, 4, 4, 4);
+  FPlotScene.OnDraw := PlotSceneDraw;
+  FPlotScene.Visible := False;
   UpdateFigureBar;
   Split := TSplitter.Create(Self);
   Split.Parent := Body;
@@ -1502,6 +1545,7 @@ begin
   FFrames.Clear;
   FFirstStdErr := True;
   FFigureShown := False;
+  FAnimActive := False;
   FBottomTabs.ActiveTab := FOutputTab;
   FJitCompiled.Clear;
   FJitRejected.Clear;
@@ -1511,7 +1555,7 @@ begin
     else
       AddNote(Format('Running %s (JIT off: interpreted)', [Doc.FilePath]), FPal.Note);
   try
-    FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir);
+    FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir, False, True);
   except
     on E: Exception do
     begin
@@ -1597,7 +1641,7 @@ var
   Frame: TFrame;
   Head, Msg: string;
 begin
-  if (Kind = okStdErr) and (TryShowFigure(Line) or TryJitReport(Line)) then
+  if (Kind = okStdErr) and (TryShowFrame(Line) or TryShowFigure(Line) or TryJitReport(Line)) then
     Exit;
   while FOutput.Count >= MaxOutputLines do
     FOutput.ListItems[0].Free;
@@ -1733,11 +1777,112 @@ const
 { Adds a figure (a PNG, with its data next to it as .json when plot.show
   wrote it) to the history and shows it. }
 procedure TfrmMain.AddFigure(const Path: string);
+var
+  E: TFigureEntry;
 begin
-  FFigures.Add(Path);
+  E := TFigureEntry.Create;
+  E.Path := Path;
+  AddEntry(E);
+end;
+
+{ Adds an entry to the history (which keeps the newest MaxFigures) and
+  shows it. }
+procedure TfrmMain.AddEntry(Entry: TFigureEntry);
+begin
+  FAnimActive := False;        // a new figure ends any animation's entry
+  FShownScene := nil;          // its entry may be about to go
+  FFigures.Add(Entry);
   while FFigures.Count > MaxFigures do
     FFigures.Delete(0);
   DisplayFigure(FFigures.Count - 1);
+end;
+
+{ Makes View the one visible control of the plot pane (nil: none). }
+procedure TfrmMain.ShowOnly(View: TControl);
+begin
+  FPlotImage.Visible := View = FPlotImage;
+  FPlotChart.Visible := View = FPlotChart;
+  FPlot3D.Visible := View = FPlot3D;
+  FPlotScene.Visible := View = FPlotScene;
+end;
+
+{ Draws the shown scene, as large as fits, centred. }
+procedure TfrmMain.PlotSceneDraw(ASender: TObject; const ACanvas: ISkCanvas;
+  const ADest: TRectF; const AOpacity: Single);
+var
+  Sc: TScene;
+  F: Double;
+begin
+  Sc := FShownScene;
+  if (Sc = nil) or (Sc.Width <= 0) or (Sc.Height <= 0) then
+    Exit;
+  F := Min(ADest.Width / Sc.Width, ADest.Height / Sc.Height);
+  if F <= 0 then
+    Exit;
+  ACanvas.Save;
+  try
+    ACanvas.Translate(ADest.Left + (ADest.Width - Sc.Width * F) / 2,
+      ADest.Top + (ADest.Height - Sc.Height * F) / 2);
+    ACanvas.Scale(F, F);
+    try
+      DrawScene(ACanvas.Handle, Sc);
+    except
+      // A scene that cannot be drawn (an image too large) leaves the pane blank.
+    end;
+  finally
+    ACanvas.Restore;
+  end;
+end;
+
+{ A message on the display channel: a scene to show, a frame, or a plot
+  figure (its scene and its record as JSON). A message that cannot be read
+  is reported in the pane's caption and otherwise ignored. }
+procedure TfrmMain.DisplayMessage(Kind: Byte; const Payload: TBytes);
+var
+  E: TFigureEntry;
+  N: Cardinal;
+begin
+  FFigureShown := True;
+  if (Kind = Axon.Scene.DisplayFrame) or (Kind = Axon.Scene.DisplayAdd) then
+  begin
+    if Kind = Axon.Scene.DisplayFrame then
+    begin
+      // Only the newest full frame is decoded and drawn; see TryShowFrame.
+      FAnimBytes := Payload;
+      FAnimPending := '';
+    end
+    else
+      AddToFrame(Payload);
+    if not FAnimQueued then
+    begin
+      FAnimQueued := True;
+      TThread.ForceQueue(nil, ShowPendingFrame);
+    end;
+    Exit;
+  end;
+  E := TFigureEntry.Create;
+  try
+    if Kind = Axon.Scene.DisplayShow then
+      E.Scene := DecodeScene(Payload)
+    else if (Kind = Axon.Scene.DisplayFigure) and (Length(Payload) >= 4) then
+    begin
+      Move(Payload[0], N, 4);
+      if Int64(N) + 4 > Length(Payload) then
+        raise EScene.Create('figure message cut short');
+      E.Scene := DecodeScene(Copy(Payload, 4, N));
+      E.Json := TEncoding.UTF8.GetString(Payload, 4 + N, Length(Payload) - 4 - Integer(N));
+    end
+    else
+      raise EScene.CreateFmt('unknown display message %d', [Kind]);
+  except
+    on Ex: Exception do
+    begin
+      E.Free;
+      FPlotCaption.Text := 'Cannot show a figure: ' + Ex.Message;
+      Exit;
+    end;
+  end;
+  AddEntry(E);
 end;
 
 { Shows figure Index of the history. A figure with its data goes to the
@@ -1745,44 +1890,64 @@ end;
   kept when moving away); any other is shown as the image. }
 procedure TfrmMain.DisplayFigure(Index: Integer);
 var
+  E: TFigureEntry;
   Path, Json, What: string;
+  HasJson: Boolean;
 begin
   FFigureIndex := Index;
   UpdateFigureBar;
   if (Index < 0) or (Index >= FFigures.Count) then
     Exit;
-  Path := FFigures[Index];
-  Json := TPath.ChangeExtension(Path, '.json');
+  E := FFigures[Index];
   FreeAndNil(FPlotGrid);
-  if TFile.Exists(Json) then
-    FPlotGrid := LoadFigureGrid(Self, FPlotPane, Json);
+  FShownScene := nil;
+  // The figure record: from the message, or a .json file beside the PNG.
+  Path := E.Path;
+  Json := '';
+  HasJson := E.Json <> '';
+  if (not HasJson) and (Path <> '') then
+  begin
+    Json := TPath.ChangeExtension(Path, '.json');
+    HasJson := TFile.Exists(Json);
+  end;
+  if HasJson then
+  begin
+    if E.Json <> '' then
+      FPlotGrid := LoadFigureGridText(Self, FPlotPane, E.Json)
+    else
+      FPlotGrid := LoadFigureGrid(Self, FPlotPane, Json);
+  end;
   if FPlotGrid <> nil then
   begin
-    FPlotImage.Visible := False;
-    FPlotChart.Visible := False;
-    FPlot3D.Visible := False;
+    ShowOnly(nil);
     What := 'subplots: wheel zooms, drag pans (rotates in 3D), double-click edits';
   end
-  else if TFile.Exists(Json) and LoadFigure3D(FPlot3D, Json) then
+  else if HasJson and ((E.Json <> '') and LoadFigure3DText(FPlot3D, E.Json) or
+    (E.Json = '') and LoadFigure3D(FPlot3D, Json)) then
   begin
-    FPlotImage.Visible := False;
-    FPlotChart.Visible := False;
-    FPlot3D.Visible := True;
+    ShowOnly(FPlot3D);
     What := 'drag rotates, wheel zooms, double-click edits';
   end
-  else if TFile.Exists(Json) and LoadFigure(FPlotChart, Json) then
+  else if HasJson and ((E.Json <> '') and LoadFigureText(FPlotChart, E.Json) or
+    (E.Json = '') and LoadFigure(FPlotChart, Json)) then
   begin
-    FPlotImage.Visible := False;
-    FPlot3D.Visible := False;
-    FPlotChart.Visible := True;
+    ShowOnly(FPlotChart);
     What := 'wheel zooms, drag pans, double-click edits';
+  end
+  else if E.Scene <> nil then
+  begin
+    FShownScene := E.Scene;
+    ShowOnly(FPlotScene);
+    FPlotScene.Redraw;
+    if FAnimActive and (Index = FFigures.Count - 1) then
+      What := 'animation'
+    else
+      What := 'drawing';
   end
   else
     try
       FPlotImage.Bitmap.LoadFromFile(Path);
-      FPlotChart.Visible := False;
-      FPlot3D.Visible := False;
-      FPlotImage.Visible := True;
+      ShowOnly(FPlotImage);
       if SameFileName(ExtractFileDir(Path), FShowDir) then
         What := 'plot.show'
       else
@@ -1822,16 +1987,34 @@ begin
     Result := nil;
 end;
 
+{ The scene drawn at Scale pixels per point, as a bitmap. }
+function SceneBitmap(Scene: TScene; Scale: Single): FMX.Graphics.TBitmap;
+var
+  Surface: ISkSurface;
+begin
+  Surface := TSkSurface.MakeRaster(Max(1, Round(Scene.Width * Scale)),
+    Max(1, Round(Scene.Height * Scale)));
+  if Surface = nil then
+    raise Exception.Create('cannot draw the figure');
+  Surface.Canvas.Clear(TAlphaColors.Null);
+  Surface.Canvas.Scale(Scale, Scale);
+  DrawScene(Surface.Canvas.Handle, Scene);
+  Result := SkImageToBitmap(Surface.MakeImageSnapshot);
+end;
+
 { The figure as it is on screen, with any zooming, panning, rotating and
   editing done in its charts (every cell of a grid), drawn at 2 pixels per
-  point; for a figure shown as an image, that image. The caller frees it. }
+  point; a scene drawn at 2 pixels per point; for a figure shown as an
+  image, that image. The caller frees it. }
 function TfrmMain.FigureViewBitmap: FMX.Graphics.TBitmap;
 begin
   if FigureView <> nil then
     Exit(ViewBitmap(FigureView, 2));
+  if FShownScene <> nil then
+    Exit(SceneBitmap(FShownScene, 2));
   Result := FMX.Graphics.TBitmap.Create;
   try
-    Result.LoadFromFile(FFigures[FFigureIndex]);
+    Result.LoadFromFile(FFigures[FFigureIndex].Path);
   except
     Result.Free;
     raise;
@@ -1864,9 +2047,31 @@ begin
   end;
 end;
 
+{ A scene to a PNG (2 pixels per point), PDF or SVG file, by its extension. }
+procedure SaveSceneFile(Scene: TScene; const Target, Ext: string);
+var
+  Stream: TFileStream;
+begin
+  if (Ext = '.pdf') or (Ext = '.svg') then
+  begin
+    Stream := TFileStream.Create(Target, fmCreate);
+    try
+      if Ext = '.pdf' then
+        SavePdf(Scene, Stream)
+      else
+        SaveSvg(Scene, Stream);
+    finally
+      Stream.Free;
+    end;
+  end
+  else
+    SavePng(Scene, 2, Target);
+end;
+
 { Save...: the figure on screen, all of it (every cell of a grid), as it looks
   now, to a PNG (2 pixels per point), PDF or SVG (vectors) the user picks;
-  see uFigureExport. A figure shown as an image is saved as that PNG. }
+  see uFigureExport. A scene is saved the same ways; a figure shown as an
+  image is saved as that PNG. }
 procedure TfrmMain.FigureSaveClick(Sender: TObject);
 var
   Dlg: TSaveDialog;
@@ -1878,7 +2083,7 @@ begin
   View := FigureView;
   Dlg := TSaveDialog.Create(nil);
   try
-    if View <> nil then
+    if (View <> nil) or (FShownScene <> nil) then
       Dlg.Filter := 'PNG image (*.png)|*.png|PDF document (*.pdf)|*.pdf|SVG image (*.svg)|*.svg'
     else
       Dlg.Filter := 'PNG image (*.png)|*.png';
@@ -1903,11 +2108,13 @@ begin
   finally
     Dlg.Free;
   end;
-  if (View = nil) or ((Ext <> '.pdf') and (Ext <> '.svg')) then
+  if ((View = nil) and (FShownScene = nil)) or ((Ext <> '.pdf') and (Ext <> '.svg')) then
     Target := TPath.ChangeExtension(Target, '.png');
   try
-    if View = nil then
-      TFile.Copy(FFigures[FFigureIndex], Target, True)
+    if (View = nil) and (FShownScene <> nil) then
+      SaveSceneFile(FShownScene, Target, Ext)
+    else if View = nil then
+      TFile.Copy(FFigures[FFigureIndex].Path, Target, True)
     else if Ext = '.pdf' then
       SaveViewPdf(View, Target)
     else if Ext = '.svg' then
@@ -1936,11 +2143,14 @@ end;
 procedure TfrmMain.FigureClearClick(Sender: TObject);
 begin
   FreeAndNil(FPlotGrid);
+  FShownScene := nil;
   FFigures.Clear;
+  FAnimActive := False;
   FFigureIndex := -1;
   UpdateFigureBar;
   FPlotChart.Visible := False;
   FPlot3D.Visible := False;
+  FPlotScene.Visible := False;
   FPlotImage.Bitmap.SetSize(0, 0);
   FPlotImage.Visible := True;
   FPlotCaption.Text := 'Figures from plot.show, and PNGs a run saves, appear here.';
@@ -2108,7 +2318,7 @@ begin
   FReplPartial[okStdOut] := '';
   FReplPartial[okStdErr] := '';
   try
-    FRepl.Start(Exe, ['--repl-protocol'], FReplDir, True);
+    FRepl.Start(Exe, ['--repl-protocol'], FReplDir, True, True);
   except
     on E: Exception do
     begin
@@ -2170,7 +2380,7 @@ begin
       end
       else if L.StartsWith(#2) then
         ReplAddLine(L.Substring(1), FPal.Error)
-      else if TryShowFigure(L) then
+      else if TryShowFrame(L) or TryShowFigure(L) then
         // shown in the plot pane
       else if L.StartsWith(#3'jit ') then
         // a JIT report line: not shown in the REPL
@@ -2213,6 +2423,7 @@ begin
   FBottomTabs.ActiveTab := FReplTab;
   FReplSince := Now;
   FFigureShown := False;
+  FAnimActive := False;
   Shown := FReplPrompt.Text;
   for L in Lines do
   begin
@@ -2754,6 +2965,165 @@ begin
     Exit;
   AddFigure(Line.Substring(Length(Marker)).Trim);
   FFigureShown := True;
+end;
+
+(* A frame of an animation (graphics.frame): remember it as the newest and
+   queue one display, unless one is already queued. Lines arrive faster than
+   images can be loaded when the IDE is busy; the queued display then shows
+   only the newest frame, so the animation skips frames rather than falling
+   behind and playing in bursts. *)
+function TfrmMain.TryShowFrame(const Line: string): Boolean;
+const
+  Marker = #3'frame ';
+begin
+  Result := Line.StartsWith(Marker);
+  if not Result then
+    Exit;
+  FAnimPending := Line.Substring(Length(Marker)).Trim;
+  FAnimBytes := nil;
+  FFigureShown := True;
+  if not FAnimQueued then
+  begin
+    FAnimQueued := True;
+    TThread.ForceQueue(nil, ShowPendingFrame);
+  end;
+end;
+
+(* The animation's entry in the figure history: the last, which each frame
+   replaces or adds to. With Make, one is added when there is none. *)
+function TfrmMain.AnimEntry(Make: Boolean): TFigureEntry;
+begin
+  if FAnimActive and (FFigures.Count > 0) then
+    Exit(FFigures[FFigures.Count - 1]);
+  if not Make then
+    Exit(nil);
+  FShownScene := nil;
+  FFigures.Add(TFigureEntry.Create);
+  while FFigures.Count > MaxFigures do
+    FFigures.Delete(0);
+  FAnimActive := True;
+  Result := FFigures[FFigures.Count - 1];
+end;
+
+{ Decodes the newest full frame, if one is waiting, into the animation's
+  entry. }
+procedure TfrmMain.ApplyPendingFrame;
+var
+  Scene: TScene;
+  E: TFigureEntry;
+begin
+  if FAnimBytes = nil then
+    Exit;
+  try
+    Scene := DecodeScene(FAnimBytes);
+  except
+    on Ex: Exception do
+    begin
+      FAnimBytes := nil;
+      FPlotCaption.Text := 'Cannot show a frame: ' + Ex.Message;
+      Exit;
+    end;
+  end;
+  FAnimBytes := nil;
+  E := AnimEntry(True);
+  if FShownScene = E.Scene then
+    FShownScene := nil;
+  E.Scene.Free;
+  E.Scene := Scene;
+  E.Path := '';
+  E.Json := '';
+end;
+
+{ Items to add to the current frame (DisplayAdd): after any full frame still
+  waiting, since they belong on top of it. They are applied at once, as
+  they cannot be skipped; the drawing waits for the queued display. }
+procedure TfrmMain.AddToFrame(const Payload: TBytes);
+var
+  Added: TScene;
+  E: TFigureEntry;
+  It: TSceneItem;
+begin
+  try
+    Added := DecodeScene(Payload);
+  except
+    on Ex: Exception do
+    begin
+      FPlotCaption.Text := 'Cannot show a frame: ' + Ex.Message;
+      Exit;
+    end;
+  end;
+  ApplyPendingFrame;
+  FAnimPending := '';
+  E := AnimEntry(True);
+  if E.Scene = nil then
+  begin
+    E.Scene := Added;            // the first frame: it stands alone
+    E.Path := '';
+    Exit;
+  end;
+  try
+    Added.Items.OwnsObjects := False;
+    for It in Added.Items do
+      E.Scene.Items.Add(It);
+    Added.Items.Clear;
+  finally
+    Added.Free;
+  end;
+end;
+
+(* Shows the animation's current frame. The animation has one entry in the
+   figure history, the last, which each frame replaces (or adds to); the
+   newest full frame waiting is decoded first, and older ones never are.
+   A frame reported as a file (marker lines) is loaded into the image, and
+   skipped if it cannot be read (being rewritten). *)
+procedure TfrmMain.ShowPendingFrame;
+var
+  Path: string;
+  E: TFigureEntry;
+begin
+  FAnimQueued := False;
+  Path := FAnimPending;
+  FAnimPending := '';
+  ApplyPendingFrame;
+  E := AnimEntry(Path <> '');
+  if E = nil then
+    Exit;
+  if FFigureIndex <> FFigures.Count - 1 then
+  begin
+    FFigureIndex := FFigures.Count - 1;
+    UpdateFigureBar;
+  end;
+  if FPlotGrid <> nil then
+    FreeAndNil(FPlotGrid);
+  if Path <> '' then
+  begin
+    FreeAndNil(E.Scene);
+    FShownScene := nil;
+    E.Path := Path;
+    try
+      FPlotImage.Bitmap.LoadFromFile(Path);
+    except
+      Exit;
+    end;
+    if not FPlotImage.Visible then
+      ShowOnly(FPlotImage);
+  end
+  else if E.Scene <> nil then
+  begin
+    FShownScene := E.Scene;
+    if not FPlotScene.Visible then
+      ShowOnly(FPlotScene);
+    FPlotScene.Redraw;
+  end;
+  FPlotCaption.Text := Format('Figure %d: animation', [FFigureIndex + 1]);
+end;
+
+{ ---------------- TFigureEntry ---------------- }
+
+destructor TFigureEntry.Destroy;
+begin
+  Scene.Free;
+  inherited;
 end;
 
 { ---------------- syntax check as you type ---------------- }

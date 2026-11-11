@@ -9,6 +9,7 @@
 ##   draw.show()
 
 import graphics
+import time
 
 # The current canvas: its size in points, the view [xmin, xmax, ymin, ymax]
 # it shows, and the points per unit along x and y.
@@ -17,6 +18,12 @@ current = nothing
 items = {}
 # Whether something was drawn since the last show or save.
 changed = false
+# Animation: when the last frame was sent (time.clock), how many so far, and
+# how many of the canvas's items the frames have sent (0 after a new canvas,
+# so the next frame sends the whole picture; otherwise only what was added).
+last_frame = nothing
+frames = 0
+sent = 0
 
 # The turtle: position, heading (degrees anticlockwise from the x axis),
 # pen, and the points of the line it is drawing.
@@ -49,6 +56,7 @@ export function canvas(; width = 640, height = 480, view = nothing, background =
   global current
   global items
   global changed
+  global sent
   show_unshown()
   if not is_number(width) or not is_number(height)
     fail("TypeError", "draw.canvas: width and height must be numbers")
@@ -66,11 +74,14 @@ export function canvas(; width = 640, height = 480, view = nothing, background =
   if not (view[2] > view[1]) or not (view[4] > view[3])
     fail("ArgumentError", "draw.canvas: view needs xmin < xmax and ymin < ymax")
   end
-  current = {width: width + 0.0, height: height + 0.0, view: view,
+  # x0 and y0, the view's lower-left corner, and the points per unit sx and sy
+  # turn view coordinates into the page's: (x - x0) sx, height - (y - y0) sy.
+  current = {width: width + 0.0, height: height + 0.0, view: view, x0: view[1], y0: view[3],
              sx: width / (view[2] - view[1]), sy: height / (view[4] - view[3]),
              background: background}
   items = {}
   changed = false
+  sent = 0
   reset_turtle((view[1] + view[2]) / 2, (view[3] + view[4]) / 2, 90.0)
   return nothing
 end
@@ -83,21 +94,22 @@ function canvas_now()
   return current
 end
 
-# Canvas points from view coordinates (numbers or vectors).
+# Canvas points from view coordinates (numbers or vectors). The shape
+# functions, which are called often, work these out inline instead.
 function px(x)
   c = canvas_now()
-  return (x - c.view[1]) * c.sx
+  return (x - c.x0) * c.sx
 end
 
 function py(y)
   c = canvas_now()
-  return c.height - (y - c.view[3]) * c.sy
+  return c.height - (y - c.y0) * c.sy
 end
 
+# Adds an item to the canvas (made already).
 function add(item)
   global items
   global changed
-  canvas_now()
   items = append(items, item)
   changed = true
 end
@@ -124,6 +136,52 @@ export function save(path; scale = 2.0)
   changed = false
 end
 
+## Shows the canvas as one frame of an animation and starts the next one's
+## timing: call it at the end of each pass of a loop that redraws the canvas.
+## In the IDE each frame replaces the last in the plot pane, which keeps one
+## entry for the whole animation in its history. It waits so that frames come
+## fps times a second (a program that falls behind just carries on, without
+## hurrying to catch up). With save set, each frame is also written to a
+## numbered PNG file: save = "frames/swing" gives frames/swing_00001.png,
+## frames/swing_00002.png and so on (the folder must exist), for making a
+## video; outside the IDE that is the only thing frame does.
+export function frame(; fps = 30, scale = 1.0, save = nothing)
+  global changed
+  global last_frame
+  global frames
+  global sent
+  if not is_number(fps) or not (fps > 0)
+    fail("ArgumentError", "draw.frame: fps must be a positive number")
+  end
+  sc = scene(scale = scale)
+  frames = frames + 1
+  if typeof(save) != "nothing"
+    name = string(frames)
+    while length(name) < 5
+      name = "0" + name
+    end
+    graphics.save(sc, save + "_" + name + ".png")
+  end
+  # Wait for this frame's moment, then send it.
+  now = time.clock()
+  if typeof(last_frame) != "nothing"
+    due = last_frame + 1 / fps
+    if now < due
+      time.sleep(due - now)
+      now = due
+    end
+  end
+  last_frame = now
+  # Only the items added since the last frame, unless the canvas is new.
+  if sent > 0 and sent <= length(sc.items)
+    graphics.frame(sc, sent)
+  else
+    graphics.frame(sc)
+  end
+  sent = length(sc.items)
+  changed = false
+end
+
 function show_unshown()
   flush()
   if changed and length(items) > 0
@@ -137,46 +195,49 @@ atexit(show_unshown)
 
 ## A line from (x1, y1) to (x2, y2). cap is "butt", "round" or "square".
 export function line(x1, y1, x2, y2; color = "black", width = 1.0, dash = nothing, cap = "butt")
-  add({kind: "line", x: px([x1; x2]), y: py([y1; y2]), color: color, width: width,
-       dash: dash, cap: cap})
+  c = canvas_now()
+  add({kind: "line", x: ([x1; x2] - c.x0) * c.sx, y: c.height - ([y1; y2] - c.y0) * c.sy,
+       color: color, width: width, dash: dash, cap: cap})
 end
 
 ## A line through the points (x[k], y[k]); a NaN breaks it. join is "round",
 ## "miter" or "bevel".
 export function polyline(x, y; color = "black", width = 1.0, dash = nothing, cap = "butt",
                          join = "round")
-  add({kind: "polyline", x: px(vector(x)), y: py(vector(y)), color: color, width: width,
-       dash: dash, cap: cap, join: join})
+  c = canvas_now()
+  add({kind: "polyline", x: (vector(x) - c.x0) * c.sx, y: c.height - (vector(y) - c.y0) * c.sy,
+       color: color, width: width, dash: dash, cap: cap, join: join})
 end
 
 ## A closed shape through the points, filled with fill and outlined with
 ## color ("none" for no outline).
 export function polygon(x, y; fill = "none", color = "black", width = 1.0, join = "round")
-  add({kind: "polygon", x: px(vector(x)), y: py(vector(y)), fill: fill, color: color,
-       width: width, join: join})
+  c = canvas_now()
+  add({kind: "polygon", x: (vector(x) - c.x0) * c.sx, y: c.height - (vector(y) - c.y0) * c.sy,
+       fill: fill, color: color, width: width, join: join})
 end
 
 ## A rectangle with lower-left corner (x, y), width w and height h.
 export function rect(x, y, w, h; fill = "none", color = "black", width = 1.0)
   c = canvas_now()
-  add({kind: "rect", x: px(x), y: py(y + h), w: w * c.sx, h: h * c.sy, fill: fill,
-       color: color, width: width})
+  add({kind: "rect", x: (x - c.x0) * c.sx, y: c.height - (y + h - c.y0) * c.sy, w: w * c.sx,
+       h: h * c.sy, fill: fill, color: color, width: width})
 end
 
 ## A circle of radius r around (x, y). (With different scales along x and y,
 ## see canvas, it is drawn as the ellipse it becomes.)
 export function circle(x, y, r; fill = "none", color = "black", width = 1.0)
   c = canvas_now()
-  add({kind: "ellipse", x: px(x), y: py(y), rx: r * c.sx, ry: r * c.sy, fill: fill,
-       color: color, width: width})
+  add({kind: "ellipse", x: (x - c.x0) * c.sx, y: c.height - (y - c.y0) * c.sy, rx: r * c.sx,
+       ry: r * c.sy, fill: fill, color: color, width: width})
 end
 
 ## An ellipse around (x, y) with semi-axes rx and ry, turned by angle degrees
 ## anticlockwise.
 export function ellipse(x, y, rx, ry; angle = 0.0, fill = "none", color = "black", width = 1.0)
   c = canvas_now()
-  add({kind: "ellipse", x: px(x), y: py(y), rx: rx * c.sx, ry: ry * c.sy, angle: angle,
-       fill: fill, color: color, width: width})
+  add({kind: "ellipse", x: (x - c.x0) * c.sx, y: c.height - (y - c.y0) * c.sy, rx: rx * c.sx,
+       ry: ry * c.sy, angle: angle, fill: fill, color: color, width: width})
 end
 
 ## An arc of the circle of radius r around (x, y), from start through sweep
@@ -185,8 +246,8 @@ end
 export function arc(x, y, r, start, sweep; color = "black", width = 1.0, wedge = false,
                     fill = "none")
   c = canvas_now()
-  add({kind: "arc", x: px(x), y: py(y), r: r * c.sx, start: start, sweep: sweep,
-       color: color, width: width, wedge: wedge, fill: fill})
+  add({kind: "arc", x: (x - c.x0) * c.sx, y: c.height - (y - c.y0) * c.sy, r: r * c.sx,
+       start: start, sweep: sweep, color: color, width: width, wedge: wedge, fill: fill})
 end
 
 ## Markers at (x, y), numbers or vectors: shape "circle", "square", "diamond",
@@ -195,16 +256,19 @@ export function points(x, y; shape = "circle", size = 4.0, color = "black", fill
   if typeof(fill) == "nothing"
     fill = color
   end
-  add({kind: "markers", x: px(vector(x)), y: py(vector(y)), shape: shape, size: size,
-       color: color, fill: fill})
+  c = canvas_now()
+  add({kind: "markers", x: (vector(x) - c.x0) * c.sx, y: c.height - (vector(y) - c.y0) * c.sy,
+       shape: shape, size: size, color: color, fill: fill})
 end
 
 ## Text at (x, y): size in points, anchor "start", "middle" or "end", angle in
 ## degrees anticlockwise.
 export function text(x, y, s; size = 12.0, color = "black", anchor = "start", angle = 0.0,
                      font = "sans-serif", bold = false)
-  add({kind: "text", x: px(x), y: py(y), text: string(s), size: size, color: color,
-       anchor: anchor, baseline: "middle", angle: angle, font: font, bold: bold})
+  c = canvas_now()
+  add({kind: "text", x: (x - c.x0) * c.sx, y: c.height - (y - c.y0) * c.sy, text: string(s),
+       size: size, color: color, anchor: anchor, baseline: "middle", angle: angle, font: font,
+       bold: bold})
 end
 
 ## A matrix of values drawn as pixels, row 1 at the top, filling the

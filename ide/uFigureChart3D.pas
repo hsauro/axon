@@ -25,6 +25,8 @@ uses
 function LoadFigure3D(Plot: TRho3DPlot; const FileName: string): Boolean;
 // The same from a parsed figure record (a cell of a grid, see uFigureGrid).
 function LoadFigure3DObj(Plot: TRho3DPlot; Fig: TJSONObject): Boolean;
+// The same for a figure given as JSON text (from the display channel).
+function LoadFigure3DText(Plot: TRho3DPlot; const Json: string): Boolean;
 
 implementation
 
@@ -131,6 +133,18 @@ var
   Root: TJSONValue;
 begin
   Root := ReadJson(FileName);
+  try
+    Result := (Root is TJSONObject) and LoadFigure3DObj(Plot, TJSONObject(Root));
+  finally
+    Root.Free;
+  end;
+end;
+
+function LoadFigure3DText(Plot: TRho3DPlot; const Json: string): Boolean;
+var
+  Root: TJSONValue;
+begin
+  Root := TJSONObject.ParseJSONValue(Json);
   try
     Result := (Root is TJSONObject) and LoadFigure3DObj(Plot, TJSONObject(Root));
   finally

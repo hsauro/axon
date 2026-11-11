@@ -25,7 +25,8 @@ uses
   uFigureChart3D in 'uFigureChart3D.pas',
   uFigureGrid in 'uFigureGrid.pas',
   uFigureExport in 'uFigureExport.pas',
-  Axon.Version in '..\src\Axon.Version.pas';
+  Axon.Version in '..\src\Axon.Version.pas',
+  Axon.Scene in '..\src\Axon.Scene.pas';
 
 // The build's resources (AxonIDE.res: icon, version information and the
 // Windows manifest that makes the IDE DPI-aware), then the dark style

@@ -71,3 +71,4 @@ Each example opens as your own copy, so you can change it and run it with
 - [Fractals: Koch snowflake, Sierpinski triangle, a tree and nested circles](../examples/22_fractals.sci)
 - [The Mandelbrot set, as an image](../examples/23_mandelbrot.sci)
 - [L-systems and the turtle](../examples/24_lsystems.sci)
+- [An animated pendulum](../examples/25_pendulum.sci)

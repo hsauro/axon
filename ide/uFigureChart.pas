@@ -27,6 +27,8 @@ uses
 function LoadFigure(Plot: TSkPlotPaintBox; const FileName: string): Boolean;
 // The same from a parsed figure record (a cell of a grid, see uFigureGrid).
 function LoadFigureObj(Plot: TSkPlotPaintBox; Fig: TJSONObject): Boolean;
+// The same for a figure given as JSON text (from the display channel).
+function LoadFigureText(Plot: TSkPlotPaintBox; const Json: string): Boolean;
 
 // The JSON in FileName, or nil when it cannot be read; the caller frees it.
 function ReadJson(const FileName: string): TJSONValue;
@@ -238,6 +240,18 @@ var
   Root: TJSONValue;
 begin
   Root := ReadJson(FileName);
+  try
+    Result := (Root is TJSONObject) and LoadFigureObj(Plot, TJSONObject(Root));
+  finally
+    Root.Free;
+  end;
+end;
+
+function LoadFigureText(Plot: TSkPlotPaintBox; const Json: string): Boolean;
+var
+  Root: TJSONValue;
+begin
+  Root := TJSONObject.ParseJSONValue(Json);
   try
     Result := (Root is TJSONObject) and LoadFigureObj(Plot, TJSONObject(Root));
   finally

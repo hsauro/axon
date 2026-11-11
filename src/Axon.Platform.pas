@@ -30,6 +30,17 @@ function RunProcess(const Exe: string; const Args: array of string;
   const WorkDir: string; TimeoutMs: Cardinal;
   out StdOut, StdErr: string; out TimedOut: Boolean): Integer;
 
+{ The display channel (doc/Axon-Display-Plan.md): a pipe that a front end
+  such as the IDE gives axon for pictures, named by the environment variable
+  AXON_DISPLAY (an inherited handle on Windows, a file descriptor on macOS
+  and Linux). True when there is one and it has not failed. }
+function DisplayChannel: Boolean;
+
+{ Sends one message on the display channel: its length (UInt32,
+  little-endian, counting the kind and the payload), the kind (a byte), the
+  payload. False, and the channel is given up, if the front end has gone. }
+function DisplaySend(Kind: Byte; const Payload: TArray<Byte>): Boolean;
+
 implementation
 
 uses
@@ -37,7 +48,7 @@ uses
   Winapi.Windows, Winapi.ShellAPI,
 {$ENDIF}
 {$IFDEF POSIX}
-  Posix.Stdlib, Posix.SysWait, Posix.Dlfcn,
+  Posix.Stdlib, Posix.SysWait, Posix.Dlfcn, Posix.Unistd, Posix.Signal,
 {$ENDIF}
   System.SysUtils, System.Classes, System.IOUtils, System.Math;
 
@@ -100,6 +111,83 @@ begin
   Result := dlsym(Lib, M.AsUtf8(Name).ToPointer);
 end;
 {$ENDIF}
+
+{ ---- the display channel ---- }
+
+var
+  DisplayState: (dsUnknown, dsOpen, dsNone) = dsUnknown;
+  DisplayHandle: NativeInt;
+
+function DisplayChannel: Boolean;
+var
+  S: string;
+  H: Int64;
+begin
+  if DisplayState = dsUnknown then
+  begin
+    DisplayState := dsNone;
+    S := GetEnvironmentVariable('AXON_DISPLAY');
+    if (S <> '') and TryStrToInt64(S, H) and (H > 0) then
+    begin
+      DisplayHandle := NativeInt(H);
+      DisplayState := dsOpen;
+{$IFDEF POSIX}
+      // A front end that has gone must make writes fail, not end axon.
+      signal(SIGPIPE, TSignalHandler(SIG_IGN));
+{$ENDIF}
+    end;
+  end;
+  Result := DisplayState = dsOpen;
+end;
+
+{ Writes all of Count bytes from P, or returns False. }
+function DisplayWrite(P: PByte; Count: NativeInt): Boolean;
+{$IFDEF MSWINDOWS}
+var
+  Wrote: DWORD;
+begin
+  while Count > 0 do
+  begin
+    if not WriteFile(THandle(DisplayHandle), P^, DWORD(Min(Count, 1 shl 24)), Wrote, nil) or
+      (Wrote = 0) then
+      Exit(False);
+    Inc(P, Wrote);
+    Dec(Count, Wrote);
+  end;
+  Result := True;
+end;
+{$ENDIF}
+{$IFDEF POSIX}
+var
+  Wrote: NativeInt;
+begin
+  while Count > 0 do
+  begin
+    Wrote := __write(Integer(DisplayHandle), P, Min(Count, 1 shl 24));
+    if Wrote <= 0 then
+      Exit(False);
+    Inc(P, Wrote);
+    Dec(Count, Wrote);
+  end;
+  Result := True;
+end;
+{$ENDIF}
+
+function DisplaySend(Kind: Byte; const Payload: TArray<Byte>): Boolean;
+var
+  Head: array[0..4] of Byte;
+  Len: Cardinal;
+begin
+  if not DisplayChannel then
+    Exit(False);
+  Len := Cardinal(Length(Payload)) + 1;
+  Move(Len, Head[0], 4);
+  Head[4] := Kind;
+  Result := DisplayWrite(@Head[0], 5) and
+    ((Length(Payload) = 0) or DisplayWrite(@Payload[0], Length(Payload)));
+  if not Result then
+    DisplayState := dsNone;
+end;
 
 procedure SetEnv(const Name, Value: string);
 {$IFDEF MSWINDOWS}

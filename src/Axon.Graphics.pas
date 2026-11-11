@@ -3,6 +3,11 @@ unit Axon.Graphics;
 (* The core module graphics (reference, "The graphics module"): renders a
    scene, described as ordinary Axon data, to PNG, SVG or PDF through Skia.
 
+   This unit checks a scene record and converts it into a TScene
+   (Axon.Scene), which does the drawing, saving and encoding and is shared
+   with the IDE. The checks keep the order of the fields as they are read,
+   so the first problem in an item is the one reported.
+
    A scene is a record {width, height, background, scale, items}; items is a
    list of item records, each with a field kind: "polyline", "polygon",
    "rect", "circle", "ellipse", "arc", "markers", "text", "image" or "group".
@@ -27,14 +32,10 @@ uses
   System.Skia.API,
   System.IOUtils,
   Axon.Errors, Axon.Values, Axon.Ops, Axon.Arrays, Axon.NativeModules, Axon.Platform,
-  Axon.Json;
-
-type
-  TColor32 = Cardinal;   // ARGB
+  Axon.Json, Axon.Scene;
 
 var
   SkiaState: (ssNotLoaded, ssLoaded, ssFailed) = ssNotLoaded;
-  Typefaces: TDictionary<string, sk_typeface_t>;
 
 procedure EnsureSkia;
 begin
@@ -200,140 +201,11 @@ begin
   Result := (Parts[3] shl 24) or (Parts[0] shl 16) or (Parts[1] shl 8) or Parts[2];
 end;
 
-{ ---------------- drawing ---------------- }
+{ ---------------- converting a scene record ---------------- }
 
 function IsFinite(X: Double): Boolean; inline;
 begin
   Result := not (IsNan(X) or IsInfinite(X));
-end;
-
-function Typeface(const Family: string; Bold: Boolean): sk_typeface_t;
-var
-  Key: string;
-  Style: sk_fontstyle_t;
-  U: UTF8String;
-begin
-  if Typefaces = nil then
-    Typefaces := TDictionary<string, sk_typeface_t>.Create;
-  Key := Family + '|' + BoolToStr(Bold, True);
-  if Typefaces.TryGetValue(Key, Result) then
-    Exit;
-  Style.weight := IfThen(Bold, 700, 400);
-  Style.width := 5;
-  Style.slant := UPRIGHT_SK_FONTSLANT;
-  // Generic names map to fonts every installation has.
-  U := UTF8String(Family);
-{$IFDEF MSWINDOWS}
-  if Family = 'sans-serif' then U := 'Segoe UI'
-  else if Family = 'serif' then U := 'Times New Roman'
-  else if Family = 'monospace' then U := 'Consolas';
-{$ELSE}
-  if Family = 'sans-serif' then U := 'Helvetica'
-  else if Family = 'serif' then U := 'Times'
-  else if Family = 'monospace' then U := 'Menlo';
-{$ENDIF}
-  Result := sk4d_typeface_make_from_name(PAnsiChar(U), @Style);
-  if Result = 0 then
-    Result := sk4d_typeface_make_default();
-  Typefaces.Add(Key, Result);
-end;
-
-type
-  { How a path's outline is drawn: from an item's width, dash, cap and join. }
-  TStroke = record
-    Width: Double;
-    Dash: TArray<Double>;
-    Cap: sk_strokecap_t;
-    Join: sk_strokejoin_t;
-  end;
-
-function MakePaint(Color: TColor32; Stroke: Boolean; const S: TStroke): sk_paint_t;
-begin
-  Result := sk4d_paint_create();
-  sk4d_paint_set_antialias(Result, True);
-  sk4d_paint_set_color(Result, Color);
-  if Stroke then
-  begin
-    sk4d_paint_set_style(Result, STROKE_SK_PAINTSTYLE);
-    sk4d_paint_set_stroke_width(Result, S.Width);
-    sk4d_paint_set_stroke_join(Result, S.Join);
-    sk4d_paint_set_stroke_cap(Result, S.Cap);
-  end
-  else
-    sk4d_paint_set_style(Result, FILL_SK_PAINTSTYLE);
-end;
-
-{ A plain stroke: butt ends, round corners, no dashes. }
-function PlainStroke(Width: Double): TStroke;
-begin
-  Result.Width := Width;
-  Result.Dash := nil;
-  Result.Cap := BUTT_SK_STROKECAP;
-  Result.Join := ROUND_SK_STROKEJOIN;
-end;
-
-procedure DrawPathWith(C: sk_canvas_t; Path: sk_path_t; Fill, Stroke: TColor32;
-  const S: TStroke);
-var
-  P: sk_paint_t;
-  Effect: sk_patheffect_t;
-  Intervals: TArray<Single>;
-  K: Integer;
-begin
-  if (Fill shr 24) <> 0 then
-  begin
-    P := MakePaint(Fill, False, S);
-    sk4d_canvas_draw_path(C, Path, P);
-    sk4d_paint_destroy(P);
-  end;
-  if ((Stroke shr 24) <> 0) and (S.Width > 0) then
-  begin
-    P := MakePaint(Stroke, True, S);
-    Effect := 0;
-    if Length(S.Dash) >= 2 then
-    begin
-      SetLength(Intervals, Length(S.Dash) - Length(S.Dash) mod 2);
-      for K := 0 to High(Intervals) do
-        Intervals[K] := S.Dash[K];
-      Effect := sk4d_patheffect_make_dash(@Intervals[0], Length(Intervals), 0);
-      sk4d_paint_set_path_effect(P, Effect);
-    end;
-    sk4d_canvas_draw_path(C, Path, P);
-    sk4d_paint_destroy(P);
-    if Effect <> 0 then
-      sk4d_refcnt_unref(Effect);
-  end;
-end;
-
-{ A path through the points; a NaN or infinite coordinate breaks the line. }
-function PolyPath(const X, Y: TArray<Double>; Closed: Boolean): sk_path_t;
-var
-  B: sk_pathbuilder_t;
-  K: Integer;
-  Pt: sk_point_t;
-  PenDown: Boolean;
-begin
-  B := sk4d_pathbuilder_create();
-  PenDown := False;
-  for K := 0 to High(X) do
-  begin
-    if not (IsFinite(X[K]) and IsFinite(Y[K])) then
-    begin
-      PenDown := False;
-      Continue;
-    end;
-    Pt.x := X[K];
-    Pt.y := Y[K];
-    if PenDown then
-      sk4d_pathbuilder_line_to(B, @Pt)
-    else
-      sk4d_pathbuilder_move_to(B, @Pt);
-    PenDown := True;
-  end;
-  if Closed then
-    sk4d_pathbuilder_close(B);
-  Result := sk4d_pathbuilder_detach(B);
-  sk4d_pathbuilder_destroy(B);
 end;
 
 procedure CheckSameLength(const X, Y: TArray<Double>; const Ctx: string);
@@ -373,46 +245,55 @@ begin
     RaiseFmt(ArgumentError, '%s: unknown join "%s" (round, miter, bevel)', [Ctx, S]);
 end;
 
-procedure DrawPolyline(C: sk_canvas_t; R: TRecordObj; const Ctx: string);
+{ A "line"/"polyline" or a "polygon". }
+function PolyItem(R: TRecordObj; Closed: Boolean; const Ctx: string): TSceneItem;
 var
   X, Y: TArray<Double>;
-  Path: sk_path_t;
 begin
   X := VecField(R, 'x', Ctx);
   Y := VecField(R, 'y', Ctx);
   CheckSameLength(X, Y, Ctx);
-  Path := PolyPath(X, Y, False);
-  DrawPathWith(C, Path, 0, ColorField(R, 'color', 'black', Ctx), StrokeField(R, 1, Ctx));
-  sk4d_path_destroy(Path);
+  if Closed then
+    Result := TSceneItem.Create(skPolygon)
+  else
+    Result := TSceneItem.Create(skPolyline);
+  try
+    Result.X := X;
+    Result.Y := Y;
+    if Closed then
+    begin
+      Result.Fill := ColorField(R, 'fill', 'none', Ctx);
+      Result.Color := ColorField(R, 'color', 'none', Ctx);
+    end
+    else
+      Result.Color := ColorField(R, 'color', 'black', Ctx);
+    Result.Stroke := StrokeField(R, 1, Ctx);
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
-procedure DrawPolygon(C: sk_canvas_t; R: TRecordObj; const Ctx: string);
-var
-  X, Y: TArray<Double>;
-  Path: sk_path_t;
-begin
-  X := VecField(R, 'x', Ctx);
-  Y := VecField(R, 'y', Ctx);
-  CheckSameLength(X, Y, Ctx);
-  Path := PolyPath(X, Y, True);
-  DrawPathWith(C, Path, ColorField(R, 'fill', 'none', Ctx),
-    ColorField(R, 'color', 'none', Ctx), StrokeField(R, 1, Ctx));
-  sk4d_path_destroy(Path);
-end;
-
-procedure DrawRect(C: sk_canvas_t; R: TRecordObj; const Ctx: string);
+{ A "rect": the closed path through its corners. }
+function RectItem(R: TRecordObj; const Ctx: string): TSceneItem;
 var
   X, Y, W, H: Double;
-  Path: sk_path_t;
 begin
   X := NumField(R, 'x', 0, Ctx);
   Y := NumField(R, 'y', 0, Ctx);
   W := NumField(R, 'w', 0, Ctx);
   H := NumField(R, 'h', 0, Ctx);
-  Path := PolyPath([X, X + W, X + W, X], [Y, Y, Y + H, Y + H], True);
-  DrawPathWith(C, Path, ColorField(R, 'fill', 'none', Ctx),
-    ColorField(R, 'color', 'none', Ctx), StrokeField(R, 1, Ctx));
-  sk4d_path_destroy(Path);
+  Result := TSceneItem.Create(skPolygon);
+  try
+    Result.X := [X, X + W, X + W, X];
+    Result.Y := [Y, Y, Y + H, Y + H];
+    Result.Fill := ColorField(R, 'fill', 'none', Ctx);
+    Result.Color := ColorField(R, 'color', 'none', Ctx);
+    Result.Stroke := StrokeField(R, 1, Ctx);
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 { Circles, ellipses and arcs: outline "black" and no fill by default, so a
@@ -420,14 +301,9 @@ end;
   anticlockwise); an arc runs from start through sweep degrees,
   anticlockwise from the positive x axis as seen on the page, and with
   wedge = true is closed through the centre (a pie slice). }
-procedure DrawRound(C: sk_canvas_t; R: TRecordObj; const Kind, Ctx: string);
+function RoundItem(R: TRecordObj; const Kind, Ctx: string): TSceneItem;
 var
-  X, Y, RX, RY, Angle, Start, Sweep: Double;
-  B: sk_pathbuilder_t;
-  Path: sk_path_t;
-  Oval: sk_rect_t;
-  Pt: sk_point_t;
-  Wedge: Boolean;
+  X, Y, RX, RY: Double;
 begin
   X := NumField(R, 'x', 0, Ctx);
   Y := NumField(R, 'y', 0, Ctx);
@@ -445,78 +321,46 @@ begin
   end;
   if (RX < 0) or (RY < 0) then
     RaiseFmt(ArgumentError, '%s: a radius must not be negative', [Ctx]);
-  Oval.left := X - RX;
-  Oval.top := Y - RY;
-  Oval.right := X + RX;
-  Oval.bottom := Y + RY;
-  Angle := 0;
-  Wedge := False;
-  B := sk4d_pathbuilder_create();
+  if Kind = 'arc' then
+    Result := TSceneItem.Create(skArc)
+  else
+    Result := TSceneItem.Create(skEllipse);
   try
+    Result.CX := X;
+    Result.CY := Y;
+    Result.RX := RX;
+    Result.RY := RY;
     if Kind = 'arc' then
     begin
-      Start := NumField(R, 'start', 0, Ctx);
-      Sweep := NumField(R, 'sweep', 360, Ctx);
-      Wedge := BoolField(R, 'wedge', False, Ctx);
-      // Skia's angles run clockwise on the page (y points down).
-      if Wedge then
-      begin
-        Pt.x := X;
-        Pt.y := Y;
-        sk4d_pathbuilder_move_to(B, @Pt);
-        sk4d_pathbuilder_arc_to2(B, @Oval, -Start, -Sweep, False);
-        sk4d_pathbuilder_close(B);
-      end
-      else
-        sk4d_pathbuilder_add_arc(B, @Oval, -Start, -Sweep);
+      Result.Start := NumField(R, 'start', 0, Ctx);
+      Result.Sweep := NumField(R, 'sweep', 360, Ctx);
+      Result.Wedge := BoolField(R, 'wedge', False, Ctx);
     end
+    else if Kind = 'ellipse' then
+      Result.Angle := NumField(R, 'angle', 0, Ctx);
+    if (Kind = 'arc') and not Result.Wedge then
+      Result.Color := ColorField(R, 'color', 'black', Ctx)
     else
     begin
-      sk4d_pathbuilder_add_oval(B, @Oval, CW_SK_PATHDIRECTION, 0);
-      if Kind = 'ellipse' then
-        Angle := NumField(R, 'angle', 0, Ctx);
+      Result.Fill := ColorField(R, 'fill', 'none', Ctx);
+      Result.Color := ColorField(R, 'color', 'black', Ctx);
     end;
-    Path := sk4d_pathbuilder_detach(B);
-  finally
-    sk4d_pathbuilder_destroy(B);
-  end;
-  try
-    sk4d_canvas_save(C);
-    try
-      if Angle <> 0 then
-        sk4d_canvas_rotate2(C, -Angle, X, Y);
-      if (Kind = 'arc') and not Wedge then
-        DrawPathWith(C, Path, 0, ColorField(R, 'color', 'black', Ctx), StrokeField(R, 1, Ctx))
-      else
-        DrawPathWith(C, Path, ColorField(R, 'fill', 'none', Ctx),
-          ColorField(R, 'color', 'black', Ctx), StrokeField(R, 1, Ctx));
-    finally
-      sk4d_canvas_restore(C);
-    end;
-  finally
-    sk4d_path_destroy(Path);
+    Result.Stroke := StrokeField(R, 1, Ctx);
+  except
+    Result.Free;
+    raise;
   end;
 end;
 
-procedure DrawMarkers(C: sk_canvas_t; R: TRecordObj; const Ctx: string);
+{ "markers"; nil when an unknown shape has no point to draw. }
+function MarkersItem(R: TRecordObj; const Ctx: string): TSceneItem;
 var
   X, Y: TArray<Double>;
   Shape: string;
-  Size, H: Double;
+  Size: Double;
   Fill, Stroke: TColor32;
-  B: sk_pathbuilder_t;
-  Path: sk_path_t;
+  M: TMarkerShape;
   K: Integer;
-
-  procedure Pt(PX, PY: Double; Move: Boolean);
-  var
-    P: sk_point_t;
-  begin
-    P.x := PX;
-    P.y := PY;
-    if Move then sk4d_pathbuilder_move_to(B, @P) else sk4d_pathbuilder_line_to(B, @P);
-  end;
-
 begin
   X := VecField(R, 'x', Ctx);
   Y := VecField(R, 'y', Ctx);
@@ -528,91 +372,49 @@ begin
     Fill := ColorField(R, 'fill', 'none', Ctx)
   else
     Fill := Stroke;
-  H := Size / 2;
-  B := sk4d_pathbuilder_create();
-  for K := 0 to High(X) do
-  begin
-    if not (IsFinite(X[K]) and IsFinite(Y[K])) then
-      Continue;
-    if Shape = 'circle' then
-      sk4d_pathbuilder_add_circle(B, X[K], Y[K], H, CW_SK_PATHDIRECTION)
-    else if Shape = 'square' then
-    begin
-      Pt(X[K] - H, Y[K] - H, True); Pt(X[K] + H, Y[K] - H, False);
-      Pt(X[K] + H, Y[K] + H, False); Pt(X[K] - H, Y[K] + H, False);
-      sk4d_pathbuilder_close(B);
-    end
-    else if Shape = 'diamond' then
-    begin
-      Pt(X[K], Y[K] - H, True); Pt(X[K] + H, Y[K], False);
-      Pt(X[K], Y[K] + H, False); Pt(X[K] - H, Y[K], False);
-      sk4d_pathbuilder_close(B);
-    end
-    else if Shape = 'triangle' then
-    begin
-      Pt(X[K], Y[K] - H, True); Pt(X[K] + H, Y[K] + H, False);
-      Pt(X[K] - H, Y[K] + H, False);
-      sk4d_pathbuilder_close(B);
-    end
-    else if Shape = 'plus' then
-    begin
-      Pt(X[K] - H, Y[K], True); Pt(X[K] + H, Y[K], False);
-      Pt(X[K], Y[K] - H, True); Pt(X[K], Y[K] + H, False);
-    end
-    else if Shape = 'cross' then
-    begin
-      Pt(X[K] - H, Y[K] - H, True); Pt(X[K] + H, Y[K] + H, False);
-      Pt(X[K] - H, Y[K] + H, True); Pt(X[K] + H, Y[K] - H, False);
-    end
-    else
-    begin
-      sk4d_pathbuilder_destroy(B);
-      RaiseFmt(ArgumentError, '%s: unknown marker shape "%s" (circle, square, diamond, triangle, plus, cross)',
-        [Ctx, Shape]);
-    end;
-  end;
-  Path := sk4d_pathbuilder_detach(B);
-  sk4d_pathbuilder_destroy(B);
-  if (Shape = 'plus') or (Shape = 'cross') then
-    DrawPathWith(C, Path, 0, Stroke, PlainStroke(NumField(R, 'width', 1.5, Ctx)))
+  if Shape = 'circle' then M := msCircle
+  else if Shape = 'square' then M := msSquare
+  else if Shape = 'diamond' then M := msDiamond
+  else if Shape = 'triangle' then M := msTriangle
+  else if Shape = 'plus' then M := msPlus
+  else if Shape = 'cross' then M := msCross
   else
-    DrawPathWith(C, Path, Fill, Stroke, PlainStroke(NumField(R, 'width', 0, Ctx)));
-  sk4d_path_destroy(Path);
+  begin
+    // As drawn before: the shape matters only when there is a point.
+    for K := 0 to High(X) do
+      if IsFinite(X[K]) and IsFinite(Y[K]) then
+        RaiseFmt(ArgumentError, '%s: unknown marker shape "%s" (circle, square, diamond, triangle, plus, cross)',
+          [Ctx, Shape]);
+    Exit(nil);
+  end;
+  Result := TSceneItem.Create(skMarkers);
+  try
+    Result.X := X;
+    Result.Y := Y;
+    Result.Shape := M;
+    Result.Size := Size;
+    Result.Color := Stroke;
+    Result.Fill := Fill;
+    if M in [msPlus, msCross] then
+      Result.Stroke := PlainStroke(NumField(R, 'width', 1.5, Ctx))
+    else
+      Result.Stroke := PlainStroke(NumField(R, 'width', 0, Ctx));
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
-function MakeFont(const Family: string; Bold: Boolean; Size: Double): sk_font_t;
-var
-  T: sk_typeface_t;
-begin
-  T := Typeface(Family, Bold);
-  Result := sk4d_font_create(T, Size, 1, 0);
-  // Skia's lookup by name may ignore the weight; embolden synthetically then.
-  if Bold and (sk4d_typeface_get_weight(T) < 600) then
-    sk4d_font_set_embolden(Result, True);
-end;
-
-function MeasureWith(Font: sk_font_t; const Text: string): Double;
-var
-  U: UTF8String;
-begin
-  U := UTF8String(Text);
-  if U = '' then
-    Exit(0);
-  Result := sk4d_font_measure_text(Font, PAnsiChar(U), Length(U), UTF8_SK_TEXTENCODING, nil, 0);
-end;
-
-procedure DrawText(C: sk_canvas_t; R: TRecordObj; const Ctx: string);
+{ "text"; nil for empty text, whose other fields are not looked at. }
+function TextItem(R: TRecordObj; const Ctx: string): TSceneItem;
 var
   Text, Anchor, Baseline, Family: string;
-  X, Y, Size, Angle, W, DX, DY: Double;
-  Font: sk_font_t;
-  Paint: sk_paint_t;
-  Metrics: sk_fontmetrics_t;
-  U: UTF8String;
+  X, Y, Size, Angle: Double;
+  Bold: Boolean;
 begin
   Text := StrField(R, 'text', '', Ctx);
   if Text = '' then
-    Exit;
+    Exit(nil);
   X := NumField(R, 'x', 0, Ctx);
   Y := NumField(R, 'y', 0, Ctx);
   Size := NumField(R, 'size', 10, Ctx);
@@ -620,39 +422,36 @@ begin
   Anchor := StrField(R, 'anchor', 'start', Ctx);
   Baseline := StrField(R, 'baseline', 'alphabetic', Ctx);
   Family := StrField(R, 'font', 'sans-serif', Ctx);
-  Font := MakeFont(Family, BoolField(R, 'bold', False, Ctx), Size);
+  Bold := BoolField(R, 'bold', False, Ctx);
+  Result := TSceneItem.Create(skText);
   try
-    W := MeasureWith(Font, Text);
-    DX := 0;
-    DY := 0;
-    if Anchor = 'start' then DX := 0
-    else if Anchor = 'middle' then DX := -W / 2
-    else if Anchor = 'end' then DX := -W
+    Result.Text := Text;
+    Result.CX := X;
+    Result.CY := Y;
+    Result.Size := Size;
+    Result.Angle := Angle;
+    Result.Font := Family;
+    Result.Bold := Bold;
+    if Anchor = 'start' then Result.Anchor := taStart
+    else if Anchor = 'middle' then Result.Anchor := taMiddle
+    else if Anchor = 'end' then Result.Anchor := taEnd
     else
       RaiseFmt(ArgumentError, '%s: anchor must be "start", "middle" or "end", got "%s"', [Ctx, Anchor]);
-    sk4d_font_get_metrics(Font, @Metrics);
-    if Baseline = 'alphabetic' then DY := 0
-    else if Baseline = 'middle' then DY := Metrics.cap_height / 2
-    else if Baseline = 'top' then DY := Metrics.cap_height
-    else if Baseline = 'bottom' then DY := -Metrics.descent
+    if Baseline = 'alphabetic' then Result.Baseline := tbAlphabetic
+    else if Baseline = 'middle' then Result.Baseline := tbMiddle
+    else if Baseline = 'top' then Result.Baseline := tbTop
+    else if Baseline = 'bottom' then Result.Baseline := tbBottom
     else
       RaiseFmt(ArgumentError, '%s: baseline must be "alphabetic", "middle", "top" or "bottom", got "%s"',
         [Ctx, Baseline]);
-    Paint := MakePaint(ColorField(R, 'color', 'black', Ctx), False, PlainStroke(0));
-    U := UTF8String(Text);
-    sk4d_canvas_save(C);
-    sk4d_canvas_translate(C, X, Y);
-    if Angle <> 0 then
-      sk4d_canvas_rotate(C, -Angle);   // angles count anticlockwise, y points down
-    sk4d_canvas_draw_simple_text(C, PAnsiChar(U), Length(U), UTF8_SK_TEXTENCODING, DX, DY, Font, Paint);
-    sk4d_canvas_restore(C);
-    sk4d_paint_destroy(Paint);
-  finally
-    sk4d_font_destroy(Font);
+    Result.Color := ColorField(R, 'color', 'black', Ctx);
+  except
+    Result.Free;
+    raise;
   end;
 end;
 
-{ ---------------- images ---------------- }
+{ ---- images ---- }
 
 const
   // viridis at eleven evenly spaced points, as plot.sci has it.
@@ -749,15 +548,14 @@ begin
     RaiseFmt(TypeError, '%s: field "%s" must be real, got complex values', [Ctx, Name]);
 end;
 
-(* An image item: a matrix of values drawn as pixels, row 1 at the top,
-   into the rectangle {x, y, w, h} (default: one point per pixel at the
-   origin). Either values, mapped through colormap from vmin to vmax (by
-   default the finite values' range; NaN and infinite values get
-   nan_color, default "none"), or red, green and blue (and optionally
-   alpha) matrices with components from 0 to 1. smooth = true interpolates
-   between pixels when the image is scaled; by default each pixel is a
-   sharp square. *)
-procedure DrawImage(C: sk_canvas_t; R: TRecordObj; const Ctx: string);
+(* An "image": a matrix of values as pixels, row 1 at the top, in the
+   rectangle {x, y, w, h} (default: one point per pixel at the origin).
+   Either values, mapped through colormap from vmin to vmax (by default the
+   finite values' range; NaN and infinite values get nan_color, default
+   "none"), or red, green and blue (and optionally alpha) matrices with
+   components from 0 to 1. The colours are worked out here; the scene holds
+   the pixels. nil for an empty matrix. *)
+function ImageItem(R: TRecordObj; const Ctx: string): TSceneItem;
 var
   A, Red, Green, Blue, Alpha: TArrayObj;
   V: TAxValue;
@@ -771,11 +569,6 @@ var
   Pixels: TArray<Cardinal>;
   Rgba: TRgba;
   HasValues: Boolean;
-  Info: sk_imageinfo_t;
-  Pixmap: sk_pixmap_t;
-  Image: sk_image_t;
-  Src, Dest: sk_rect_t;
-  Sampling: sk_samplingoptions_t;
 
   procedure SameShape(M: TArrayObj; const Name: string);
   begin
@@ -809,7 +602,7 @@ begin
       Alpha := nil;
   end;
   if (Rows = 0) or (Cols = 0) then
-    Exit;
+    Exit(nil);
   SetLength(Pixels, Rows * Cols);
 
   if HasValues then
@@ -893,69 +686,54 @@ begin
         Pixels[I * Cols + J] := PackPixel(Rgba);
       end;
 
-  Info.width := Cols;
-  Info.height := Rows;
-  Info.color_type := RGBA8888_SK_COLORTYPE;
-  Info.alpha_type := UNPREMUL_SK_ALPHATYPE;
-  Info.color_space := 0;
-  Pixmap := sk4d_pixmap_create(@Info, @Pixels[0], Cols * 4);
-  if Pixmap = 0 then
-    RaiseFmt(ForeignError, '%s: cannot make a %d' + #$00D7 + '%d image', [Ctx, Cols, Rows]);
+  Result := TSceneItem.Create(skImage);
   try
-    Image := sk4d_image_make_raster_copy(Pixmap);
-  finally
-    sk4d_pixmap_destroy(Pixmap);
-  end;
-  if Image = 0 then
-    RaiseFmt(ForeignError, '%s: cannot make a %d' + #$00D7 + '%d image', [Ctx, Cols, Rows]);
-  try
-    Src.left := 0;
-    Src.top := 0;
-    Src.right := Cols;
-    Src.bottom := Rows;
-    Dest.left := NumField(R, 'x', 0, Ctx);
-    Dest.top := NumField(R, 'y', 0, Ctx);
-    Dest.right := Dest.left + NumField(R, 'w', Cols, Ctx);
-    Dest.bottom := Dest.top + NumField(R, 'h', Rows, Ctx);
-    FillChar(Sampling, SizeOf(Sampling), 0);
-    if BoolField(R, 'smooth', False, Ctx) then
-      Sampling.filter := LINEAR_SK_FILTERMODE
-    else
-      Sampling.filter := NEAREST_SK_FILTERMODE;
-    Sampling.mipmap := NONE_SK_MIPMAPMODE;
-    sk4d_canvas_draw_image_rect(C, Image, @Src, @Dest, @Sampling, 0, FAST_SK_SRCRECTCONSTRAINT);
-  finally
-    sk4d_refcnt_unref(Image);
+    Result.ImageWidth := Cols;
+    Result.ImageHeight := Rows;
+    Result.Pixels := Pixels;
+    Result.CX := NumField(R, 'x', 0, Ctx);
+    Result.CY := NumField(R, 'y', 0, Ctx);
+    Result.W := NumField(R, 'w', Cols, Ctx);
+    Result.H := NumField(R, 'h', Rows, Ctx);
+    Result.Smooth := BoolField(R, 'smooth', False, Ctx);
+  except
+    Result.Free;
+    raise;
   end;
 end;
 
-procedure DrawItems(C: sk_canvas_t; const Items: TAxValue; const Ctx: string); forward;
+procedure AddItems(Into: TSceneItems; const Items: TAxValue; const Ctx: string;
+  First: Integer = 0); forward;
 
-procedure DrawGroup(C: sk_canvas_t; R: TRecordObj; const Ctx: string);
+{ A "group": dx, dy shift it, angle turns it (degrees, anticlockwise on the
+  page) and scale sizes it (a number or [sx, sy]), in that order seen from
+  the page: an item point p is drawn at (dx, dy) + R(angle) S p. The clip
+  and the items are in the group's own coordinates. }
+function GroupItem(R: TRecordObj; const Ctx: string): TSceneItem;
 var
   V: TAxValue;
   Clip: TRecordObj;
-  Rect: sk_rect_t;
-  Angle: Double;
   S: TArray<Double>;
 begin
-  sk4d_canvas_save(C);
+  Result := TSceneItem.Create(skGroup);
   try
-    // dx, dy shift the group, angle turns it (degrees, anticlockwise on the
-    // page) and scale sizes it (a number or [sx, sy]), in that order seen
-    // from the page: an item point p is drawn at (dx, dy) + R(angle) S p.
-    // The clip and the items are in the group's own coordinates.
-    sk4d_canvas_translate(C, NumField(R, 'dx', 0, Ctx), NumField(R, 'dy', 0, Ctx));
-    Angle := NumField(R, 'angle', 0, Ctx);
-    if Angle <> 0 then
-      sk4d_canvas_rotate(C, -Angle);
+    Result.CX := NumField(R, 'dx', 0, Ctx);
+    Result.CY := NumField(R, 'dy', 0, Ctx);
+    Result.Angle := NumField(R, 'angle', 0, Ctx);
     if Field(R, 'scale', V) and (V.Kind <> vkNothing) then
     begin
       S := NumbersOf(V, 'scale', Ctx);
+      Result.HasScale := True;
       if Length(S) = 1 then
-        sk4d_canvas_scale(C, S[0], S[0])
+      begin
+        Result.SX := S[0];
+        Result.SY := S[0];
+      end
       else if Length(S) = 2 then
-        sk4d_canvas_scale(C, S[0], S[1])
+      begin
+        Result.SX := S[0];
+        Result.SY := S[1];
+      end
       else
         RaiseFmt(DimensionError, '%s: scale must be a number or [sx, sy], got %d values',
           [Ctx, Length(S)]);
@@ -965,30 +743,35 @@ begin
       if V.Kind <> vkRecord then
         RaiseFmt(TypeError, '%s: clip must be a record {x, y, w, h}, got %s', [Ctx, TypeName(V)]);
       Clip := AsRecord(V);
-      Rect.left := NumField(Clip, 'x', 0, Ctx);
-      Rect.top := NumField(Clip, 'y', 0, Ctx);
-      Rect.right := Rect.left + NumField(Clip, 'w', 0, Ctx);
-      Rect.bottom := Rect.top + NumField(Clip, 'h', 0, Ctx);
-      sk4d_canvas_clip_rect(C, @Rect, INTERSECT_SK_CLIPOP, True);
+      Result.HasClip := True;
+      Result.ClipX := NumField(Clip, 'x', 0, Ctx);
+      Result.ClipY := NumField(Clip, 'y', 0, Ctx);
+      Result.ClipW := NumField(Clip, 'w', 0, Ctx);
+      Result.ClipH := NumField(Clip, 'h', 0, Ctx);
     end;
     if not Field(R, 'items', V) then
       RaiseFmt(FieldError, '%s: field "items" is missing', [Ctx]);
-    DrawItems(C, V, Ctx);
-  finally
-    sk4d_canvas_restore(C);
+    AddItems(Result.Items, V, Ctx);
+  except
+    Result.Free;
+    raise;
   end;
 end;
 
-procedure DrawItems(C: sk_canvas_t; const Items: TAxValue; const Ctx: string);
+{ Converts the items of the list from the one at position First (0-based)
+  on; the ones before are skipped (sent before, for graphics.frame). }
+procedure AddItems(Into: TSceneItems; const Items: TAxValue; const Ctx: string;
+  First: Integer);
 var
   K: Integer;
   Item: TAxValue;
   R: TRecordObj;
   Kind, ItemCtx: string;
+  It: TSceneItem;
 begin
   if Items.Kind <> vkList then
     RaiseFmt(TypeError, '%s: items must be a list, got %s', [Ctx, TypeName(Items)]);
-  for K := 0 to High(AsList(Items).Items) do
+  for K := First to High(AsList(Items).Items) do
   begin
     Item := AsList(Items).Items[K];
     ItemCtx := Format('%s, item %d', [Ctx, K + 1]);
@@ -996,65 +779,92 @@ begin
       RaiseFmt(TypeError, '%s must be a record, got %s', [ItemCtx, TypeName(Item)]);
     R := AsRecord(Item);
     Kind := StrField(R, 'kind', '', ItemCtx);
-    if (Kind = 'polyline') or (Kind = 'line') then DrawPolyline(C, R, ItemCtx)
-    else if Kind = 'polygon' then DrawPolygon(C, R, ItemCtx)
-    else if Kind = 'rect' then DrawRect(C, R, ItemCtx)
+    if (Kind = 'polyline') or (Kind = 'line') then It := PolyItem(R, False, ItemCtx)
+    else if Kind = 'polygon' then It := PolyItem(R, True, ItemCtx)
+    else if Kind = 'rect' then It := RectItem(R, ItemCtx)
     else if (Kind = 'circle') or (Kind = 'ellipse') or (Kind = 'arc') then
-      DrawRound(C, R, Kind, ItemCtx)
-    else if Kind = 'image' then DrawImage(C, R, ItemCtx)
-    else if Kind = 'markers' then DrawMarkers(C, R, ItemCtx)
-    else if Kind = 'text' then DrawText(C, R, ItemCtx)
-    else if Kind = 'group' then DrawGroup(C, R, ItemCtx)
+      It := RoundItem(R, Kind, ItemCtx)
+    else if Kind = 'image' then It := ImageItem(R, ItemCtx)
+    else if Kind = 'markers' then It := MarkersItem(R, ItemCtx)
+    else if Kind = 'text' then It := TextItem(R, ItemCtx)
+    else if Kind = 'group' then It := GroupItem(R, ItemCtx)
     else
+    begin
       RaiseFmt(ArgumentError, '%s: unknown kind "%s"', [ItemCtx, Kind]);
+      It := nil;
+    end;
+    if It <> nil then
+      Into.Add(It);
   end;
 end;
 
-procedure DrawScene(C: sk_canvas_t; Scene: TRecordObj; W, H: Double);
+{ The scene record as a TScene of size W x H: its background (white by
+  default), then its items. With the environment variable
+  AXON_SCENE_ROUNDTRIP set, the scene is encoded and decoded before it is
+  drawn, which checks the encoding against every saved picture. }
+function MakeScene(Scene: TRecordObj; W, H: Double; First: Integer = 0): TScene;
 var
-  Bg: TColor32;
-  Paint: sk_paint_t;
-  Rect: sk_rect_t;
   Items: TAxValue;
+  Copy: TScene;
 begin
-  Bg := ColorField(Scene, 'background', 'white', 'graphics.save');
-  if (Bg shr 24) <> 0 then
-  begin
-    Rect.left := 0;
-    Rect.top := 0;
-    Rect.right := W;
-    Rect.bottom := H;
-    Paint := MakePaint(Bg, False, PlainStroke(0));
-    sk4d_canvas_draw_rect(C, @Rect, Paint);
-    sk4d_paint_destroy(Paint);
+  Result := TScene.Create;
+  try
+    Result.Width := W;
+    Result.Height := H;
+    Result.Background := ColorField(Scene, 'background', 'white', 'graphics.save');
+    if not Field(Scene, 'items', Items) then
+      RaiseError(FieldError, 'graphics.save: the scene has no field "items"');
+    AddItems(Result.Items, Items, 'graphics.save', First);
+  except
+    Result.Free;
+    raise;
   end;
-  if not Field(Scene, 'items', Items) then
-    RaiseError(FieldError, 'graphics.save: the scene has no field "items"');
-  DrawItems(C, Items, 'graphics.save');
+  if GetEnvironmentVariable('AXON_SCENE_ROUNDTRIP') <> '' then
+  begin
+    Copy := DecodeScene(EncodeScene(Result));
+    Result.Free;
+    Result := Copy;
+  end;
+end;
+
+{ The scene record's scale, pixels per point for PNG (1 by default). }
+function ScaleOf(Scene: TRecordObj): Double;
+begin
+  Result := NumField(Scene, 'scale', 1, 'graphics.save');
+  if Result <= 0 then
+    RaiseError(ArgumentError, 'graphics.save: scale must be positive');
 end;
 
 { ---------------- output ---------------- }
 
-function WriteProc(Context: Pointer; const Buffer: Pointer; Size: size_t): _bool; cdecl;
+{ Runs a drawing step, turning a failure of Skia into an Axon error: a file
+  that cannot be written is an IOError, anything else a ForeignError. }
+procedure Render(const What: string; const Step: TProc);
 begin
-  TStream(Context).WriteBuffer(Buffer^, Size);
-  Result := True;
+  try
+    Step();
+  except
+    on E: EScene do
+      if E.Message.StartsWith('cannot write') then
+        RaiseFmt(IOError, '%s: %s', [What, E.Message])
+      else
+        RaiseFmt(ForeignError, '%s: %s', [What, E.Message]);
+  end;
 end;
 
+{ The scene record as a PNG file. }
+procedure WritePng(SceneRec: TRecordObj; W, H: Double; const Path: string);
 var
-  ProcsSet: Boolean;
-
-function MakeWStream(Stream: TStream): sk_wstreamadapter_t;
-var
-  Procs: sk_wstreamadapter_procs_t;
+  Scale: Double;
+  Scene: TScene;
 begin
-  if not ProcsSet then
-  begin
-    Procs.write := WriteProc;
-    sk4d_wstreamadapter_set_procs(@Procs);
-    ProcsSet := True;
+  Scale := ScaleOf(SceneRec);
+  Scene := MakeScene(SceneRec, W, H);
+  try
+    Render('graphics.save', procedure begin SavePng(Scene, Scale, Path); end);
+  finally
+    Scene.Free;
   end;
-  Result := sk4d_wstreamadapter_create(Stream);
 end;
 
 function OpenOutput(const Path: string): TFileStream;
@@ -1070,99 +880,23 @@ begin
   end;
 end;
 
-procedure SavePng(Scene: TRecordObj; W, H: Double; const Path: string);
-var
-  Scale: Double;
-  Info: sk_imageinfo_t;
-  Surface: sk_surface_t;
-  Image: sk_image_t;
-  U: UTF8String;
-  Ok: Boolean;
-begin
-  Scale := NumField(Scene, 'scale', 1, 'graphics.save');
-  if Scale <= 0 then
-    RaiseError(ArgumentError, 'graphics.save: scale must be positive');
-  Info.width := Max(1, Round(W * Scale));
-  Info.height := Max(1, Round(H * Scale));
-  Info.color_type := RGBA8888_SK_COLORTYPE;
-  Info.alpha_type := PREMUL_SK_ALPHATYPE;
-  Info.color_space := 0;
-  Surface := sk4d_surface_make_raster(@Info, Info.width * 4, nil);
-  if Surface = 0 then
-    RaiseFmt(ForeignError, 'graphics.save: cannot make a %d' + #$00D7 + '%d image', [Info.width, Info.height]);
-  try
-    sk4d_canvas_scale(sk4d_surface_get_canvas(Surface), Scale, Scale);
-    DrawScene(sk4d_surface_get_canvas(Surface), Scene, W, H);
-    Image := sk4d_surface_make_image_snapshot(Surface);
-    try
-      U := UTF8String(Path);
-      Ok := sk4d_image_encode_to_file(Image, PAnsiChar(U), PNG_SK_ENCODEDIMAGEFORMAT, 100);
-    finally
-      sk4d_refcnt_unref(Image);
-    end;
-    if not Ok then
-      RaiseFmt(IOError, 'graphics.save: cannot write "%s"', [Path]);
-  finally
-    sk4d_refcnt_unref(Surface);
-  end;
-end;
-
-procedure SaveSvg(Scene: TRecordObj; W, H: Double; const Path: string);
+{ The scene record as an SVG or PDF file. }
+procedure WriteVector(SceneRec: TRecordObj; W, H: Double; const Path: string; Pdf: Boolean);
 var
   Stream: TFileStream;
-  WS: sk_wstreamadapter_t;
-  Bounds: sk_rect_t;
-  C: sk_canvas_t;
+  Scene: TScene;
 begin
   Stream := OpenOutput(Path);
   try
-    WS := MakeWStream(Stream);
+    Scene := MakeScene(SceneRec, W, H);
     try
-      Bounds.left := 0;
-      Bounds.top := 0;
-      Bounds.right := W;
-      Bounds.bottom := H;
-      C := sk4d_svgcanvas_make(@Bounds, WS, 0);
-      try
-        DrawScene(C, Scene, W, H);
-      finally
-        sk4d_canvas_destroy(C);   // writes the closing tags
-      end;
+      Render('graphics.save',
+        procedure
+        begin
+          if Pdf then SavePdf(Scene, Stream) else SaveSvg(Scene, Stream);
+        end);
     finally
-      sk4d_wstreamadapter_destroy(WS);
-    end;
-  finally
-    Stream.Free;
-  end;
-end;
-
-procedure SavePdf(Scene: TRecordObj; W, H: Double; const Path: string);
-var
-  Stream: TFileStream;
-  WS: sk_wstreamadapter_t;
-  Doc: sk_document_t;
-  C: sk_canvas_t;
-begin
-  Stream := OpenOutput(Path);
-  try
-    WS := MakeWStream(Stream);
-    try
-      Doc := sk4d_document_make_pdf(WS);
-      if Doc = 0 then
-        RaiseError(ForeignError, 'graphics.save: cannot start a PDF document');
-      try
-        C := sk4d_document_begin_page(Doc, W, H, nil);
-        try
-          DrawScene(C, Scene, W, H);
-        finally
-          sk4d_document_end_page(Doc);
-        end;
-        sk4d_document_close(Doc);
-      finally
-        sk4d_refcnt_unref(Doc);
-      end;
-    finally
-      sk4d_wstreamadapter_destroy(WS);
+      Scene.Free;
     end;
   finally
     Stream.Free;
@@ -1192,9 +926,8 @@ begin
     RaiseFmt(ArgumentError, 'graphics.save: the file name must end in .png, .svg or .pdf, got "%s"', [Path]);
   EnsureSkia;
   try
-    if Ext = '.png' then SavePng(Scene, W, H, Path)
-    else if Ext = '.svg' then SaveSvg(Scene, W, H, Path)
-    else SavePdf(Scene, W, H, Path);
+    if Ext = '.png' then WritePng(Scene, W, H, Path)
+    else WriteVector(Scene, W, H, Path, Ext = '.pdf');
   except
     // An invalid scene is found while drawing: leave no partial file.
     if FileExists(Path) then
@@ -1205,29 +938,58 @@ begin
 end;
 
 function TextWidth(const Text: string; Size: Double; const Family: string): Double;
-var
-  Font: sk_font_t;
 begin
   EnsureSkia;
-  Font := MakeFont(Family, False, Size);
-  try
-    Result := MeasureWith(Font, Text);
-  finally
-    sk4d_font_destroy(Font);
-  end;
+  Result := MeasureText(Text, Size, Family, False);
 end;
 
 var
   ShowCount: Integer;
 
-{ graphics.show(scene) or graphics.show(scene, data): renders the scene to a
-  PNG and shows it. Under a front end that sets AXON_SHOW_DIR (the IDE), the
-  file goes there and a line #3"show <path>" on stderr tells the front end to
-  display it; otherwise it goes to a temporary folder and opens in the
-  system viewer. Returns the path. With data (plot's figure record), the
-  front end also gets the data as JSON next to the PNG, under the same name
-  with the extension .json, written before the #3 line; the IDE draws a
-  figure with such a file in its interactive chart instead of the image. }
+(* graphics.show(scene) or graphics.show(scene, data): shows the scene.
+
+   With a display channel (the IDE), the scene is sent on it as a message,
+   with data (plot's figure record) as JSON in a figure message, for the
+   IDE's interactive charts; nothing is written to disk, and the result is
+   nothing. Otherwise, with AXON_SHOW_DIR set (the test runner), the scene is
+   rendered to a PNG there, the data written next to it as .json, and a line
+   #3"show <path>" goes to stderr; without either, the PNG goes to a
+   temporary folder and opens in the system's viewer. Then the result is the
+   PNG's path. *)
+
+{ Sends a scene record on the display channel as a show, frame or figure
+  message, with Data (a figure record) for a figure. }
+procedure SendScene(SceneRec: TRecordObj; W, H: Double; Kind: Byte; const Data: TAxValue;
+  const What: string; First: Integer = 0);
+var
+  Scene: TScene;
+  Bytes, Json, Payload: TBytes;
+  N: Cardinal;
+begin
+  ScaleOf(SceneRec);                 // checked as for a PNG, though not used
+  Scene := MakeScene(SceneRec, W, H, First);
+  try
+    // Nothing new since the last frame: nothing to send.
+    if (Kind = DisplayAdd) and (Scene.Items.Count = 0) then
+      Exit;
+    Bytes := EncodeScene(Scene);
+  finally
+    Scene.Free;
+  end;
+  if Kind = DisplayFigure then
+  begin
+    Json := TEncoding.UTF8.GetBytes(ValueToJson(Data, What));
+    N := Length(Bytes);
+    SetLength(Payload, 4 + Length(Bytes) + Length(Json));
+    Move(N, Payload[0], 4);
+    Move(Bytes[0], Payload[4], Length(Bytes));
+    if Length(Json) > 0 then
+      Move(Json[0], Payload[4 + Length(Bytes)], Length(Json));
+    DisplaySend(Kind, Payload);
+  end
+  else
+    DisplaySend(Kind, Bytes);
+end;
 function BShow(const Args: TAxValues): TAxValue;
 var
   Scene: TRecordObj;
@@ -1242,6 +1004,14 @@ begin
   H := NumField(Scene, 'height', 480, 'graphics.show');
   if (W <= 0) or (H <= 0) or (W > 20000) or (H > 20000) then
     RaiseError(ArgumentError, 'graphics.show: width and height must be between 0 and 20000');
+  if DisplayChannel then
+  begin
+    if (Length(Args) > 1) and (Args[1].Kind <> vkNothing) then
+      SendScene(Scene, W, H, DisplayFigure, Args[1], 'graphics.show')
+    else
+      SendScene(Scene, W, H, DisplayShow, NothingValue, 'graphics.show');
+    Exit(NothingValue);
+  end;
   Dir := GetEnvironmentVariable('AXON_SHOW_DIR');
   FrontEnd := Dir <> '';
   if not FrontEnd then
@@ -1256,7 +1026,7 @@ begin
   Path := TPath.Combine(Dir, Format('figure-%d-%d-%d.png',
     [MainThreadID, ShowCount, TThread.GetTickCount64 mod 1000000]));
   EnsureSkia;
-  SavePng(Scene, W, H, Path);
+  WritePng(Scene, W, H, Path);
   if FrontEnd and (Length(Args) > 1) and (Args[1].Kind <> vkNothing) then
     try
       TFile.WriteAllBytes(TPath.ChangeExtension(Path, '.json'),
@@ -1274,6 +1044,75 @@ begin
   end
   else if not OpenWithDefaultApp(Path) then
     RaiseFmt(ForeignError, 'graphics.show: cannot open a viewer for "%s"', [Path]);
+  Result := StringValue(Path);
+end;
+
+var
+  FrameCount: Integer;
+
+const
+  // Frames are written to this many files in turn, so an animation leaves
+  // only this many behind; the front end shows the newest one.
+  FrameFiles = 8;
+
+{ graphics.frame(scene) or graphics.frame(scene, sent): one frame of an
+  animation. With a display channel (the IDE) the scene is sent as a frame
+  message, which the IDE shows in place of the previous frame, without
+  adding it to the figure history. With sent, a count of items that the
+  previous frames already sent (the scene grew since, as when a picture is
+  built up gradually), only the items after those are sent, and the IDE adds
+  them to the frame it has.
+  Otherwise, with AXON_SHOW_DIR set (the test runner), it is rendered to a
+  PNG there, one of a small ring of files reused in turn, and a line
+  #3"frame <path>" goes to stderr. Without either it does nothing, rather
+  than open a viewer for every frame. Returns the path, or nothing. }
+function BFrame(const Args: TAxValues): TAxValue;
+var
+  Scene: TRecordObj;
+  Dir, Path: string;
+  W, H: Double;
+  First: Int64;
+begin
+  if Args[0].Kind <> vkRecord then
+    RaiseFmt(TypeError, 'graphics.frame needs a scene record, got %s', [TypeName(Args[0])]);
+  Scene := AsRecord(Args[0]);
+  W := NumField(Scene, 'width', 640, 'graphics.frame');
+  H := NumField(Scene, 'height', 480, 'graphics.frame');
+  if (W <= 0) or (H <= 0) or (W > 20000) or (H > 20000) then
+    RaiseError(ArgumentError, 'graphics.frame: width and height must be between 0 and 20000');
+  First := 0;
+  if (Length(Args) > 1) and (Args[1].Kind <> vkNothing) then
+  begin
+    if Args[1].Kind <> vkInt then
+      RaiseFmt(TypeError, 'graphics.frame: the count of items sent must be an int, got %s',
+        [TypeName(Args[1])]);
+    if Args[1].I < 0 then
+      RaiseError(ArgumentError, 'graphics.frame: the count of items sent must not be negative');
+    First := Args[1].I;
+  end;
+  if DisplayChannel then
+  begin
+    if First > 0 then
+      SendScene(Scene, W, H, DisplayAdd, NothingValue, 'graphics.frame', First)
+    else
+      SendScene(Scene, W, H, DisplayFrame, NothingValue, 'graphics.frame');
+    Exit(NothingValue);
+  end;
+  Dir := GetEnvironmentVariable('AXON_SHOW_DIR');
+  if Dir = '' then
+    Exit(NothingValue);
+  try
+    ForceDirectories(Dir);
+  except
+    on E: Exception do
+      RaiseFmt(IOError, 'graphics.frame: cannot create "%s": %s', [Dir, E.Message]);
+  end;
+  Path := TPath.Combine(Dir, Format('frame-%d-%d.png', [MainThreadID, FrameCount mod FrameFiles]));
+  Inc(FrameCount);
+  EnsureSkia;
+  WritePng(Scene, W, H, Path);
+  Writeln(ErrOutput, #3'frame ' + Path);
+  Flush(ErrOutput);
   Result := StringValue(Path);
 end;
 
@@ -1299,19 +1138,8 @@ procedure DefineGraphics(const Define: TProc<string, TAxValue>);
 begin
   Define('save', BuiltinValue('save', BSave, 2, 2));
   Define('show', BuiltinValue('show', BShow, 1, 2));
+  Define('frame', BuiltinValue('frame', BFrame, 1, 2));
   Define('text_width', BuiltinValue('text_width', BTextWidth, 2, 3));
-end;
-
-procedure FreeTypefaces;
-var
-  T: sk_typeface_t;
-begin
-  if Typefaces = nil then
-    Exit;
-  if SkiaState = ssLoaded then
-    for T in Typefaces.Values do
-      sk4d_refcnt_unref(T);
-  Typefaces.Free;
 end;
 
 initialization
@@ -1319,8 +1147,10 @@ initialization
     ['Renders a scene (a record of drawing items) to PNG, SVG or PDF through Skia.']);
 
 finalization
-  FreeTypefaces;
   if SkiaState = ssLoaded then
+  begin
+    ReleaseTypefaces;
     SkFinalize;
+  end;
 
 end.

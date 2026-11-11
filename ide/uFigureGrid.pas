@@ -19,6 +19,9 @@ uses
 // when the file is not a figure with subplots.
 function LoadFigureGrid(Owner: TComponent; Parent: TFmxObject;
   const FileName: string): TControl;
+// The same for a figure given as JSON text (from the display channel).
+function LoadFigureGridText(Owner: TComponent; Parent: TFmxObject;
+  const Json: string): TControl;
 
 implementation
 
@@ -27,10 +30,9 @@ uses
   FMX.Layouts, FMX.StdCtrls, FMX.Graphics, FMX.Objects,
   SkPlotPaintBox, Rho3DPlot, uFigureChart, uFigureChart3D;
 
-function LoadFigureGrid(Owner: TComponent; Parent: TFmxObject;
-  const FileName: string): TControl;
+function LoadFigureGridRoot(Owner: TComponent; Parent: TFmxObject;
+  Root: TJSONValue): TControl;
 var
-  Root: TJSONValue;
   Fig, Cell: TJSONObject;
   Cells: TJSONArray;
   Rows, Cols, K: Integer;
@@ -42,8 +44,7 @@ var
   Spot: TLayout;
 begin
   Result := nil;
-  Root := ReadJson(FileName);
-  try
+  begin
     if not (Root is TJSONObject) then
       Exit;
     Fig := TJSONObject(Root);
@@ -131,6 +132,30 @@ begin
           Chart.Free;
       end;
     end;
+  end;
+end;
+
+function LoadFigureGrid(Owner: TComponent; Parent: TFmxObject;
+  const FileName: string): TControl;
+var
+  Root: TJSONValue;
+begin
+  Root := ReadJson(FileName);
+  try
+    Result := LoadFigureGridRoot(Owner, Parent, Root);
+  finally
+    Root.Free;
+  end;
+end;
+
+function LoadFigureGridText(Owner: TComponent; Parent: TFmxObject;
+  const Json: string): TControl;
+var
+  Root: TJSONValue;
+begin
+  Root := TJSONObject.ParseJSONValue(Json);
+  try
+    Result := LoadFigureGridRoot(Owner, Parent, Root);
   finally
     Root.Free;
   end;

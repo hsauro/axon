@@ -10,7 +10,7 @@ solve(f, y0, tspan; method = "rk45", rtol = 1e-6, atol = 1e-9, t_eval = nothing,
 > help graphics
 module graphics
   Renders a scene (a record of drawing items) to PNG, SVG or PDF through Skia.
-  exports: save, show, text_width
+  exports: save, show, frame, text_width
 > help graphics.save
 save(scene, path)
   Renders a scene to a .png, .svg or .pdf file

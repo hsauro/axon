@@ -2477,9 +2477,11 @@ text and images, a turtle, and L-systems. It suits diagrams, patterns and
 fractals, anything that is a picture rather than a chart.
 
 \paragraph{A first drawing.} \code{draw.canvas} starts a drawing.
-\code{width} and \code{height} give its size in points (1/72 inch). Positions
-are measured from the lower-left corner, with \emph{y pointing up}, as on
-graph paper:
+\code{width} and \code{height} give its size in points (1/72 inch). Both are
+optional: \code{draw.canvas()} on its own gives a canvas 640 points wide and
+480 high, and a program that starts drawing without calling
+\code{draw.canvas} at all gets one of that size too. Positions are measured
+from the lower-left corner, with \emph{y pointing up}, as on graph paper:
 
 \ex{canvas_first.sci}
 
@@ -2500,7 +2502,30 @@ ones.
 \code{draw.save} writes the drawing to a PNG, SVG or PDF file, which is how
 the figures in this manual are made. In the IDE, \code{draw.show()} puts it in
 the plot pane instead, and a drawing that was never shown or saved appears
-there by itself when the program ends.
+there by itself when the program ends. Since \code{draw.canvas} is optional
+too, the shortest program that draws something is two lines:
+
+\begin{axon}
+import draw
+draw.line(20, 20, 300, 200, color = "red", width = 3)
+\end{axon}
+
+Run as a program, it shows a red line on a canvas 640 by 480 points.
+\code{draw.canvas} is needed only for another size, a view, a background
+colour, or to start a new drawing.
+
+\paragraph{Drawing at the REPL.} A drawing appears by itself when a
+\emph{program} ends, and a REPL session does not end after each line, so at
+the REPL call \code{draw.show()} to see what has been drawn so far. Starting a
+new canvas with \code{draw.canvas()} also shows the previous drawing first, if
+it was never shown. Figures from \code{plot} work the same way: at the REPL,
+\code{plot.show()} displays them.
+
+\begin{axonrepl}
+> import draw
+> draw.circle(320, 240, 100, fill = "orange")
+> draw.show()
+\end{axonrepl}
 
 \paragraph{Choosing the view.} The \code{view} keyword chooses which part of
 the plane the canvas shows, as \code{[xmin, xmax, ymin, ymax]}. Everything is
