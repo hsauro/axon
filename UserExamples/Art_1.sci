@@ -11,9 +11,10 @@ import draw
 w = 530
 h = 870
 draw.canvas(width = w, height = h)
+draw.show()
 
 # The colours, worked out in a function so that the JIT compiles the loops.
-# Each pixel is the average of n x n samples spread over it, which smooths
+# Each pixel is the average of n x n samples spread over it, which smooths  
 # the edges where a colour wraps round from 255 to 0.
 function colours(w, h, n)
   k1 = h * 0.25
