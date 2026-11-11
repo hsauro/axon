@@ -166,6 +166,8 @@ begin
   for N in ElementaryNames do
     MIR_load_external(Ctx, PAnsiChar(AnsiString('rt_' + N)), ElementaryRealFunction(N));
   MIR_load_external(Ctx, 'rt_atan2', ElementaryRealFunction('atan2'));
+  MIR_load_external(Ctx, 'rt_div', ElementaryRealFunction('div'));
+  MIR_load_external(Ctx, 'rt_mod', ElementaryRealFunction('mod'));
 end;
 
 procedure LinkModules;

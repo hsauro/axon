@@ -11,6 +11,7 @@ import draw
 w = 530
 h = 870
 draw.canvas(width = w, height = h)
+draw.text (20, h-28, "The image is computing...", size=28)
 draw.show()
 
 # The colours, worked out in a function so that the JIT compiles the loops.

@@ -46,9 +46,12 @@ you can run the same program both ways and compare: the results are the
 same, only the time differs. The *JIT: compiled and interpreted* example
 on the welcome screen is made for this.
 
-After a run with the JIT on, the Output pane lists the functions that were
-compiled, and for those that ran interpreted, the reason, such as a
-variable whose type changes or an argument that is a dictionary. The REPL
+After a run with the JIT on, the Output pane lists the functions and loops
+that were compiled, and for those in your own files that ran interpreted,
+the reason, such as a variable whose type changes or an argument that is a
+dictionary; the reason usually says what to change. Click such a line to go
+to the place: the line is also underlined in red in the editor, with the reason
+shown when the mouse rests on it, until the next edit. The REPL
 follows the setting when it starts: use **Run > Restart REPL** after
 switching.
 

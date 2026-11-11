@@ -448,10 +448,10 @@ Write-back happens at the compiled code's single exit, so it also happens when t
 | Program | Interpreted | Compiled |
 | --- | --- | --- |
 | The pixel loops of `Art_1` written at the top level (530 × 870 pixels) | 6.28 s | 0.83 s |
-| `ComputePi`, 1000 digits, with `q = 0.0` | 11.6 s | 2.4 s |
+| `ComputePi`, 1000 digits, with `q = 0.0` | 11.6 s | 0.09 s |
 | 100 loops of 3 turns each | 0.47 ms | 86 ms |
 
-`ComputePi` as written keeps its inner loop interpreted: `q = 0` makes `q` an int, and `div` then makes it a real. With `q = 0.0` the loop compiles; what remains is `mod` and `div` of reals, which go through `rt_call` in compiled functions as well (the same loops in a function take the same 2.4 s), a candidate for direct helpers. Compiling a loop costs about 0.9 ms, so a script of many short loops pays for it; a threshold (interpret the first turns, then hand a `for` over a range or a `while` to compiled code at the start of a turn) would avoid that if it matters.
+`ComputePi` as written keeps its inner loop interpreted: `q = 0` makes `q` an int, and `div` then makes it a real. With `q = 0.0` the loop compiles. It first took 2.4 s, as the same loops did in a function: `mod` and `div` of reals went through `rt_call`. They are now called directly (`RDivReal`, `RModReal` in `Axon.Builtins`, which `DivMod` uses too), and the program takes 0.09 s. That change also fixed the interpreter's real `div` and `mod` for quotients beyond 2^31, which `Floor` (a 32-bit integer) got wrong: `div(1e300, 1.0)` gave 0.0. Compiling a loop costs about 0.9 ms, so a script of many short loops pays for it; a threshold (interpret the first turns, then hand a `for` over a range or a `while` to compiled code at the start of a turn) would avoid that if it matters.
 
 ## Baseline (today's interpreter)
 

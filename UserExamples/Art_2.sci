@@ -54,6 +54,10 @@ end
 w = 500.0
 h = 850.0
 
+draw.canvas(width = w, height = h)
+draw.text (20, h-28, "The image is computing...", size=28)
+draw.show()
+
 # 3 x 3 samples take about 11.5 s; n = 1 (about 1.3 s) gives the textured
 # picture with jagged edges.
 c = rainbow_colors(w, h, 3)

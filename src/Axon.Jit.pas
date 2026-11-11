@@ -703,7 +703,8 @@ end;
 { ---- compiling ---- }
 
 { With AXON_JIT_LOG set to a file, each decision is appended to it:
-  "compiled name" or "rejected name: reason". It shows which functions a
+  "compiled name" or "rejected name: reason (line:col)", the latter followed
+  by a tab and the file, so the IDE can point at the place. It shows which functions a
   program or test run actually compiled. With AXON_JIT_REPORT set, each
   decision is also written to stderr as a line #3"jit compiled name" or
   #3"jit rejected name: reason", which the IDE turns into a report. }
@@ -842,14 +843,14 @@ begin
   end;
   if not SignatureFor(Decl, ArgTypes, Types, Reason) then
   begin
-    LogDecision(Format('rejected %s: %s', [Decl.Name, Reason]));
+    LogDecision(Format('rejected %s: %s'#9'%s', [Decl.Name, Reason, FileName]));
     Exit;
   end;
   E := Session.Lower(Decl, FuncObj, FileName, Types, IsClosure);
   if E.State <> esLowered then
   begin
     Reason := Format('%s (%d:%d)', [E.Reason, E.RejectLine, E.RejectCol]);
-    LogDecision(Format('rejected %s: %s', [DisplayName(E), Reason]));
+    LogDecision(Format('rejected %s: %s'#9'%s', [DisplayName(E), Reason, FileName]));
     Exit;
   end;
   if E.Code = nil then
@@ -872,7 +873,7 @@ begin
   if E.State <> esLowered then
   begin
     Reason := Format('%s (%d:%d)', [E.Reason, E.RejectLine, E.RejectCol]);
-    LogDecision(Format('rejected %s: %s', [DisplayName(E), Reason]));
+    LogDecision(Format('rejected %s: %s'#9'%s', [DisplayName(E), Reason, FileName]));
     Exit;
   end;
   if E.Code = nil then

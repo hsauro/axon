@@ -123,6 +123,7 @@ type
     FPartial: array[TOutputKind] of string;
     FErrorKind, FErrorMessage: string;
     FFrames: TList<TFrame>;
+    FJitWhere: TList<TFrame>;        // per entry of FJitRejected: where, from its reason
     FFirstStdErr: Boolean;
     FUntitledCount: Integer;
     // REPL
@@ -338,6 +339,7 @@ type
     procedure CmdRedo(Sender: TObject);
     procedure CmdCut(Sender: TObject);
     procedure CmdCopy(Sender: TObject);
+    function FocusedViewer: TRhoMarkdownViewer;
     procedure CmdPaste(Sender: TObject);
     procedure CmdSelectAll(Sender: TObject);
     procedure CmdFind(Sender: TObject);
@@ -387,6 +389,7 @@ const
   MaxRecent = 8;
   // Error squiggles, readable on both themes.
   ColorError = $FFE53935;
+  ColorJit = $FFE53935;      // the squiggle under a line that runs interpreted (as errors')
   FileFilter = 'Axon files (*.sci)|*.sci|All files (*.*)|*.*';
 
 { ---------------- menu shortcut labels ---------------- }
@@ -501,6 +504,7 @@ procedure TfrmMain.FormCreate(Sender: TObject);
 begin
   FDocs := TObjectList<TDocument>.Create(True);
   FFrames := TList<TFrame>.Create;
+  FJitWhere := TList<TFrame>.Create;
   FRecent := TStringList.Create;
   FFigures := TObjectList<TFigureEntry>.Create(True);
   FFigureIndex := -1;
@@ -595,6 +599,7 @@ begin
   FDocsHistory.Free;
   FJitCompiled.Free;
   FJitRejected.Free;
+  FJitWhere.Free;
   // The figures of this session are temporary.
   if (FShowDir <> '') and TDirectory.Exists(FShowDir) then
     try
@@ -1549,6 +1554,7 @@ begin
   FBottomTabs.ActiveTab := FOutputTab;
   FJitCompiled.Clear;
   FJitRejected.Clear;
+  FJitWhere.Clear;
   if FPrefs.ShowRunNotes then
     if FJit then
       AddNote(Format('Running %s (JIT on)', [Doc.FilePath]), FPal.Note)
@@ -1714,7 +1720,10 @@ end;
 procedure TfrmMain.OutputClick(const Sender: TCustomListBox; const Item: TListBoxItem);
 begin
   if (Item <> nil) and (Item.Tag > 0) and (Item.Tag <= FFrames.Count) then
-    GoToFrame(FFrames[Item.Tag - 1]);
+    GoToFrame(FFrames[Item.Tag - 1])
+  // A JIT note: minus one more than its index into FJitWhere.
+  else if (Item <> nil) and (Item.Tag < 0) and (-Item.Tag <= FJitWhere.Count) then
+    GoToFrame(FJitWhere[-Item.Tag - 1]);
 end;
 
 { Underlines the error where it happened: the innermost frame in a file that
@@ -3911,12 +3920,15 @@ begin
   ScrollToEnd(FOutput);
 end;
 
-{ A line #3"jit compiled name" or #3"jit rejected name: reason". }
+{ A line #3"jit compiled name", or #3"jit rejected name: reason (line:col)"
+  followed by a tab and the file. }
 function TfrmMain.TryJitReport(const Line: string): Boolean;
 const
   Marker = #3'jit ';
 var
-  Rest: string;
+  Rest, Pos: string;
+  Where: TFrame;
+  Tab, Open, Colon: Integer;
 begin
   Result := Line.StartsWith(Marker);
   if not Result then
@@ -3929,29 +3941,103 @@ begin
       FJitCompiled.Add(Rest);
   end
   else if Rest.StartsWith('rejected ') then
-    FJitRejected.Add(Rest.Substring(Length('rejected ')));
+  begin
+    Rest := Rest.Substring(Length('rejected '));
+    Where := Default(TFrame);
+    Tab := Rest.IndexOf(#9);
+    if Tab >= 0 then
+    begin
+      Where.FileName := Rest.Substring(Tab + 1).Trim;
+      Rest := Rest.Substring(0, Tab);
+    end;
+    // The place is the "(line:col)" that ends the reason.
+    Open := Rest.LastIndexOf('(');
+    if Rest.EndsWith(')') and (Open >= 0) then
+    begin
+      Pos := Rest.Substring(Open + 1, Rest.Length - Open - 2);
+      Colon := Pos.IndexOf(':');
+      if (Colon > 0) and TryStrToInt(Pos.Substring(0, Colon), Where.Line) and
+        TryStrToInt(Pos.Substring(Colon + 1), Where.Col) then
+        Rest := Rest.Substring(0, Open).TrimRight
+      else
+        Where.Line := 0;
+    end;
+    // A loop compiled for other types later can be rejected again alike.
+    if FJitRejected.IndexOf(Rest) < 0 then
+    begin
+      FJitRejected.Add(Rest);
+      FJitWhere.Add(Where);
+    end;
+  end;
 end;
 
-{ After a run: the functions compiled, and why others ran interpreted. }
+{ After a run: the functions and loops compiled, and why others in the
+  user's own files ran interpreted, each a link to the place, which is also
+  marked in the editor (with the reason as its tip) when the file is open.
+  Those in the standard library, which the user cannot change, are only
+  counted. }
 procedure TfrmMain.ReportJit;
 const
   MaxShown = 8;
 var
-  K: Integer;
+  K, Shown, InLibrary, First: Integer;
+  Lib, Path, Text: string;
+  Where: TFrame;
+  Doc: TDocument;
+  Item: TListBoxItem;
 begin
   if not FJit or not FPrefs.ShowJitReport or
     ((FJitCompiled.Count = 0) and (FJitRejected.Count = 0)) then
     Exit;
   if FJitCompiled.Count > 0 then
     AddNote('JIT compiled: ' + string.Join(', ', FJitCompiled.ToStringArray), FPal.Note);
-  if FJitRejected.Count > 0 then
+  Lib := IncludeTrailingPathDelimiter(TPath.Combine(ExtractFilePath(AxonExecutable), 'stdlib'));
+  Shown := 0;
+  InLibrary := 0;
+  for K := 0 to FJitRejected.Count - 1 do
   begin
-    AddNote('Interpreted:', FPal.Note);
-    for K := 0 to Min(FJitRejected.Count, MaxShown) - 1 do
-      AddNote('  ' + FJitRejected[K], FPal.Note);
-    if FJitRejected.Count > MaxShown then
-      AddNote(Format('  ... and %d more', [FJitRejected.Count - MaxShown]), FPal.Note);
+    Where := FJitWhere[K];
+    if Where.FileName <> '' then
+      Path := ResolveRunPath(Where.FileName)
+    else
+      Path := '';
+    if (Path <> '') and Path.StartsWith(Lib, True) then
+    begin
+      Inc(InLibrary);
+      Continue;
+    end;
+    if (Path <> '') and (Where.Line > 0) then
+    begin
+      // The whole line, from its first character, so it is hard to miss.
+      Doc := FindDocument(Path);
+      if Doc <> nil then
+      begin
+        Text := Doc.Editor.LineText(Where.Line);
+        First := Length(Text) - Length(Text.TrimLeft) + 1;
+        if Text.Trim <> '' then
+          Doc.Editor.AddMarker(Where.Line, First, Length(Text.TrimRight) - First + 1,
+            TMarkerKind.mkSquiggle, ColorJit, 'Runs interpreted: ' + FJitRejected[K]);
+      end;
+    end;
+    Inc(Shown);
+    if Shown > MaxShown then
+      Continue;
+    if Shown = 1 then
+      AddNote('Interpreted (click a line to see where):', FPal.Note);
+    AddNote('  ' + FJitRejected[K], FPal.Note);
+    if (Path <> '') and (Where.Line > 0) then
+    begin
+      Item := FOutput.ListItems[FOutput.Count - 1];
+      Item.Tag := -(K + 1);
+      Item.TextSettings.FontColor := FPal.Link;
+      Item.Hint := Format('Click to go to %s line %d', [ExtractFileName(Path), Where.Line]);
+      Item.ShowHint := True;
+    end;
   end;
+  if Shown > MaxShown then
+    AddNote(Format('  ... and %d more', [Shown - MaxShown]), FPal.Note);
+  if InLibrary > 0 then
+    AddNote(Format('(%d in the standard library also run interpreted)', [InLibrary]), FPal.Note);
 end;
 
 { ---------------- theme ---------------- }
@@ -4126,9 +4212,25 @@ begin
   if CurrentDoc <> nil then CurrentDoc.Editor.CutSelection;
 end;
 
+{ The Help or Documentation viewer when it has the focus (the user clicked
+  or selected in it), else nil: Copy and Select All then act on it. }
+function TfrmMain.FocusedViewer: TRhoMarkdownViewer;
+begin
+  if (FHelpViewer <> nil) and FHelpViewer.IsFocused then
+    Result := FHelpViewer
+  else if (FDocsViewer <> nil) and FDocsViewer.IsFocused then
+    Result := FDocsViewer
+  else
+    Result := nil;
+end;
+
 procedure TfrmMain.CmdCopy(Sender: TObject);
 begin
-  if CurrentDoc <> nil then CurrentDoc.Editor.CopySelection;
+  // From a viewer, the text as shown (not its markdown).
+  if FocusedViewer <> nil then
+    FocusedViewer.CopySelection(True)
+  else if CurrentDoc <> nil then
+    CurrentDoc.Editor.CopySelection;
 end;
 
 procedure TfrmMain.CmdPaste(Sender: TObject);
@@ -4138,7 +4240,10 @@ end;
 
 procedure TfrmMain.CmdSelectAll(Sender: TObject);
 begin
-  if CurrentDoc <> nil then CurrentDoc.Editor.SelectAll;
+  if FocusedViewer <> nil then
+    FocusedViewer.SelectAll
+  else if CurrentDoc <> nil then
+    CurrentDoc.Editor.SelectAll;
 end;
 
 procedure TfrmMain.CmdFind(Sender: TObject);

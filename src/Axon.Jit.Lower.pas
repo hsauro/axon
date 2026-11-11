@@ -621,6 +621,27 @@ begin
   F.Emit(joMov, F.Regs[Dst].Typ, Dst, [Val.Opnd]);
 end;
 
+{ What to write so a variable keeps one type, for a rejection's message:
+  a variable that starts as an int and later holds reals should start as a
+  real; one assigned a narrower number later should be given the wider one. }
+function TypeChangeHint(Was, Now: TJType; BeforeLoop: Boolean): string;
+begin
+  Result := '';
+  if not (Was in [jtBool, jtInt, jtReal]) or not (Now in [jtBool, jtInt, jtReal]) then
+    Exit;
+  if (Was = jtInt) and (Now = jtReal) then
+  begin
+    if BeforeLoop then
+      Result := '; give it a real value before the loop (0.0 rather than 0) so it stays a real'
+    else
+      Result := '; make its first value a real (0.0 rather than 0) so it stays a real';
+  end
+  else if (Was = jtReal) and (Now = jtInt) then
+    Result := '; assign a real there (1.0 rather than 1) so it stays a real'
+  else if Was = jtBool then
+    Result := Format('; keep it a bool, or start it as %s', [JTypeName(Now)]);
+end;
+
 procedure TLowerer.StoreVar(V: TJVar; const Val: TJValue; N: TNode);
 var
   W: TJValue;
@@ -638,10 +659,10 @@ begin
     begin
       ListMismatch(V, Val);
       if V.IsOuter and (V.FlagReg < 0) then
-        Reject('%s is %s before the loop and %s at %d:%d', [V.Name, JTypeName(V.Typ),
-          JTypeName(Val.Typ), N.Line, N.Col], N);
-      Reject('%s is %s at %d:%d and %s at %d:%d', [V.Name, JTypeName(V.Typ), V.Line, V.Col,
-        JTypeName(Val.Typ), N.Line, N.Col], N);
+        Reject('%s is %s before the loop and %s at %d:%d%s', [V.Name, JTypeName(V.Typ),
+          JTypeName(Val.Typ), N.Line, N.Col, TypeChangeHint(V.Typ, Val.Typ, True)], N);
+      Reject('%s is %s at %d:%d and %s at %d:%d%s', [V.Name, JTypeName(V.Typ), V.Line, V.Col,
+        JTypeName(Val.Typ), N.Line, N.Col, TypeChangeHint(V.Typ, Val.Typ, False)], N);
     end;
     W := Val;
   end;
@@ -1328,6 +1349,14 @@ begin
     NeedArgs(2);
     NeedNumbers;
     Result := [Wider];
+    if Wider = jtReal then
+    begin
+      // RDivReal / RModReal of the two as reals, called directly, as
+      // DivMod computes them.
+      Args[0] := Convert(Args[0], jtReal);
+      Args[1] := Convert(Args[1], jtReal);
+      T.Direct := True;
+    end;
   end
   else
     Reject('calls the built-in %s, which is not compiled yet', [Name], E);
@@ -1435,8 +1464,8 @@ begin
   else if Want < 0 then
     Result := []
   else
-    Reject('calls %s, which is not compiled (%s), and whose result type is not declared',
-      [Name, Why], E);
+    Reject('calls %s, which is not compiled (%s), and whose result type is not declared; ' +
+      'declaring it (function %s(...): real, say) lets this one compile', [Name, Why, Name], E);
 end;
 
 { ---- arrays ---- }
@@ -2647,8 +2676,9 @@ begin
       if (Insn.Op = joCall) and (Insn.Target.Kind = ckInterp) then
       begin
         S := F.Sites[Insn.Site];
-        raise EJitReject.Create(Format('uses %s from outside the loop and calls %s, which runs ' +
-          'interpreted and could read or change it', [What, Insn.Target.Name]), S.Line, S.Col);
+        raise EJitReject.Create(Format('calls %s, which runs interpreted and could read or ' +
+          'change %s while the loop uses it (loops inside this one are still compiled)',
+          [Insn.Target.Name, What]), S.Line, S.Col);
       end;
     Exit;
   end;
@@ -2659,8 +2689,9 @@ begin
     begin
       S := F.Sites[Insn.Site];
       if Insn.Target.Kind = ckInterp then
-        raise EJitReject.Create(Format('reads %s from outside and calls %s through the ' +
-          'interpreter, which could change it', [F.Captures[0].Text, Insn.Target.Name]), S.Line, S.Col);
+        raise EJitReject.Create(Format('reads %s from outside and calls %s, which runs ' +
+          'interpreted and could change it; passing %s in as a parameter lets this function ' +
+          'compile', [F.Captures[0].Text, Insn.Target.Name, F.Captures[0].Path[0]]), S.Line, S.Col);
       if (Insn.Target.Kind = ckCompiled) and (Insn.Target.Callee = Entry) then
         raise EJitReject.Create(Format('reads %s from outside and calls itself', [F.Captures[0].Text]),
           S.Line, S.Col);
@@ -2682,7 +2713,8 @@ begin
       Reject('defines the nested function %s; nested functions are not compiled',
         [TFunctionStmt(S).Func.Name], S)
     else if (S is TDeclStmt) and TDeclStmt(S).IsGlobal then
-      Reject('declares global %s; global variables are not compiled', [TDeclStmt(S).Name], S)
+      Reject('declares global %s, which is not compiled; pass the value in and return the ' +
+        'new one instead', [TDeclStmt(S).Name], S)
     else if S is TIfStmt then
     begin
       for B in TIfStmt(S).Branches do

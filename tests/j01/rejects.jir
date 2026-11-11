@@ -1,6 +1,6 @@
 function no_annot: not compiled: parameter x has no type annotation (it is compiled when called, for the argument types) (1:19)
 
-function changes_type: not compiled: x is int at 6:3 and real at 7:3 (7:3)
+function changes_type: not compiled: x is int at 6:3 and real at 7:3; make its first value a real (0.0 rather than 0) so it stays a real (7:3)
 
 function maybe_unset: not compiled: y may be read before it is assigned (15:10)
 

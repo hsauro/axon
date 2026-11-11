@@ -498,9 +498,13 @@ Functions are compiled to native code at their first call
 (Chapter~\ref{ch:perf}). The \textbf{JIT} button in the toolbar, or
 \menu{Run > Use JIT Compiler}, switches this off and on, so you can run the
 same program both ways and compare: the results are the same, only the time
-differs. After a run with the JIT on, the Output pane lists the functions that
-were compiled and, for those that ran interpreted, the reason. The REPL follows
-the setting when it starts; use \menu{Run > Restart REPL} after switching.
+differs. After a run with the JIT on, the Output pane lists the functions and
+loops that were compiled and, for those in your own files that ran
+interpreted, the reason, which usually says what to change. Click such a line
+to go to the place; it is also underlined in red in the editor, with the
+reason shown when the mouse rests on it (the underline goes at the next
+edit). Section~\ref{sec:slow} lists the common reasons. The REPL follows the
+setting when it starts; use \menu{Run > Restart REPL} after switching.
 
 \section{Keyboard shortcuts}
 
@@ -3511,9 +3515,12 @@ variables change type. They still run correctly, at the
 interpreter's speed.
 
 \paragraph{Seeing what happened.} In the IDE, the Output pane lists after each
-run the functions that were compiled and, for the others, why they were not.
-The \textbf{JIT} button switches compilation off and on, to compare. From a
-terminal, \code{axon --jit=off file.sci} runs without compiling.
+run the functions and loops that were compiled and, for the others in your
+own files, why they were not, with a red underline under the line in the
+editor (Section~\ref{sec:ide-jit}). The \textbf{JIT} button switches
+compilation off and on, to compare. From a terminal,
+\code{axon --jit=off file.sci} runs without compiling, and with the
+environment variable \code{AXON_JIT_REPORT} set, \code{axon} prints the same report.
 
 \paragraph{Top-level loops.} A \code{for} or \code{while} loop written at the
 top level of a script, outside any function, is compiled too, when it starts.
@@ -3533,6 +3540,61 @@ Write loops where an algorithm needs them, keep each variable to one type
 (\code{q = 0.0}, not \code{q = 0}, for a variable that later holds reals),
 and put larger pieces of work in functions, which also keeps their variables
 apart from the rest of the script.
+
+\section{When code stays slow}\label{sec:slow}
+
+A program that takes seconds where you expected it to be instant usually has
+one loop that runs interpreted. The JIT report names it and says why
+(Section~\ref{sec:ide-jit}); the reasons come down to a few patterns, each
+with a small fix.
+
+\paragraph{A variable that starts as an integer and later holds reals.}
+\code{q = 0} makes \code{q} an \code{int}; if the loop later stores a real in
+it, as \code{q = div(x, 2*i - 1)} does when \code{x} is real, the variable
+changes type, and compiled code cannot follow. The report says
+\emph{q is int before the loop and real at 41:5; give it a real value before
+the loop (0.0 rather than 0)}. The program that computes $\pi$ to 1000
+digits in \texttt{UserExamples/ComputePi.sci} took 12~seconds with
+\code{q = 0} and 0.09~seconds with \code{q = 0.0}, with the same digits.
+The same holds for a variable that starts as a real and is later given an
+integer: write \code{1.0}, not \code{1}.
+
+\paragraph{A loop that calls a function that runs interpreted.} A loop at the
+top level of a script that uses the script's variables cannot call a function
+that runs interpreted, because that function could read or change those
+variables while the compiled loop holds them; the loop then runs interpreted
+too. Loops inside it are still tried, so the expensive inner loop is often
+compiled anyway. Otherwise, make the called function compile (see the next
+paragraphs), or move the repeated work into a function that compiles and
+call that from the loop.
+
+\paragraph{A function that uses \code{global}.} \code{global} is not
+compiled. Pass the value in as a parameter and return the new value instead:
+\code{count = tally(count, x)} rather than a function that does
+\code{global count}.
+
+\paragraph{A function that reads a script variable and calls something
+interpreted.} A function may read the script's variables, but then it may
+call only built-ins and functions that compile; passing the value in as a
+parameter removes the restriction.
+
+\paragraph{Calling a function that is not compiled and using its result.}
+Compiled code must know the type of every value. When it calls a function
+that runs interpreted, that function's result type must be declared:
+\code{function rate(x; k = 1.0): real}. The report names the function and
+says so.
+
+\paragraph{What does not compile at all.} Dictionaries, \code{try},
+complex numbers, lists that mix types, and keyword arguments in a call run
+interpreted. Keep them out of the loop that does the work: read settings from
+a dictionary before the loop, and collect results in a vector inside it.
+
+\paragraph{Drawing in a loop.} A loop that calls \code{draw.rect} or
+\code{draw.points} for every pixel spends its time in the drawing module,
+which is written in Axon and runs interpreted. Compute the colours into
+matrices in a loop that compiles and draw them once as an image with
+\code{draw.image_rgb}: the picture in \texttt{UserExamples/Art\_1.sci} takes
+under a second that way.
 
 \section{Timing code}\label{sec:bench}
 
