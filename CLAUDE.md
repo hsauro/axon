@@ -10,6 +10,7 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - `doc/Axon-Language-Reference.md`: exact syntax and semantics. Its Contents section is generated: after adding or renaming a `##`/`###` heading, run `python tools/gen_contents.py doc/Axon-Language-Reference.md` (anchors match the IDE viewer's `RhoHeadingSlug` and GitHub)
 - `doc/Axon-Milestones.md`: build order (M0–M13) and what each milestone's tests must cover
 - `doc/Axon-JIT-Plan.md`: the L2 MIR JIT plan (decisions D1–D7, milestones J0–J11)
+- `doc/research/augmented-steady-state/`: a research project (not part of Axon): steady states with conservation laws solved without reduction, N v(y) + K (K'y - K'y0) = 0. `README.md` is the project description (theory with proofs, experiments, limitations, work plan, how to resume); `python/` holds a reference implementation and experiments E1-E11 (`python experiments.py`, results in `results.txt`)
 - `doc/manual/axon-manual.tex`: the LaTeX user manual (language and IDE). Its longer examples are files in `doc/manual/examples/`, included with `\lstinputlisting`; their figures go to the gitignored `doc/manual/figures/`. `tools\build_manual.cmd` runs the examples with Release `axon`, then LaTeX (latexmk, or pdflatex three times without Perl). Every listing must run as printed: rerun the examples after language changes
 
 ## Build and test

@@ -49,3 +49,6 @@ doc/manual/*.out
 doc/manual/*.fls
 doc/manual/*.fdb_latexmk
 doc/manual/*.synctex.gz
+
+# Python bytecode (doc/research scripts)
+__pycache__/

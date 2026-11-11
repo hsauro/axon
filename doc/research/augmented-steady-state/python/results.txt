@@ -1,0 +1,155 @@
+
+==============================================================================
+E1  Roots: augmented = reduced = long simulation, totals kept
+==============================================================================
+model             c  |y_aug - y_red|  |y_aug - y_sim|  |K^T(y - y0)|   |N v(y)|
+two_state         1         0.00e+00         1.24e-14       2.71e-16   0.00e+00
+enzyme_feed       1         1.44e-15         1.78e-15       2.78e-17   0.00e+00
+two_cycles        2         4.44e-16         2.66e-15       2.71e-16   4.44e-16
+gk_cycle          1         2.22e-16         8.00e-11       8.42e-17   3.02e-11
+bistable_cycle    1         4.94e-17         1.62e-12       3.46e-17   2.94e-11
+glycolysis        3         4.88e-15         2.04e-14       2.43e-16   8.88e-16
+
+==============================================================================
+E2  Spectrum: eig(J_F) = eig(J_R) + c copies of s*alpha; det J_F = (s alpha)^c det J_R
+==============================================================================
+two_state        alpha=+1  max|eig diff| = 0.0e+00   det ratio = 1.000000000000
+two_state        alpha=-3  max|eig diff| = 0.0e+00   det ratio = 1.000000000000
+enzyme_feed      alpha=+1  max|eig diff| = 5.3e-15   det ratio = 1.000000000000
+enzyme_feed      alpha=-3  max|eig diff| = 9.8e-15   det ratio = 1.000000000000
+   enzyme_feed eig(J_R): [-7.3504 -0.8163 -0.5   ]
+two_cycles       alpha=+1  max|eig diff| = 4.4e-16   det ratio = 1.000000000000
+two_cycles       alpha=-3  max|eig diff| = 4.4e-16   det ratio = 1.000000000000
+gk_cycle         alpha=+1  max|eig diff| = 0.0e+00   det ratio = 1.000000000000
+gk_cycle         alpha=-3  max|eig diff| = 1.7e-16   det ratio = 1.000000000000
+bistable_cycle   alpha=+1  max|eig diff| = 3.6e-15   det ratio = 1.000000000000
+bistable_cycle   alpha=-3  max|eig diff| = 3.6e-15   det ratio = 1.000000000000
+glycolysis       alpha=+1  max|eig diff| = 1.0e-14   det ratio = 1.000000000000
+glycolysis       alpha=-3  max|eig diff| = 6.8e-14   det ratio = 1.000000000000
+
+==============================================================================
+E3  Newton iterates: totals exact after one step; same iterates as reduced Newton
+==============================================================================
+(a) guess in the class (y0): iterations 7 and 7
+   k=0  |y_aug - y_red| = 0.00e+00   |F(y_aug)| = 2.00e+00
+   k=1  |y_aug - y_red| = 1.11e-15   |F(y_aug)| = 2.40e+01
+   k=2  |y_aug - y_red| = 2.89e-15   |F(y_aug)| = 6.53e+00
+   k=3  |y_aug - y_red| = 6.57e-13   |F(y_aug)| = 3.37e+01
+   k=4  |y_aug - y_red| = 3.69e-13   |F(y_aug)| = 1.27e+01
+   k=5  |y_aug - y_red| = 1.88e-13   |F(y_aug)| = 2.40e-01
+   k=6  |y_aug - y_red| = 3.55e-15   |F(y_aug)| = 2.80e-05
+   k=7  |y_aug - y_red| = 4.88e-15   |F(y_aug)| = 1.38e-13
+(b) guess outside the class: converged True in 4
+   k=0  |K^T y - K^T y0| = 7.96e-01
+   k=1  |K^T y - K^T y0| = 2.27e-16
+   k=2  |K^T y - K^T y0| = 2.41e-16
+   k=3  |K^T y - K^T y0| = 4.78e-16
+   k=4  |K^T y - K^T y0| = 5.87e-17
+(c) damped step lambda=0.25: totals error ratio 0.750000000000 (1 - lambda = 0.75)
+(c) damped step lambda=0.5: totals error ratio 0.500000000000 (1 - lambda = 0.5)
+
+==============================================================================
+E4  Robustness from 200 random guesses (log-uniform, 1e-2..1e2 x scale)
+==============================================================================
+model            method      conv in class  y >= 0  = ref mean it
+two_state        augmented    200      200     200    200     1.0
+two_state        reduced      200      200     200    200     1.0
+two_state        naive          0        0       0      0     nan
+two_state        pinv         200        0       0      0     1.0
+enzyme_feed      augmented    200      200     200    200     2.6
+enzyme_feed      reduced      200      200     200    200     2.2
+enzyme_feed      naive          0        0       0      0     nan
+enzyme_feed      pinv         200        0       0      0     3.0
+two_cycles       augmented    200      200     200    200     1.0
+two_cycles       reduced      200      200     200    200     1.0
+two_cycles       naive          0        0       0      0     nan
+two_cycles       pinv         200        0       0      0     1.0
+gk_cycle         augmented    131      131     131    131     6.5
+gk_cycle         reduced      200      200     108    108     6.5
+gk_cycle         naive          0        0       0      0     nan
+gk_cycle         pinv         183        0       0      0     7.2
+bistable_cycle   augmented    171      171     148     52     6.1
+bistable_cycle   reduced      200      200     152     14     5.4
+bistable_cycle   naive          0        0       0      0     nan
+bistable_cycle   pinv         200        0       0      0     5.3
+glycolysis       augmented    191      191     180    180    11.2
+glycolysis       reduced      175      175     175    175    11.7
+glycolysis       naive          0        0       0      0     nan
+glycolysis       pinv         200        0       0      0     5.6
+
+==============================================================================
+E5  Sensitivities without the link matrix
+==============================================================================
+enzyme_feed: |C_aug - C_link| = 1.4e-15, |C_aug(alpha=1) - C_aug(alpha=-7)| = 8.9e-16, |C_aug - C_fd| = 1.6e-10
+   summation theorems (unscaled): max |C^J v - v| = 0.0e+00, max |C^s v| = 7.6e-17
+   dy/dT_1: |J_F^-1 K e_1 - finite difference| = 7.4e-11
+glycolysis: |C_aug - C_link| = 1.4e-14, |C_aug(alpha=1) - C_aug(alpha=-7)| = 2.8e-14, |C_aug - C_fd| = 6.7e-10
+   summation theorems (unscaled): max |C^J v - v| = 4.4e-16, max |C^s v| = 3.6e-15
+   dy/dT_1: |J_F^-1 K e_1 - finite difference| = 1.2e-09
+
+==============================================================================
+E6  Stability from J_F with s = -1 (bistable cycle)
+==============================================================================
+   Wp = -0.5453: eig(J_F, s=-1) = [-1.9891 -1.    ], eig(J_R) = [-1.9891] -> stable (not physical: a negative concentration)
+   Wp = 0.0025: eig(J_F, s=-1) = [-18.1031  -1.    ], eig(J_R) = [-18.1031] -> stable
+   Wp = 0.4705: eig(J_F, s=-1) = [-1.      1.6029], eig(J_R) = [1.6029] -> unstable
+   Wp = 0.9271: eig(J_F, s=-1) = [-4.8972 -1.    ], eig(J_R) = [-4.8972] -> stable
+
+==============================================================================
+E7  Integer conservation laws instead of an orthonormal basis
+==============================================================================
+two_cycles: Gamma =
+[[1. 1. 0. 0.]
+ [0. 0. 1. 1.]]
+   |y - y_red| = 8.9e-16, iterations 1, max|eig(J_F) - eig(J_R) U eig(Gamma Gamma^T)| = 4.4e-16
+glycolysis: Gamma =
+[[-0. -0. -0. -0. -0.  1.  1.  0.  0.]
+ [ 0.  0.  0.  0.  1.  0.  0.  1.  0.]
+ [-0. -0. -0. -0. -1. -0.  0.  0.  1.]]
+   |y - y_red| = 4.4e-16, iterations 6, max|eig(J_F) - eig(J_R) U eig(Gamma Gamma^T)| = 2.8e-14
+
+==============================================================================
+E8  Conditioning: cond(J_F) as alpha varies (glycolysis, enzyme_feed)
+==============================================================================
+glycolysis: cond(J_R) = 583, |eig(J_R)| in [0.08, 16.3]
+   alpha =     0.0001: cond(J_F) =  1.876e+06
+   alpha =       0.01: cond(J_F) =  1.877e+04
+   alpha =          1: cond(J_F) =      739.7
+   alpha =    0.08001: cond(J_F) =       2447
+   alpha =      1.143: cond(J_F) =      734.4
+   alpha =        100: cond(J_F) =       3307
+   alpha =      1e+04: cond(J_F) =  3.274e+05
+enzyme_feed: cond(J_R) = 30.2, |eig(J_R)| in [0.5, 7.35]
+   alpha =     0.0001: cond(J_F) =  1.854e+05
+   alpha =       0.01: cond(J_F) =       1854
+   alpha =          1: cond(J_F) =      29.57
+   alpha =        0.5: cond(J_F) =      38.91
+   alpha =      1.917: cond(J_F) =      29.19
+   alpha =        100: cond(J_F) =      330.1
+   alpha =      1e+04: cond(J_F) =  3.298e+04
+
+==============================================================================
+E9  Stabilised dynamics: dy/dt = N v - beta K (K^T y - T)
+==============================================================================
+   beta = 0.0: |K^T y - T| at t = 0, 1, 2, 5: 1.00e-01 1.00e-01 1.00e-01 1.00e-01   (exp(-beta t) at t=1: 1.00e-01)
+   beta = 1.0: |K^T y - T| at t = 0, 1, 2, 5: 1.00e-01 3.68e-02 1.35e-02 6.74e-04   (exp(-beta t) at t=1: 3.68e-02)
+   beta = 5.0: |K^T y - T| at t = 0, 1, 2, 5: 1.00e-01 6.74e-04 4.54e-06 1.39e-12   (exp(-beta t) at t=1: 6.74e-04)
+   from the right totals, |y(5) with beta = 5 - y(5) without| = 1.1e-16
+
+==============================================================================
+E10 Random reversible mass-action networks (100)
+==============================================================================
+   seed 39, augmented: min y = -2.14e-07, |N v| = 6.6e-11, |K^T(y - y0)| = 1.1e-15
+   seed 39, reduced: min y = -4.17e-16, |N v| = 3.8e-14, |K^T(y - y0)| = 6.2e-15
+   seed 83, augmented: min y = -3.13e-16, |N v| = 2.2e-13, |K^T(y - y0)| = 0.0e+00
+   seed 83, reduced: min y = -7.28e-21, |N v| = 5.2e-18, |K^T(y - y0)| = 9.3e-15
+   conservation laws per network: min 1, max 3, mean 1.6
+   converged: augmented 100/100, reduced 100/100; same steady state 98
+   worst |y_aug - y_red| = 2.1e+01; worst relative eigenvalue mismatch = 4.0e-15
+
+==============================================================================
+E11 Bordered (y, mu) form: same Newton steps; alpha = inf is the KKT form
+==============================================================================
+   alpha = 1.0: converged True in 7, |mu| = 4.6e-22, augmented: 7 iterations, max |y_bordered - y_aug| over the iterates = 3.7e-13
+   alpha = 10.0: converged True in 7, |mu| = 5.2e-22, augmented: 7 iterations, max |y_bordered - y_aug| over the iterates = 2.8e-13
+   alpha = inf: converged True in 7, |mu| = 2.0e-21, |y - y_red| = 8.1e-14
