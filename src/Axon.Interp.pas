@@ -131,6 +131,8 @@ type
     FHoistedRecords: TDictionary<TRecordStmt, Boolean>;
     FHoistedExterns: TDictionary<TExternStmt, Boolean>;
     FEndStack: TList<Int64>;                  // values of `end` in nested indexing
+    FLoops: TObjectDictionary<TStmt, TObject>;  // J12: top-level loops the JIT has seen
+    function TryRunLoop(S: TStmt; Scope: TScope): Boolean;
     procedure NotYet(const What, Milestone: string; Node: TNode);
     function ParseFunction(const Args: TAxValues): TAxValue;
     function FunctionValue(Decl: TFunctionDecl; Scope: TScope; IsClosure: Boolean): TAxValue;
@@ -237,6 +239,10 @@ function StringChars(const S: string): TArray<string>; forward;
 function BJitCompiled(const Args: TAxValues): TAxValue; forward;
 function BJitReason(const Args: TAxValues): TAxValue; forward;
 function BJitMode(const Args: TAxValues): TAxValue; forward;
+function BJitLoops(const Args: TAxValues): TAxValue; forward;
+
+var
+  LoopsRunCompiled: Integer;    // J12: top-level loops run compiled, for __jit_loops()
 function BParseFunction(const Args: TAxValues): TAxValue; forward;
 
 var
@@ -461,6 +467,7 @@ begin
   Prelude.Define('__jit_compiled').Value := BuiltinValue('__jit_compiled', BJitCompiled, 1, 1);
   Prelude.Define('__jit_reason').Value := BuiltinValue('__jit_reason', BJitReason, 1, 1);
   Prelude.Define('__jit_mode').Value := BuiltinValue('__jit_mode', BJitMode, 0, 1);
+  Prelude.Define('__jit_loops').Value := BuiltinValue('__jit_loops', BJitLoops, 0, 0);
   Prelude.Define('parse_function').Value := BuiltinValue('parse_function', BParseFunction, 1, 2);
   GInterp := Self;
   FGlobals := TScope.Create(FPrelude, rkModule);
@@ -468,6 +475,7 @@ begin
   FHoistedRecords := TDictionary<TRecordStmt, Boolean>.Create;
   FHoistedExterns := TDictionary<TExternStmt, Boolean>.Create;
   FEndStack := TList<Int64>.Create;
+  FLoops := TObjectDictionary<TStmt, TObject>.Create([doOwnsValues]);
   // A pseudo-file such as <repl> stands for the working directory, so that
   // imports made at the REPL resolve from there.
   if FileName.StartsWith('<') then
@@ -537,6 +545,7 @@ begin
   FHoistedRecords.Free;
   FHoistedExterns.Free;
   FEndStack.Free;
+  FLoops.Free;
   FModules.Free;
   FLoadStack.Free;
   // Functions stored in the globals refer back to them, so the globals may
@@ -924,6 +933,9 @@ begin
     end
     else if C = TWhileStmt then
     begin
+      // At the top level, compiled when it can be (J12).
+      if TryRunLoop(S, Scope) then
+        Exit;
       while True do
       begin
         V := Eval(TWhileStmt(S).Cond, Scope);
@@ -937,7 +949,10 @@ begin
       end;
     end
     else if C = TForStmt then
-      Result := ExecFor(TForStmt(S), Scope)
+    begin
+      if not TryRunLoop(S, Scope) then
+        Result := ExecFor(TForStmt(S), Scope);
+    end
     else if C = TReturnStmt then
     begin
       SetLength(Vals, TReturnStmt(S).Values.Count);
@@ -1506,6 +1521,12 @@ begin
     Result := StringValue(TFunctionObj(Args[0].Obj).JitReason);
 end;
 
+{ __jit_loops(): how many times a top-level loop has run compiled (J12). }
+function BJitLoops(const Args: TAxValues): TAxValue;
+begin
+  Result := IntValue(LoopsRunCompiled);
+end;
+
 { __jit_mode() gives the mode; __jit_mode(m) sets it ("off", "on" or "force")
   and gives the previous one. }
 function BJitMode(const Args: TAxValues): TAxValue;
@@ -1517,6 +1538,261 @@ begin
     if (Args[0].Kind <> vkString) or not SetJitMode(AsString(Args[0])) then
       RaiseError(ArgumentError, '__jit_mode needs "off", "on" or "force"');
   Result := StringValue(Old);
+end;
+
+{ ---------------- compiled top-level loops (J12) ---------------- }
+
+type
+  { One compilation of a loop: the names it looked up outside, with what
+    they were then, and its code (nil when it was rejected). }
+  TLoopVariant = class
+  public
+    DepNames, DepStatus: TArray<string>;
+    Code: TJitCode;
+  end;
+
+  { What the JIT knows of one top-level loop statement: the declaration made
+    for it (its body is the loop, not owned), a function value whose scope
+    is the module root, for resolving calls, and its compilations. }
+  TLoopJit = class
+  public
+    Decl: TFunctionDecl;
+    Context: TAxValue;
+    Variants: TObjectList<TLoopVariant>;
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+constructor TLoopJit.Create;
+begin
+  inherited Create;
+  Variants := TObjectList<TLoopVariant>.Create(True);
+end;
+
+destructor TLoopJit.Destroy;
+begin
+  Variants.Free;
+  Context := NothingValue;
+  Decl.Free;
+  inherited;
+end;
+
+{ The variable Name as a loop running in Scope sees it: through the block
+  scopes around it, up to the module root (the prelude holds no variables a
+  loop could assign). nil when there is none. }
+function FindLoopCell(const Name: string; Scope: TScope; out InBlock: Boolean): TVarCell;
+var
+  S: TScope;
+begin
+  S := Scope;
+  InBlock := False;
+  while S <> nil do
+  begin
+    Result := S.Find(Name);
+    if Result <> nil then
+    begin
+      InBlock := S.Root = rkNone;
+      Exit;
+    end;
+    if S.Root <> rkNone then
+      Break;
+    S := S.Parent;
+  end;
+  Result := nil;
+end;
+
+{ What compiled code for a loop depends on about a name: absent ('-'), or
+  where it is, its value's JIT type, its declaration, whether it is
+  read-only, and which function, built-in, type or module it holds. }
+function LoopNameStatus(const Name: string; Scope: TScope; out Cell: TVarCell;
+  out InBlock: Boolean): string;
+var
+  V: TAxValue;
+begin
+  Cell := FindLoopCell(Name, Scope, InBlock);
+  if Cell = nil then
+    Exit('-');
+  V := Cell.Value;
+  if InBlock then Result := 'b' else Result := 'm';
+  Result := Result + IntToStr(JitTypeOf(V));
+  if Cell.TypeRef <> nil then
+    Result := Result + '#' + IntToHex(NativeInt(Cell.TypeRef), 1);
+  if Cell.ReadOnly then
+    Result := Result + 'r';
+  if Cell.IsGlobalAlias then
+    Result := Result + 'g';
+  case V.Kind of
+    vkFunction: Result := Result + 'f' + IntToHex(NativeInt(TFunctionObj(V.Obj).Decl), 1);
+    vkBuiltin:  Result := Result + 'B' + AsBuiltin(V).Name;
+  else
+    if JitTypeOf(V) = jtNothing then
+      Result := Result + 'k' + IntToStr(Ord(V.Kind)) + ':' + IntToHex(NativeInt(PPointer(@V.Obj)^), 1);
+  end;
+end;
+
+{ Runs a top-level for or while statement as compiled code when it compiles
+  for the variables around it as they are now; False when it must be
+  interpreted. The variables it assigns are moved out of their cells for
+  the run and back afterwards, also after an error, which is then raised. }
+function TInterpreter.TryRunLoop(S: TStmt; Scope: TScope): Boolean;
+var
+  Root: TScope;
+  Obj: TObject;
+  L: TLoopJit;
+  V, Found: TLoopVariant;
+  K, J, Idx: Integer;
+  InBlock: Boolean;
+  Cell: TVarCell;
+  C: TJitCode;
+  Reason: string;
+  Outs, Caps: TAxValues;
+  Cells: TArray<TVarCell>;
+  O: TJOuter;
+  X: TAxValue;
+  Match: Boolean;
+  Arg: TAxValue;
+begin
+  Result := False;
+  if JitMode = jmOff then
+    Exit;
+  Root := FunctionRootOf(Scope);
+  if Root.Root <> rkModule then
+    Exit;
+  if FLoops.TryGetValue(S, Obj) then
+    L := TLoopJit(Obj)
+  else
+  begin
+    L := TLoopJit.Create;
+    L.Decl := TFunctionDecl.Create;
+    L.Decl.Line := S.Line;
+    L.Decl.Col := S.Col;
+    L.Decl.Name := Format('loop at %d:%d', [S.Line, S.Col]);
+    L.Decl.Body.OwnsObjects := False;
+    L.Decl.Body.Add(S);
+    L.Context := FunctionValue(L.Decl, Root, False);
+    FLoops.Add(S, L);
+  end;
+
+  // The compilation made for the names as they are now, if any.
+  Found := nil;
+  for V in L.Variants do
+  begin
+    Match := True;
+    for K := 0 to High(V.DepNames) do
+      if LoopNameStatus(V.DepNames[K], Scope, Cell, InBlock) <> V.DepStatus[K] then
+      begin
+        Match := False;
+        Break;
+      end;
+    if Match then
+    begin
+      Found := V;
+      Break;
+    end;
+  end;
+  if Found = nil then
+  begin
+    if L.Variants.Count >= MaxSpecialisations then
+      Exit;
+    Found := TLoopVariant.Create;
+    L.Variants.Add(Found);
+    Found.Code := JitCompileLoop(L.Decl, TObject(L.Context.Obj), FFile, IntToStr(L.Variants.Count),
+      function(const Name: string; out Info: TJOuterInfo): Boolean
+      var
+        Cl: TVarCell;
+        B: Boolean;
+      begin
+        Info := Default(TJOuterInfo);
+        Info.Status := LoopNameStatus(Name, Scope, Cl, B);
+        Result := Cl <> nil;
+        if Result then
+        begin
+          Info.Value := Cl.Value;
+          Info.TypeRef := Cl.TypeRef;
+          Info.InBlock := B;
+          Info.ReadOnly := Cl.ReadOnly or Cl.IsGlobalAlias;
+        end;
+        Found.DepNames := Found.DepNames + [Name];
+        Found.DepStatus := Found.DepStatus + [Info.Status];
+      end, Reason);
+  end;
+  C := Found.Code;
+  if C = nil then
+    Exit;
+
+  // Captured values (functions' constants, the prelude's): read now, through
+  // the module root.
+  SetLength(Caps, Length(C.Captures));
+  for K := 0 to High(C.Captures) do
+  begin
+    Cell := nil;
+    Root := FunctionRootOf(Scope);
+    while (Root <> nil) and (Cell = nil) do
+    begin
+      Cell := Root.Find(C.Captures[K].Path[0]);
+      Root := Root.Parent;
+    end;
+    if Cell = nil then
+      Exit;
+    X := Cell.Value;
+    for J := 1 to High(C.Captures[K].Path) do
+    begin
+      if X.Kind <> vkRecord then
+        Exit;
+      Idx := AsRecord(X).IndexOf(C.Captures[K].Path[J]);
+      if Idx < 0 then
+        Exit;
+      X := AsRecord(X).Values[Idx];
+    end;
+    if not JTypeMatches(X, C.Captures[K].Typ) then
+      Exit;
+    Caps[K] := X;
+  end;
+
+  // The variables from outside: those the loop assigns move into the out
+  // slots (so an array the loop changes has no other reference), the others
+  // are shared; one the loop may create starts as nothing.
+  SetLength(Outs, Length(C.Outers));
+  SetLength(Cells, Length(C.Outers));
+  for K := 0 to High(C.Outers) do
+  begin
+    O := C.Outers[K];
+    if O.Flag >= 0 then
+      Continue;
+    Cells[K] := FindLoopCell(O.Name, Scope, InBlock);
+    if (Cells[K] = nil) or not JTypeMatches(Cells[K].Value, O.Typ) then
+    begin
+      // Not as compiled after all: put back what was moved, and interpret.
+      for J := 0 to K - 1 do
+        if (C.Outers[J].Flag < 0) and C.Outers[J].Write then
+          Cells[J].Value := Outs[J];
+      Exit;
+    end;
+    Outs[K] := Cells[K].Value;
+    if O.Write then
+      Cells[K].Value := NothingValue;
+  end;
+  if Length(Outs) > 0 then
+    Arg := IntValue(NativeInt(@Outs[0]))
+  else
+    Arg := IntValue(0);
+  Inc(LoopsRunCompiled);
+  try
+    RunCompiled(C, [Arg], Caps);
+  finally
+    for K := 0 to High(C.Outers) do
+    begin
+      O := C.Outers[K];
+      if O.Flag >= 0 then
+      begin
+        if Outs[K].Kind <> vkNothing then
+          Assign(O.Name, Outs[K], Scope);
+      end
+      else if O.Write then
+        Cells[K].Value := Outs[K];
+    end;
+  end;
+  Result := True;
 end;
 
 { The fast path (J7c): compiled code that takes these arguments as they are,

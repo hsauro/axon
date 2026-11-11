@@ -89,6 +89,21 @@ unit Axon.Jit.Lower;
      go through the interpreter's routines with their result types known,
      and typeof(x) is a constant from x's static type.
 
+   - Top-level loops (J12). A for or while statement at the top level is
+     lowered as a function with no parameters whose body is the loop
+     (TJSession.LowerLoop). A name that is not local is looked up through
+     the scopes around the loop (TJEntry.Outer): a variable holding a value
+     that compiles is an outer variable, a register loaded when the loop
+     starts and, when the loop assigns the name anywhere, stored back when
+     it ends (TJFunction.Outers); a name the loop assigns that does not exist
+     or holds a value that does not compile is set only when assigned, which
+     a flag register records. A failing instruction never writes an outer
+     variable's register (Move), so what is stored back is what the
+     interpreter would have left. While a loop holds outer variables or
+     captures, it may not call anything through the interpreter. The
+     interpreter records every name looked up outside with what it was, and
+     checks them when the loop next starts.
+
    Not compiled yet, and rejected: ranges, masks and colons as indices,
    indexing and iterating strings,
    complex numbers, ranges as values, nested function definitions, try,
@@ -115,6 +130,20 @@ type
   EJitRetry = class(Exception);
 
   TJResolvedKind = (rkNone, rkFunction, rkBuiltin, rkOther);
+
+  { What a name outside a top-level loop is (J12): the value of the variable
+    found through the scopes around the loop, up to the module root, its
+    declared type, whether it is in a block scope or read-only, and a text
+    that the loop's compiled code depends on. }
+  TJOuterInfo = record
+    Value: TAxValue;
+    TypeRef: TTypeRef;
+    InBlock, ReadOnly: Boolean;
+    Status: string;
+  end;
+
+  { False (with Info.Status set) when no variable of that name exists. }
+  TJOuterLookup = reference to function(const Name: string; out Info: TJOuterInfo): Boolean;
 
   { What a called name refers to. }
   TJResolved = record
@@ -152,6 +181,8 @@ type
     RejectLine, RejectCol: Integer;
     Code: TObject;           // set by the JIT once generated (a TJitCode, not owned)
     IsClosure: Boolean;      // a lambda or nested function: rule 5 reaches outward
+    IsLoop: Boolean;         // a top-level loop (J12)
+    Outer: TJOuterLookup;    // IsLoop: names outside it
     destructor Destroy; override;
   end;
 
@@ -167,7 +198,15 @@ type
       found. Never raises for a rejection: the entry's State says. }
     function Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
       const ParamTypes: TArray<TJType>; IsClosure: Boolean = False): TJEntry;
+    { Lowers a top-level loop (J12): Decl's body is the loop statement;
+      FuncObj resolves calls in the module root; Key tells this lowering
+      apart from earlier ones of the same loop. }
+    function LowerLoop(Decl: TFunctionDecl; FuncObj: TObject; const FileName, Key: string;
+      const Outer: TJOuterLookup): TJEntry;
     function Resolve(Context: TObject; const Name: string): TJResolved;
+  private
+    procedure Attempts(E: TJEntry; Decl: TFunctionDecl; FuncObj: TObject;
+      const ParamTypes: TArray<TJType>);
   end;
 
 { The parameter types of Decl for a call with these argument types: an
@@ -217,6 +256,8 @@ type
     Declared: Boolean;       // annotated: assignments widen to Typ
     Line, Col: Integer;      // where the type was fixed
     EmptyOrigin: TExpr;      // list{?}: the empty literal it was first given (J10)
+    FlagReg: Integer;        // J12: a variable a loop sets: the flag of its first assignment, or -1
+    IsOuter: Boolean;        // J12: a variable from outside a loop (loaded, or set by it)
   end;
 
   TScopeMap = TDictionary<string, TJVar>;
@@ -246,6 +287,16 @@ type
     ReturnLine, ReturnCol: Integer;      // the return that fixed the result types
     FieldTemps: TList<Integer>;          // temporaries holding a field's array or record
     EmptyRegs: TDictionary<Integer, TExpr>;   // registers holding an empty list literal
+    // J12, a top-level loop
+    LoopMode: Boolean;
+    LoopAssigned: TDictionary<string, Boolean>;  // names the loop assigns, as written
+    OuterSeen: TDictionary<string, Boolean>;     // names looked up outside; True: found
+    OuterInfos: TDictionary<string, TJOuterInfo>;
+    OuterRegs: TDictionary<Integer, Boolean>;    // registers of outer variables
+    function NoteOuter(const Name: string; out Info: TJOuterInfo): Boolean;
+    function OuterVar(const Name: string): TJVar;
+    function ResolveName(const Name: string): TJResolved;
+    procedure CollectAssigned(Body: TStmtList);
     procedure Reject(const Msg: string; N: TNode); overload;
     procedure Reject(const Fmt: string; const Args: array of const; N: TNode); overload;
     function Site: Integer;
@@ -461,11 +512,19 @@ begin
   Loops := TList<TLoop>.Create;
   FieldTemps := TList<Integer>.Create;
   EmptyRegs := TDictionary<Integer, TExpr>.Create;
+  LoopAssigned := TDictionary<string, Boolean>.Create;
+  OuterSeen := TDictionary<string, Boolean>.Create;
+  OuterInfos := TDictionary<string, TJOuterInfo>.Create;
+  OuterRegs := TDictionary<Integer, Boolean>.Create;
 end;
 
 destructor TLowerer.Destroy;
 begin
   EmptyRegs.Free;
+  LoopAssigned.Free;
+  OuterSeen.Free;
+  OuterInfos.Free;
+  OuterRegs.Free;
   FieldTemps.Free;
   OutsideNames.Free;
   CaptureRegs.Free;
@@ -504,6 +563,7 @@ begin
   Result.Declared := Declared;
   Result.Line := N.Line;
   Result.Col := N.Col;
+  Result.FlagReg := -1;
   Result.Reg := F.NewReg(Typ, Name, IsParam);
   Scopes[ScopeIndex].AddOrSetValue(Name, Result);
 end;
@@ -515,7 +575,11 @@ begin
   for K := Scopes.Count - 1 downto 0 do
     if Scopes[K].TryGetValue(Name, Result) then
       Exit;
-  Result := nil;
+  // A top-level loop: a variable outside it (J12).
+  if LoopMode then
+    Result := OuterVar(Name)
+  else
+    Result := nil;
 end;
 
 procedure TLowerer.MarkAssigned(V: TJVar);
@@ -527,7 +591,8 @@ end;
 
 function TLowerer.IsAssigned(V: TJVar): Boolean;
 begin
-  Result := (V.Id < Length(Assigned)) and Assigned[V.Id];
+  // A variable from outside a loop holds its value from the start (J12).
+  Result := (V.IsOuter and (V.FlagReg < 0)) or ((V.Id < Length(Assigned)) and Assigned[V.Id]);
 end;
 
 function TLowerer.Temp(Typ: TJType): Integer;
@@ -541,7 +606,10 @@ procedure TLowerer.Move(Dst: Integer; const Val: TJValue);
 var
   Last: TJInsn;
 begin
-  if (Val.Opnd.Kind = jkReg) and (F.Regs[Val.Opnd.Reg].Name = '') and (F.Insns.Count > 0) then
+  // Never into a loop's outer variable (J12): an instruction that fails
+  // must leave it as it was, since it is stored back.
+  if (Val.Opnd.Kind = jkReg) and (F.Regs[Val.Opnd.Reg].Name = '') and (F.Insns.Count > 0) and
+    not OuterRegs.ContainsKey(Dst) then
   begin
     Last := F.Insns.Last;
     if (Last.Op <> joLabel) and (Last.Dst = Val.Opnd.Reg) then
@@ -569,6 +637,9 @@ begin
     else if Val.Typ <> V.Typ then
     begin
       ListMismatch(V, Val);
+      if V.IsOuter and (V.FlagReg < 0) then
+        Reject('%s is %s before the loop and %s at %d:%d', [V.Name, JTypeName(V.Typ),
+          JTypeName(Val.Typ), N.Line, N.Col], N);
       Reject('%s is %s at %d:%d and %s at %d:%d', [V.Name, JTypeName(V.Typ), V.Line, V.Col,
         JTypeName(Val.Typ), N.Line, N.Col], N);
     end;
@@ -579,6 +650,8 @@ begin
     V.EmptyOrigin := EmptyRegs[W.Opnd.Reg];
   Move(V.Reg, W);
   MarkAssigned(V);
+  if V.FlagReg >= 0 then
+    F.Emit(joMov, jtBool, V.FlagReg, [BoolOperand(True)]);
 end;
 
 { ---- values ---- }
@@ -974,7 +1047,7 @@ begin
   Name := TNameExpr(E.Callee).Name;
   if Lookup(Name) <> nil then
     Reject('calls the local variable %s; calls of function values are not compiled', [Name], E);
-  R := Session.Resolve(Context, Name);
+  R := ResolveName(Name);
   if R.Kind = rkNone then
     Reject('calls %s, which is not defined', [Name], E);
   if (R.Kind = rkOther) and (R.Value.Kind = vkRecordType) then
@@ -1762,7 +1835,7 @@ begin
   Key := string.Join('.', Path);
   if CaptureRegs.TryGetValue(Key, Reg) then
     Exit(MakeValue(F.Regs[Reg].Typ, RegOperand(Reg)));
-  R := Session.Resolve(Context, Path[0]);
+  R := ResolveName(Path[0]);
   if R.Kind = rkNone then
     Reject('reads %s, which is not a local variable', [Path[0]], E);
   V := R.Value;
@@ -2102,7 +2175,7 @@ begin
     else
     begin
       // Another declared record type: the value must be of exactly that type.
-      R2 := Session.Resolve(Context, TR.Name);
+      R2 := ResolveName(TR.Name);
       if not ((TR.Param = nil) and (R2.Value.Kind = vkRecordType) and IsRecordType(V.Typ) and
         (ShapeOf(V.Typ).Decl = AsRecordType(R2.Value))) then
         Reject('%s: type %s is not compiled here', [What, TR.ToString], E);
@@ -2223,7 +2296,7 @@ begin
     Exit;
   if Lookup('append') <> nil then
     Exit;
-  R := Session.Resolve(Context, 'append');
+  R := ResolveName('append');
   if (R.Kind <> rkBuiltin) or (R.Name <> 'append') then
     Exit;
   L := MakeValue(V.Typ, RegOperand(V.Reg));
@@ -2421,11 +2494,164 @@ end;
 { A function with captures runs nothing that could change them: no call
   through the interpreter, and no direct call to itself (which would need
   them passed on). }
+{ ---- top-level loops (J12) ---- }
+
+{ The base name of an assignment target: x in x, x[i], x.a.b[i]. }
+function TargetBase(T: TExpr): string;
+begin
+  while True do
+    if T is TIndexExpr then
+      T := TIndexExpr(T).Target
+    else if T is TFieldExpr then
+      T := TFieldExpr(T).Target
+    else
+      Break;
+  if T is TNameExpr then
+    Result := TNameExpr(T).Name
+  else
+    Result := '';
+end;
+
+{ The names the loop assigns anywhere, as written: plain, element and field
+  assignments and multiple assignment. (Declarations make block variables.) }
+procedure TLowerer.CollectAssigned(Body: TStmtList);
+var
+  S: TStmt;
+  B: TIfBranch;
+  T: TExpr;
+  Name: string;
+begin
+  for S in Body do
+    if (S is TAssignStmt) and (TAssignStmt(S).TypeRef = nil) then
+    begin
+      Name := TargetBase(TAssignStmt(S).Target);
+      if Name <> '' then
+        LoopAssigned.AddOrSetValue(Name, True);
+    end
+    else if S is TDestructureStmt then
+    begin
+      for T in TDestructureStmt(S).Targets do
+      begin
+        Name := TargetBase(T);
+        if Name <> '' then
+          LoopAssigned.AddOrSetValue(Name, True);
+      end;
+    end
+    else if S is TIfStmt then
+    begin
+      for B in TIfStmt(S).Branches do
+        CollectAssigned(B.Body);
+      if TIfStmt(S).ElseBody <> nil then
+        CollectAssigned(TIfStmt(S).ElseBody);
+    end
+    else if S is TWhileStmt then
+      CollectAssigned(TWhileStmt(S).Body)
+    else if S is TForStmt then
+      CollectAssigned(TForStmt(S).Body)
+    else if S is TTryStmt then
+    begin
+      CollectAssigned(TTryStmt(S).Body);
+      CollectAssigned(TTryStmt(S).CatchBody);
+    end;
+end;
+
+{ What Name is outside the loop, asked once. (The interpreter's Outer
+  records each name asked, as something the code depends on.) }
+function TLowerer.NoteOuter(const Name: string; out Info: TJOuterInfo): Boolean;
+begin
+  if OuterSeen.TryGetValue(Name, Result) then
+  begin
+    Info := OuterInfos[Name];
+    Exit;
+  end;
+  Info := Default(TJOuterInfo);
+  Result := Entry.Outer(Name, Info);
+  OuterSeen.Add(Name, Result);
+  OuterInfos.Add(Name, Info);
+end;
+
+{ A variable outside the loop holding a value that compiles: a register
+  loaded when the loop starts (and stored back when the loop assigns it).
+  nil when there is none: the name is a function, built-in or type (resolved
+  as a call or capture in a top-level function is), or absent, or holds a
+  value that does not compile (then the loop can only set it). }
+function TLowerer.OuterVar(const Name: string): TJVar;
+var
+  Info: TJOuterInfo;
+  T, DT: TJType;
+  Declared, Write: Boolean;
+  O: TJOuter;
+begin
+  Result := nil;
+  if not NoteOuter(Name, Info) then
+    Exit;
+  Write := LoopAssigned.ContainsKey(Name);
+  if Write and Info.ReadOnly then
+    Reject('assigns %s, which is imported and cannot be assigned, a NameError', [Name], Decl);
+  T := JTypeOfValue(Info.Value);
+  Declared := False;
+  if Info.TypeRef <> nil then
+  begin
+    if TypeOfRef(Info.TypeRef, DT) then
+    begin
+      T := DT;
+      Declared := True;
+    end
+    else if Write then
+      Reject('assigns %s, declared %s, a type that is not compiled', [Name, Info.TypeRef.ToString], Decl);
+  end;
+  if T = jtNothing then
+  begin
+    if Info.InBlock then
+      Reject('uses %s, a variable of an enclosing block holding %s, which is not compiled',
+        [Name, TypeName(Info.Value)], Decl);
+    if Write and (Info.Value.Kind in [vkFunction, vkBuiltin, vkRecordType]) then
+      Reject('assigns %s, which holds %s', [Name, TypeName(Info.Value)], Decl);
+    Exit;
+  end;
+  Result := NewVar(Name, T, Declared, Decl, 0);
+  Result.IsOuter := True;
+  O.Name := Name;
+  O.Reg := Result.Reg;
+  O.Typ := T;
+  O.Write := Write;
+  O.Flag := -1;
+  F.Outers.Add(O);
+  OuterRegs.AddOrSetValue(Result.Reg, True);
+end;
+
+{ A name resolved as a call, capture or type, in the function's defining
+  scope; in a loop, after checking that no variable of a block around the
+  loop has that name (J12). }
+function TLowerer.ResolveName(const Name: string): TJResolved;
+var
+  Info: TJOuterInfo;
+begin
+  if LoopMode and NoteOuter(Name, Info) and Info.InBlock then
+    Reject('uses %s, a variable of an enclosing block, as a function or type', [Name], Decl);
+  Result := Session.Resolve(Context, Name);
+end;
+
 procedure TLowerer.CheckCaptures;
 var
   Insn: TJInsn;
   S: TJSite;
+  What: string;
 begin
+  // A loop holding variables from outside (J12): nothing it calls through
+  // the interpreter may read or change them meanwhile.
+  if LoopMode and ((F.Outers.Count > 0) or (F.Captures.Count > 0)) then
+  begin
+    if F.Outers.Count > 0 then What := F.Outers[0].Name else What := F.Captures[0].Text;
+    for Insn in F.Insns do
+      if (Insn.Op = joCall) and (Insn.Target.Kind = ckInterp) then
+      begin
+        S := F.Sites[Insn.Site];
+        raise EJitReject.Create(Format('uses %s from outside the loop and calls %s, which runs ' +
+          'interpreted and could read or change it', [What, Insn.Target.Name]), S.Line, S.Col);
+      end;
+    Exit;
+  end;
   if F.Captures.Count = 0 then
     Exit;
   for Insn in F.Insns do
@@ -2521,6 +2747,8 @@ begin
     LowerAssign(TAssignStmt(S))
   else if C = TDeclStmt then
     LowerDecl(TDeclStmt(S))
+  else if (C = TReturnStmt) and LoopMode then
+    Reject('return at the top level is not compiled', S)
   else if C = TReturnStmt then
     LowerReturn(TReturnStmt(S))
   else if C = TIfStmt then
@@ -2607,6 +2835,7 @@ end;
 procedure TLowerer.AssignName(const Name: string; const Val: TJValue; N: TNode);
 var
   V: TJVar;
+  O: TJOuter;
 begin
   V := Lookup(Name);
   if V = nil then
@@ -2616,11 +2845,25 @@ begin
     if Entry.IsClosure then
     begin
       // Rule 5 in a closure: an existing variable outside is assigned there.
-      if Session.Resolve(Context, Name).Kind <> rkNone then
+      if ResolveName(Name).Kind <> rkNone then
         Reject('assigns %s, a variable of an enclosing scope', [Name], N);
       F.LocalNames.Add(Name);
     end;
     V := NewVar(Name, Val.Typ, False, N, 0);
+    if LoopMode then
+    begin
+      // A variable the loop creates, or sets without reading it first (its
+      // value does not compile): stored only if the loop assigns it (J12).
+      V.IsOuter := True;
+      V.FlagReg := F.NewReg(jtBool, Name + '?');
+      O.Name := Name;
+      O.Reg := V.Reg;
+      O.Typ := Val.Typ;
+      O.Write := True;
+      O.Flag := V.FlagReg;
+      F.Outers.Add(O);
+      OuterRegs.AddOrSetValue(V.Reg, True);
+    end;
   end;
   StoreVar(V, Val, N);
 end;
@@ -2859,7 +3102,7 @@ begin
       ((C.Args.Count < 2) or (C.Args[1].Kind = akPositional)) and
       ((C.Args.Count < 3) or (C.Args[2].Kind = akPositional)) then
     begin
-      Res := Session.Resolve(Context, 'range');
+      Res := ResolveName('range');
       if (Res.Kind = rkBuiltin) and (Res.Name = 'range') then
         if C.Args.Count = 1 then
         begin
@@ -2951,6 +3194,14 @@ var
 begin
   F := TJFunction.Create(Decl.Name);
   Scopes.Add(TScopeMap.Create);
+  LoopMode := Entry.IsLoop;
+  if LoopMode then
+  begin
+    // The one parameter: the address of the out slots (J12).
+    F.OutsReg := F.NewReg(jtInt, '__outs', True);
+    F.Params.Add(F.OutsReg);
+    CollectAssigned(Decl.Body);
+  end;
   for K := 0 to Decl.Params.Count - 1 do
   begin
     P := Decl.Params[K];
@@ -2966,8 +3217,8 @@ begin
     // Annotated with a declared record type: the argument's shape must be of
     // the type the annotation names here.
     if (P.TypeRef <> nil) and IsRecordType(T) and
-      not ((Session.Resolve(Context, P.TypeRef.Name).Value.Kind = vkRecordType) and
-      (ShapeOf(T).Decl = AsRecordType(Session.Resolve(Context, P.TypeRef.Name).Value))) then
+      not ((ResolveName(P.TypeRef.Name).Value.Kind = vkRecordType) and
+      (ShapeOf(T).Decl = AsRecordType(ResolveName(P.TypeRef.Name).Value))) then
       Reject('parameter %s: the argument is not a %s', [P.Name, P.TypeRef.ToString], P);
     // An unannotated parameter is an untyped variable.
     V := NewVar(P.Name, T, P.TypeRef <> nil, P, 0, True);
@@ -3133,10 +3384,8 @@ end;
 function TJSession.Lower(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
   const ParamTypes: TArray<TJType>; IsClosure: Boolean): TJEntry;
 var
-  L: TLowerer;
   Key: string;
-  N, Attempt: Integer;
-  Hints: TDictionary<TExpr, TJType>;
+  N: Integer;
 begin
   Key := SignatureKey(Decl, ParamTypes);
   if Entries.TryGetValue(Key, Result) then
@@ -3162,34 +3411,67 @@ begin
     Result.RejectCol := Decl.Col;
     Exit;
   end;
+  Attempts(Result, Decl, FuncObj, ParamTypes);
+end;
+
+function TJSession.LowerLoop(Decl: TFunctionDecl; FuncObj: TObject; const FileName, Key: string;
+  const Outer: TJOuterLookup): TJEntry;
+var
+  K: string;
+begin
+  K := 'L' + IntToHex(NativeInt(Decl), 16) + ':' + Key;
+  if Entries.TryGetValue(K, Result) then
+    Exit;
+  Result := TJEntry.Create;
+  Result.Decl := Decl;
+  Result.FuncObj := FuncObj;
+  Result.FileName := FileName;
+  Result.IsLoop := True;
+  Result.Outer := Outer;
+  Result.State := esLowering;
+  Entries.Add(K, Result);
+  Order.Add(Result);
+  Attempts(Result, Decl, FuncObj, []);
+  Result.Outer := nil;      // it refers to the scope the loop ran in
+end;
+
+{ Lowers E, starting again with what an attempt learned about empty list
+  literals (at most 8 attempts). }
+procedure TJSession.Attempts(E: TJEntry; Decl: TFunctionDecl; FuncObj: TObject;
+  const ParamTypes: TArray<TJType>);
+var
+  L: TLowerer;
+  Attempt: Integer;
+  Hints: TDictionary<TExpr, TJType>;
+begin
   // Empty list literals' types found by one attempt are used by the next.
   Hints := TDictionary<TExpr, TJType>.Create;
   try
     for Attempt := 1 to 8 do
     begin
-      L := TLowerer.Create(Decl, Self, Result, FuncObj);
+      L := TLowerer.Create(Decl, Self, E, FuncObj);
       L.ParamTypes := ParamTypes;
       L.Hints := Hints;
       try
         try
-          Result.Func := L.Run;
-          Result.State := esLowered;
+          E.Func := L.Run;
+          E.State := esLowered;
           Break;
         except
-          on E: EJitReject do
+          on X: EJitReject do
           begin
-            Result.State := esRejected;
-            Result.Reason := E.Message;
-            Result.RejectLine := E.Line;
-            Result.RejectCol := E.Col;
+            E.State := esRejected;
+            E.Reason := X.Message;
+            E.RejectLine := X.Line;
+            E.RejectCol := X.Col;
             Break;
           end;
           on EJitRetry do
           begin
-            Result.State := esRejected;
-            Result.Reason := 'the element types of its empty lists are not settled';
-            Result.RejectLine := Decl.Line;
-            Result.RejectCol := Decl.Col;
+            E.State := esRejected;
+            E.Reason := 'the element types of its empty lists are not settled';
+            E.RejectLine := Decl.Line;
+            E.RejectCol := Decl.Col;
           end;
         end;
       finally

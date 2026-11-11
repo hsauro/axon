@@ -158,6 +158,11 @@ begin
   MIR_load_external(Ctx, 'rt_str_of_int', H.StrOfInt);
   MIR_load_external(Ctx, 'rt_str_of_real', H.StrOfReal);
   MIR_load_external(Ctx, 'rt_str_len', H.StrLen);
+  MIR_load_external(Ctx, 'rt_get_int', H.GetInt);
+  MIR_load_external(Ctx, 'rt_get_real', H.GetReal);
+  MIR_load_external(Ctx, 'rt_set_int', H.SetInt);
+  MIR_load_external(Ctx, 'rt_set_real', H.SetReal);
+  MIR_load_external(Ctx, 'rt_set_bool', H.SetBool);
   for N in ElementaryNames do
     MIR_load_external(Ctx, PAnsiChar(AnsiString('rt_' + N)), ElementaryRealFunction(N));
   MIR_load_external(Ctx, 'rt_atan2', ElementaryRealFunction('atan2'));
@@ -209,6 +214,8 @@ type
     ConcatProto, ConcatImport, StrCmpProto, StrCmpImport: TMirItem;
     StrOfIntProto, StrOfIntImport, StrOfRealProto, StrOfRealImport: TMirItem;
     StrLenProto, StrLenImport: TMirItem;
+    GetIntProto, GetIntImport, GetRealProto, GetRealImport: TMirItem;
+    SetIntProto, SetIntImport, SetRealProto, SetRealImport, SetBoolImport: TMirItem;
     // Arrays: the frame of value slots, and the single exit that releases it.
     SlotOf: TArray<Integer>;          // per JIR register: its slot, or -1
     NSlots, JunkSlot: Integer;
@@ -241,6 +248,10 @@ type
     procedure GenAppend(I: TJInsn);
     // strings (J11)
     procedure GenConst(I: TJInsn);
+    // top-level loops (J12)
+    function OutAddr(K: Integer): TMirReg;
+    procedure GenOuterLoads;
+    procedure GenOuterStores;
     procedure SetupResultDests(I: TJInsn; const ResultTypes: TArray<TJType>);
     procedure ClearJunk(I: TJInsn; const ResultTypes: TArray<TJType>);
     function C(const Name: AnsiString): Int32;
@@ -425,6 +436,70 @@ begin
       Info.Callee := MIR_new_import(Ctx, PAnsiChar(ImportName));
     end;
     Calls.AddOrSetValue(Insn, Info);
+  end;
+end;
+
+{ ---- top-level loops (J12) ---- }
+
+{ The address of out slot K. }
+function TGen.OutAddr(K: Integer): TMirReg;
+begin
+  Result := Scratch(MIR_T_I64);
+  E('add', [RegOp(Result), Reg(J.OutsReg), IntOp(K * LSlotSize)]);
+end;
+
+{ The loop starts: each outer variable from its out slot (a value moved into
+  its own slot); a flag cleared. }
+procedure TGen.GenOuterLoads;
+var
+  K: Integer;
+  O: TJOuter;
+begin
+  for K := 0 to J.Outers.Count - 1 do
+  begin
+    O := J.Outers[K];
+    if O.Flag >= 0 then
+      E('mov', [Reg(O.Flag), IntOp(0)])
+    else if IsBoxedType(O.Typ) then
+      E('call', [RefOp(PtrPtrProto), RefOp(MoveImport), RegOp(SlotAddr(SlotOf[O.Reg])),
+        RegOp(OutAddr(K))])
+    else if O.Typ = jtReal then
+      E('call', [RefOp(GetRealProto), RefOp(GetRealImport), Reg(O.Reg), RegOp(OutAddr(K))])
+    else
+      E('call', [RefOp(GetIntProto), RefOp(GetIntImport), Reg(O.Reg), RegOp(OutAddr(K))]);
+  end;
+end;
+
+{ The loop ends, normally or with an error: each outer variable it assigns
+  back to its out slot; one with a flag only when it was assigned. }
+procedure TGen.GenOuterStores;
+var
+  K: Integer;
+  O: TJOuter;
+  Skip: TMirInsn;
+begin
+  for K := 0 to J.Outers.Count - 1 do
+  begin
+    O := J.Outers[K];
+    if not O.Write then
+      Continue;
+    Skip := nil;
+    if O.Flag >= 0 then
+    begin
+      Skip := MIR_new_label(Ctx);
+      E('bf', [LabelOp(Skip), Reg(O.Flag)]);
+    end;
+    if IsBoxedType(O.Typ) then
+      E('call', [RefOp(PtrPtrProto), RefOp(MoveImport), RegOp(OutAddr(K)),
+        RegOp(SlotAddr(SlotOf[O.Reg]))])
+    else if O.Typ = jtReal then
+      E('call', [RefOp(SetRealProto), RefOp(SetRealImport), RegOp(OutAddr(K)), Reg(O.Reg)])
+    else if O.Typ = jtBool then
+      E('call', [RefOp(SetIntProto), RefOp(SetBoolImport), RegOp(OutAddr(K)), Reg(O.Reg)])
+    else
+      E('call', [RefOp(SetIntProto), RefOp(SetIntImport), RegOp(OutAddr(K)), Reg(O.Reg)]);
+    if Skip <> nil then
+      MIR_append_insn(Ctx, Body, Skip);
   end;
 end;
 
@@ -1424,6 +1499,21 @@ begin
   V := Vars([MIR_T_P], ['a']);
   StrLenProto := MIR_new_proto_arr(Ctx, 'rt_str_len_p', 1, @ResI64, 1, @V[0]);
   StrLenImport := MIR_new_import(Ctx, 'rt_str_len');
+  if J.Outers.Count > 0 then
+  begin
+    V := Vars([MIR_T_P], ['p']);
+    GetIntProto := MIR_new_proto_arr(Ctx, 'rt_get_int_p', 1, @ResI64, 1, @V[0]);
+    GetIntImport := MIR_new_import(Ctx, 'rt_get_int');
+    GetRealProto := MIR_new_proto_arr(Ctx, 'rt_get_real_p', 1, @ResD, 1, @V[0]);
+    GetRealImport := MIR_new_import(Ctx, 'rt_get_real');
+    V := Vars([MIR_T_P, MIR_T_I64], ['p', 'x']);
+    SetIntProto := MIR_new_proto_arr(Ctx, 'rt_set_int_p', 0, nil, 2, @V[0]);
+    SetIntImport := MIR_new_import(Ctx, 'rt_set_int');
+    SetBoolImport := MIR_new_import(Ctx, 'rt_set_bool');
+    V := Vars([MIR_T_P, MIR_T_D], ['p', 'x']);
+    SetRealProto := MIR_new_proto_arr(Ctx, 'rt_set_real_p', 0, nil, 2, @V[0]);
+    SetRealImport := MIR_new_import(Ctx, 'rt_set_real');
+  end;
   DeclareCalls;
 
   // A slot for every array register, and a junk slot for array results that
@@ -1444,7 +1534,9 @@ begin
       for K := 0 to High(Insn.Target.ResultTypes) do
         if IsBoxedType(Insn.Target.ResultTypes[K]) then
           JunkSlot := -2;
-  if (NSlots > 0) or (JunkSlot = -2) then
+  // A loop's outer variables are stored back at the single exit, which a
+  // frame gives (J12).
+  if (NSlots > 0) or (JunkSlot = -2) or (J.Outers.Count > 0) then
   begin
     JunkSlot := NSlots;
     Inc(NSlots);
@@ -1538,6 +1630,7 @@ begin
       E('call', [RefOp(PtrPtrProto), RefOp(AssignImport), RegOp(SlotAddr(SlotOf[J.Params[K]])),
         RegOp(Regs[J.Params[K]])]);
 
+  GenOuterLoads;
   for Insn in J.Insns do
     GenInsn(Insn);
 
@@ -1554,8 +1647,10 @@ begin
   RetFail;
   if NSlots > 0 then
   begin
-    // The single exit: release the frame's values.
+    // The single exit: store a loop's outer variables back, then release
+    // the frame's values.
     MIR_append_insn(Ctx, Body, ExitLabel);
+    GenOuterStores;
     E('call', [RefOp(LeaveProto), RefOp(LeaveImport), RegOp(FrameReg), IntOp(NSlots)]);
     E('ret', [RegOp(StatusReg)]);
   end;

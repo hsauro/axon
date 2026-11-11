@@ -51,6 +51,9 @@ type
     LocalNames: TArray<string>;
     // J11: the string constants the code copies into its registers.
     Consts: TList<PAxValue>;
+    // J12, a top-level loop: its variables from outside, in the order of the
+    // out slots.
+    Outers: TArray<TJOuter>;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -78,6 +81,7 @@ type
     NewRecord, RecordUnique: Pointer;
     NewList, ListAppend, ListUnique: Pointer;
     StrConcat, StrCmp, StrOfInt, StrOfReal, StrLen: Pointer;
+    GetInt, GetReal, SetInt, SetReal, SetBool: Pointer;
   end;
 
 var
@@ -101,6 +105,13 @@ function JitTypeOf(const V: TAxValue): TJType;
   rejected or MIR is unavailable. }
 function JitCompile(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
   const ArgTypes: TArray<TJType>; IsClosure: Boolean; out Reason: string): TJitCode;
+
+{ Compiles a top-level loop (J12): Decl is the declaration made for it, its
+  body the loop; FuncObj resolves calls in the module root; Outer looks up
+  names in the scopes around the loop now. Key tells this compilation apart
+  from earlier ones of the same loop. nil, with the reason, when rejected. }
+function JitCompileLoop(Decl: TFunctionDecl; FuncObj: TObject; const FileName, Key: string;
+  const Outer: TJOuterLookup; out Reason: string): TJitCode;
 
 { The compiled code of a function, or nil: also for a function compiled
   only as a callee, which the interpreter has not called yet. }
@@ -539,6 +550,35 @@ begin
   Result := StringLength(AsString(A^));
 end;
 
+{ A loop's outer variables (J12): read from, and written to, its out slots. }
+function RtGetInt(P: PAxValue): Int64; cdecl;
+begin
+  if P^.Kind = vkBool then
+    Result := Ord(P^.B)
+  else
+    Result := P^.I;
+end;
+
+function RtGetReal(P: PAxValue): Double; cdecl;
+begin
+  Result := P^.R;
+end;
+
+procedure RtSetInt(P: PAxValue; X: Int64); cdecl;
+begin
+  P^ := IntValue(X);
+end;
+
+procedure RtSetReal(P: PAxValue; X: Double); cdecl;
+begin
+  P^ := RealValue(X);
+end;
+
+procedure RtSetBool(P: PAxValue; X: Int64); cdecl;
+begin
+  P^ := BoolValue(X <> 0);
+end;
+
 procedure RtIndexError(Fid, Site, Index, Len: Int64); cdecl;
 begin
   Pending(Fid, Site, IndexError, Format('index %d is out of bounds for a dimension of length %d',
@@ -653,6 +693,11 @@ begin
   Result.StrOfInt := @RtStrOfInt;
   Result.StrOfReal := @RtStrOfReal;
   Result.StrLen := @RtStrLen;
+  Result.GetInt := @RtGetInt;
+  Result.GetReal := @RtGetReal;
+  Result.SetInt := @RtSetInt;
+  Result.SetReal := @RtSetReal;
+  Result.SetBool := @RtSetBool;
 end;
 
 { ---- compiling ---- }
@@ -718,6 +763,7 @@ begin
       Code.Captures := E.Func.Captures.ToArray;
       Code.LocalNames := E.Func.LocalNames.ToArray;
       Code.NParams := E.Func.Params.Count - E.Func.Captures.Count;
+      Code.Outers := E.Func.Outers.ToArray;
       SetLength(Code.ParamTypes, E.Func.Params.Count);
       for P := 0 to E.Func.Params.Count - 1 do
         Code.ParamTypes[P] := E.Func.Regs[E.Func.Params[P]].Typ;
@@ -763,6 +809,8 @@ function DisplayName(E: TJEntry): string;
 var
   K: Integer;
 begin
+  if E.IsLoop then
+    Exit(Format('loop at %d:%d', [E.Decl.Line, E.Decl.Col]));
   if E.Decl.Name = '' then
     Result := Format('anonymous function at %d:%d', [E.Decl.Line, E.Decl.Col])
   else
@@ -798,6 +846,29 @@ begin
     Exit;
   end;
   E := Session.Lower(Decl, FuncObj, FileName, Types, IsClosure);
+  if E.State <> esLowered then
+  begin
+    Reason := Format('%s (%d:%d)', [E.Reason, E.RejectLine, E.RejectCol]);
+    LogDecision(Format('rejected %s: %s', [DisplayName(E), Reason]));
+    Exit;
+  end;
+  if E.Code = nil then
+    GenerateGroup;
+  Result := TJitCode(E.Code);
+end;
+
+function JitCompileLoop(Decl: TFunctionDecl; FuncObj: TObject; const FileName, Key: string;
+  const Outer: TJOuterLookup; out Reason: string): TJitCode;
+var
+  E: TJEntry;
+begin
+  Result := nil;
+  if not MirAvailable then
+  begin
+    Reason := 'the JIT is unavailable: ' + MirError;
+    Exit;
+  end;
+  E := Session.LowerLoop(Decl, FuncObj, FileName, Key, Outer);
   if E.State <> esLowered then
   begin
     Reason := Format('%s (%d:%d)', [E.Reason, E.RejectLine, E.RejectCol]);

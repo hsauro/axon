@@ -411,6 +411,48 @@ Building strings is allocation and formatting: each step of `labels` makes five 
 
 With the JIT forced on, the tests compile 481 functions (321 after J10), not counting `tests/j11`. Most of the rejections left are function values passed as arguments (`f`, the plot module's callbacks), `global`, matrix literals with vector entries (`[x, y]` of columns), `nothing` as a default (`label = nothing`), `try`, and calls through an expression.
 
+### J12 — Top-level loops
+
+Done Nov 11, 2026. Until now only functions compiled, so a loop written at the top level of a script, as programs translated from BASIC are, always ran in the interpreter: `UserExamples/ComputePi.sci` takes 11.9 s for 1000 digits, nearly all of it 2.5 million turns of one inner loop at about 4.7 µs each; the same loops moved into a function ran 7× faster in `Art_1`.
+
+**What compiles.** A `for` or `while` statement whose scope chain ends at a module root (the top level of a script or module, the REPL, and the blocks of top-level `if`s and loops). It is lowered as a function with no parameters whose body is the loop (a declaration made for it, named `loop at line:col` in reports). When the outermost loop does not compile, the interpreter runs it and tries its inner loops as it reaches them.
+
+**Variables from outside.** The loop's own variables (block variables, the loop variable) are registers, as a function's are. A name that is not one of them is looked up, when the loop is compiled, through the scopes around the loop up to the module root:
+
+- A variable holding a value of a type that compiles is an *outer variable*: a register loaded when the loop starts and, when the loop assigns it anywhere (a plain assignment, an element or field write, `append`), written back when it ends. Its type is the value's (or its declared type), and must stay so, as for any untyped variable. A written variable is moved out of its cell for the run and back afterwards, so an array changed element by element is never copied and reference counts, and `__copies()`, are the interpreter's.
+- A name the loop assigns that does not exist yet, or whose value does not compile, is created (or set) only if the loop actually assigns it: a flag register records the first assignment, and the variable is assigned, by the interpreter's own rule 5, when the loop ends.
+- Anything else (functions, built-ins, record types, the prelude) resolves as a call or capture in a top-level function would.
+
+Write-back happens at the compiled code's single exit, so it also happens when the loop stops with an error: inside a `try`, or at the REPL, the variables hold what the interpreter would have left. An assignment that fails leaves the variable unchanged (the lowering never lets a failing instruction write an outer variable's register directly).
+
+**Calls.** While compiled code holds outer variables in registers, nothing else may read or change them. So a loop with outer variables or captures may call built-ins and functions that compile (which cannot see module variables: one that reads values from outside, or uses `global`, is not compiled as a callee), but not anything that runs interpreted; such a loop stays interpreted. A loop that uses no outer variables may call anything.
+
+**Specialisation.** The compiled code depends on what each name in the loop is when it starts: absent, or where it is (a block or the module), the type of its value, its declaration, and for a function value which function. These make the key under which code is kept for the loop (at most `MaxSpecialisations`), checked each time the loop starts; an inner loop entered a thousand times compiles once.
+
+**Not compiled.** `return` at the top level; loops in function bodies (they compile with their function); loops that define functions or records or import modules.
+
+**Steps.**
+
+- [x] Lowering: loop mode (`TJSession.LowerLoop`), outer variables, flags, write-back list, the call rule
+- [x] Code: outer variables loaded in the prologue and written back at the exit (`rt_get_*`, `rt_set_*`, `rt_move`)
+- [x] Interpreter: `ExecStmt` runs a top-level `for`/`while` compiled when it can (`TryRunLoop`), with the key, cells and write-back
+- [x] Reports: `#3jit compiled loop at l:c` and rejections with reasons; `__jit_loops()` counts loops run compiled, for tests
+- [x] Tests `tests/j12`: results, `__copies()`, errors and traces, write-back after an error caught by `try`, variables created by the loop, types changing, rejections; the whole suite in all three modes
+- [x] Measure compile cost on small loops; `ComputePi`, `Art_1` before and after
+- [x] Reference "Compilation", manual, CLAUDE.md
+
+**How it is built.** The lowering's loop mode (`TLowerer.LoopMode`) looks a non-local name up through `TJEntry.Outer`, a callback the interpreter gives (`TryRunLoop`): the variable's value, declaration, and whether it is in a block or read-only, plus a status text. A data variable becomes a `TJVar` in the function's outermost scope marked `IsOuter`, its register listed in `TJFunction.Outers`; one the loop assigns without it existing (or holding a value that does not compile) gets a flag register. Calls and types still resolve through a function value whose scope is the module root, after checking that no block variable around the loop has the name. The code generator loads the outer variables from out slots (a `TAxValue` array whose address is the function's one parameter) in the prologue and stores them back before the frame is released at the single exit, which every return and error path passes through; a loop with outer variables always gets a frame for that reason. The interpreter keeps, per loop statement (`TLoopJit`), the compilations made so far, each with the names looked up and their status texts (absent; block or module; JIT type; declaration; read-only; which function, built-in or object), and runs the first whose statuses all still hold; it moves written variables out of their cells for the run and back afterwards (in a `finally`), and assigns flagged ones by rule 5 when their flag was set.
+
+**Results.** Win64 Release, i9-9900X, Nov 11, 2026; output identical compiled and interpreted.
+
+| Program | Interpreted | Compiled |
+| --- | --- | --- |
+| The pixel loops of `Art_1` written at the top level (530 × 870 pixels) | 6.28 s | 0.83 s |
+| `ComputePi`, 1000 digits, with `q = 0.0` | 11.6 s | 2.4 s |
+| 100 loops of 3 turns each | 0.47 ms | 86 ms |
+
+`ComputePi` as written keeps its inner loop interpreted: `q = 0` makes `q` an int, and `div` then makes it a real. With `q = 0.0` the loop compiles; what remains is `mod` and `div` of reals, which go through `rt_call` in compiled functions as well (the same loops in a function take the same 2.4 s), a candidate for direct helpers. Compiling a loop costs about 0.9 ms, so a script of many short loops pays for it; a threshold (interpret the first turns, then hand a `for` over a range or a `while` to compiled code at the start of a turn) would avoid that if it matters.
+
 ## Baseline (today's interpreter)
 
 Measured in J0 before any JIT work: `bench.cmd` on Win64 Release, on an Intel Core i9-9900X at 3.5 GHz. The figures are best of 5 per call, from `time.bench`. The kernels' parameters are annotated, so the JIT can compile them unchanged.

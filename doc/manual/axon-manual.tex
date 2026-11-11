@@ -3515,11 +3515,24 @@ run the functions that were compiled and, for the others, why they were not.
 The \textbf{JIT} button switches compilation off and on, to compare. From a
 terminal, \code{axon --jit=off file.sci} runs without compiling.
 
+\paragraph{Top-level loops.} A \code{for} or \code{while} loop written at the
+top level of a script, outside any function, is compiled too, when it starts.
+The variables it uses from the rest of the script are read when the loop
+starts, and those it changes are written back when it ends, so after the loop
+they hold exactly what the interpreter would have left, even when the loop
+stops with an error. One limit: a loop that uses the script's variables can
+call built-ins and functions that compile, but not a function that runs
+interpreted, since that function could read or change the variables while
+the loop holds them; such a loop runs interpreted. A loop translated from
+BASIC that fills a $530\times870$ picture pixel by pixel went from 6.3 to
+0.8~seconds.
+
 \paragraph{Writing fast code.} Built-in array operations (\code{A * B},
 \code{A \ b}, \code{sum}, elementwise arithmetic) are already native and fast.
-Write loops where an algorithm needs them, keep each variable to one type, and
-put the work in functions, since the JIT compiles functions, not top-level
-code.
+Write loops where an algorithm needs them, keep each variable to one type
+(\code{q = 0.0}, not \code{q = 0}, for a variable that later holds reals),
+and put larger pieces of work in functions, which also keeps their variables
+apart from the rest of the script.
 
 \section{Timing code}\label{sec:bench}
 
@@ -3880,10 +3893,11 @@ yet, so its two times are the same.
   Python's.
 \end{itemize}
 
-In practice: put the work in functions. The JIT compiles a function at its
-first call when it uses numbers, \code{bool}s and real or integer arrays;
-code at the top level of a script, and functions that use dictionaries,
-run interpreted. Records, lists and strings compile, as long as a function
+In practice: put the work in functions or in loops. The JIT compiles a
+function at its first call, and a loop at the top level of a script when it
+starts, when they use numbers, \code{bool}s and real or integer arrays; other
+top-level statements, and functions that use dictionaries, run
+interpreted. Records, lists and strings compile, as long as a function
 keeps each record's fields and their types, and each list's elements of one
 type. \menu{Run}~$\rightarrow$~\menu{Use JIT
 Compiler} with the JIT report on (Section~\ref{sec:ide-jit}) shows which

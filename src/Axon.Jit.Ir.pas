@@ -220,6 +220,19 @@ type
     function Text: string;
   end;
 
+  (* A variable from outside a top-level loop (J12): its register, loaded
+     from the loop's out slots when it starts and, when Write, stored back
+     when it ends. Flag >= 0: a variable the loop creates or sets without
+     reading first; the bool register Flag records whether it was assigned,
+     and only then is it stored. *)
+  TJOuter = record
+    Name: string;
+    Reg: Integer;
+    Typ: TJType;
+    Write: Boolean;
+    Flag: Integer;
+  end;
+
   TJFunction = class
   public
     Name: string;
@@ -231,6 +244,10 @@ type
     Targets: TObjectList<TJCallTarget>;   // owned
     Captures: TList<TJCapture>;           // hidden parameters, after the real ones
     LocalNames: TList<string>;            // closures: names a plain assignment creates locally
+    // J12, a top-level loop: the variables from outside, in the order of the
+    // out slots, and the parameter holding the slots' address (-1 otherwise).
+    Outers: TList<TJOuter>;
+    OutsReg: Integer;
     LabelCount: Integer;
     constructor Create(const AName: string);
     destructor Destroy; override;
@@ -626,6 +643,8 @@ begin
   Targets := TObjectList<TJCallTarget>.Create(True);
   Captures := TList<TJCapture>.Create;
   LocalNames := TList<string>.Create;
+  Outers := TList<TJOuter>.Create;
+  OutsReg := -1;
 end;
 
 destructor TJFunction.Destroy;
@@ -638,6 +657,7 @@ begin
   Targets.Free;
   Captures.Free;
   LocalNames.Free;
+  Outers.Free;
   inherited;
 end;
 
