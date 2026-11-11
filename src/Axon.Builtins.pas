@@ -213,6 +213,35 @@ begin
     Result := (E - 1) + Ln(2 * M) / Ln2;
 end;
 
+(* div and mod of reals: floor(x / y), and x - floor(x / y) * y, NaN when y
+   is 0. The floor is taken as a real (Int, then one less for a negative
+   fraction), so quotients beyond the integers stay exact; NaN and the
+   infinities pass through. Compiled code calls these directly. *)
+function RealFloorDiv(X, Y: Double): Double;
+var
+  Q: Double;
+begin
+  if Y = 0 then
+    Exit(NaN);
+  Q := X / Y;
+  Result := Int(Q);
+  if Result > Q then
+    Result := Result - 1;
+  Result := Result + 0.0;     // -0.0 as 0.0, as an integer floor gave it
+end;
+
+function RDivReal(X, Y: Double): Double;
+begin
+  Result := RealFloorDiv(X, Y);
+end;
+
+function RModReal(X, Y: Double): Double;
+begin
+  if Y = 0 then
+    Exit(NaN);
+  Result := X - RealFloorDiv(X, Y) * Y;
+end;
+
 (* atan2(y, x): the angle of the point (x, y) from the positive x axis, in
    (-pi, pi], with the signs of zeros and infinities as in C's atan2. *)
 function RAtan2(Y, X: Double): Double;
@@ -253,6 +282,8 @@ end;
 function ElementaryRealFunction(const Name: string): Pointer;
 begin
   if Name = 'sqrt' then Result := @RSqrt
+  else if Name = 'div' then Result := @RDivReal      // of two reals
+  else if Name = 'mod' then Result := @RModReal
   else if Name = 'exp' then Result := @RExp
   else if Name = 'log' then Result := @RLog
   else if Name = 'sin' then Result := @RSin
@@ -612,7 +643,7 @@ end;
 function DivMod(const Fn: string; const A, B: TAxValue; Mode: Integer): TAxValue;
 var
   X, Y, Q, R: Int64;
-  RX, RY, RQ: Double;
+  RX, RY: Double;
 begin
   if IsArrayLike(A) or IsArrayLike(B) then
     Exit(Broadcast2(A, B,
@@ -645,13 +676,10 @@ begin
   end;
   RX := ToReal(A);
   RY := ToReal(B);
-  if RY = 0 then
-    Exit(RealValue(NaN));
-  RQ := Floor(RX / RY);
   if Mode = 0 then
-    Result := RealValue(RQ)
+    Result := RealValue(RDivReal(RX, RY))
   else
-    Result := RealValue(RX - RQ * RY);
+    Result := RealValue(RModReal(RX, RY));
 end;
 
 function BDiv(const Args: TAxValues): TAxValue;
