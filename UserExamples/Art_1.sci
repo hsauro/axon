@@ -4,6 +4,8 @@
 ## The picture is computed as red, green and blue matrices and drawn as one
 ## image (drawing every pixel as a tiny square leaves seams between them).
 
+## Original BASIC256 program from https://www.imaginary.org/gallery/basic-256-artworks
+
 import draw
 
 w = 530
