@@ -3192,20 +3192,35 @@ is not singular exactly when $J_R$ is not. If $J_F z = 0$, multiplying by
 $K^T$ gives $K^T z = 0$, so $z$ lies in the column space of $N$, which is
 that of $L$: $z = L z_R$. Then $J_F z = L N_R \,(\partial v / \partial y)\,
 L z_R = L J_R z_R = 0$, and since $L$ has full column rank, $J_R z_R = 0$.
-The converse follows the same way. In effect the term $K K^T$ replaces the
-$c$ zero eigenvalues of $N \partial v / \partial y$ by non-zero ones while
-leaving the dynamics within each conservation class alone.
+The converse follows the same way. More precisely, $J_F K = N
+(\partial v / \partial y) K + K$, whose first term lies in the column space
+of $L$, so in the basis made of the columns of $L$ and of $K$
+\[
+  J_F \,[\,L \;\; K\,] = [\,L \;\; K\,]
+  \begin{bmatrix} J_R & X \\ 0 & I \end{bmatrix}
+\]
+for some matrix $X$. The eigenvalues of $J_F$ are therefore those of $J_R$
+and $c$ eigenvalues equal to 1: the term $K K^T$ turns the $c$ zero
+eigenvalues of $N \partial v / \partial y$ into ones and leaves the others,
+which describe the dynamics within a conservation class, unchanged. (For
+the enzyme model above, $J_F$'s eigenvalues are $-7.3504$, $-0.8163$,
+$-0.5$ and $1$.)
 
 The two methods find the same steady state. The reduced system has $c$
 fewer unknowns, so each Newton iteration costs $c$ fewer evaluations of the
 rates, and it gives $J_R$, the matrix whose eigenvalues decide stability.
 The augmented system needs no choice of independent species and no link
 matrix: only a basis of the null space, and a residual that is one line of
-code. The references below reduce the system. The nearest published
-relative of the augmented form is the ``augmented system'' of chemical
-reaction network theory, in which conservation laws replace a chosen set
-of dependent rows of $N v(y) = 0$ \ref{ref:augmented}; adding the
-orthogonal term instead avoids choosing which rows to replace.
+code. References \ref{ref:reder}--\ref{ref:vallab} reduce the system. The
+closest form we know of in the literature is the ``system augmented by
+conservation laws'' of algebraic reaction network theory: for each
+conservation law $w$ (a row of $\Gamma$), the steady-state equation of the
+first species with a non-zero entry in $w$ is replaced by
+$w y - w y_0 = 0$, which gives a square system whose positive roots are the
+steady states in the conservation class \ref{ref:augmented}. It is used
+there to count steady states rather than to compute them, and it needs a
+choice of which equations to replace; the orthogonal term above avoids that
+choice.
 
 \paragraph{Jacobians and stability.} \code{antimony.jacobian(model, y)}
 returns $\partial (N v) / \partial y$ at the species' values \code{y}, by
@@ -3228,9 +3243,10 @@ $c$ zeros.
 \item\label{ref:vallab} R.~R.~Vallabhajosyula, V.~Chickarmane and
   H.~M.~Sauro. Conservation analysis of large biochemical networks.
   \emph{Bioinformatics} 22(3):346--353, 2006.
-\item\label{ref:augmented} For the augmented system of reaction network
-  theory, see for example \emph{Newton--Okounkov bodies of chemical reaction
-  systems}, arXiv:2203.03840, 2022.
+\item\label{ref:augmented} N.~Obatake and E.~Walker. Newton--Okounkov
+  bodies of chemical reaction systems. arXiv:2203.03840, 2022.
+  Section~2.1, equation~(3), defines the augmented system; the paper itself
+  bounds the number of steady states.
 \end{enumerate}
 
 \section{What the case study shows}
