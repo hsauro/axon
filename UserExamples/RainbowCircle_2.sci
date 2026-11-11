@@ -12,7 +12,7 @@ function draw_rainbow(x, y, r, width)
 end
 
 draw.canvas(width = 300, height = 300)
-draw.rect(0, 0, 300, 300, fill = "white", color = "none")
+draw.rect(0, 0, 300, 300)
 
 for i in 1:100
   x = floor(rand() * 300)

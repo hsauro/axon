@@ -612,17 +612,25 @@ var
   Paint: sk_paint_t;
   Rect: sk_rect_t;
 begin
+  Rect.left := 0;
+  Rect.top := 0;
+  Rect.right := Scene.Width;
+  Rect.bottom := Scene.Height;
   if (Scene.Background shr 24) <> 0 then
   begin
-    Rect.left := 0;
-    Rect.top := 0;
-    Rect.right := Scene.Width;
-    Rect.bottom := Scene.Height;
     Paint := MakePaint(Scene.Background, False, PlainStroke(0));
     sk4d_canvas_draw_rect(C, @Rect, Paint);
     sk4d_paint_destroy(Paint);
   end;
-  DrawItems(C, Scene.Items);
+  // Whatever reaches past the page's edges is cut off there, on every
+  // canvas: in the IDE's pane, too, nothing shows outside the page.
+  sk4d_canvas_save(C);
+  try
+    sk4d_canvas_clip_rect(C, @Rect, INTERSECT_SK_CLIPOP, True);
+    DrawItems(C, Scene.Items);
+  finally
+    sk4d_canvas_restore(C);
+  end;
 end;
 
 { ---------------- output ---------------- }
