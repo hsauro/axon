@@ -60,5 +60,6 @@ c = rainbow_colors(w, h, 3)
 
 draw.canvas(width = w, height = h, view = [0, w, 0, h])
 draw.image_rgb(c.red, c.green, c.blue, smooth = true)
-draw.save("packed_color_field.png")
+# Uncomment if you want to save the png
+#draw.save("packed_color_field.png")
 draw.show()
