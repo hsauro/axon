@@ -56,7 +56,7 @@ function StringLength(const S: string): Int64;
 implementation
 
 uses
-  System.Math, System.Character,
+  System.Math, System.Character, Axon.Platform,
   Axon.Errors, Axon.Complex, Axon.Ops, Axon.Arrays, Axon.Tokens, Axon.Ffi, Axon.Sparse,
   Axon.Random, Axon.FloatParse, Axon.NativeModules;
 
@@ -369,6 +369,47 @@ begin
   if (Args[1].I < 0) or (Args[1].I > 100) then
     RaiseFmt(ArgumentError, 'format needs 0 to 100 decimals, got %d', [Args[1].I]);
   Result := StringValue(FormatFixed(X, Args[1].I));
+end;
+
+(* input() and input(prompt): one line typed by the user (standard input),
+   without its line ending; nothing at the end of the input. The prompt is
+   written first, without a newline. Under the IDE (which gives axon its
+   display channel) the prompt's line ends with U+0005 and a newline: the IDE
+   shows that line with a box to type the answer in, and sends it on
+   standard input. *)
+var
+  InputStarted: Boolean;   // a byte-order mark is dropped from the first line
+
+function BInput(const Args: TAxValues): TAxValue;
+var
+  Prompt, Line: string;
+begin
+  Prompt := '';
+  if Length(Args) = 1 then
+  begin
+    if Args[0].Kind <> vkString then
+      RaiseFmt(TypeError, 'input needs a string prompt, got %s', [TypeName(Args[0])]);
+    Prompt := AsString(Args[0]);
+  end;
+  if Prompt <> '' then
+    Write(Prompt);
+  if DisplayChannel then
+    Writeln(#5);
+  Flush(Output);
+  // The user's Enter ends the line (or the IDE's marker did).
+  OutputLineOpen := False;
+  try
+    if Eof(Input) then
+      Exit(NothingValue);
+    Readln(Input, Line);
+  except
+    on EInOutError do
+      Exit(NothingValue);     // no standard input at all
+  end;
+  if not InputStarted and Line.StartsWith(#$FEFF) then
+    Delete(Line, 1, 1);
+  InputStarted := True;
+  Result := StringValue(Line);
 end;
 
 function BPrintln(const Args: TAxValues): TAxValue;
@@ -2383,6 +2424,7 @@ begin
   Add('dict', BDictEmpty, 0, 0);
   Add('print', BPrint, 0, -1);
   Add('println', BPrintln, 0, -1);
+  Add('input', BInput, 0, 1);
   Add('format', BFormat, 2, 2);
   Add('error', BError, 1, 2);
   Add('string', BString, 1, 1);

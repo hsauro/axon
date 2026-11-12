@@ -96,6 +96,11 @@ type
     FDocs: TObjectList<TDocument>;
     FTabs: TTabControl;
     FOutput: TListBox;
+    // input(): the box under the Output pane where the answer is typed, and
+    // the line holding the prompt, which the answer is added to.
+    FRunInput: TEdit;
+    FInputItem: TListBoxItem;
+    FReplAwaitInput: Boolean;      // the REPL's program waits in input()
     FPlotImage: TImage;
     FPlotChart: TSkPlotPaintBox;   // 2-D figures, interactive
     FPlot3D: TRho3DPlot;           // 3-D figures, interactive
@@ -204,6 +209,10 @@ type
     procedure ReplExit(ExitCode: Integer);
     procedure ReplAddLine(const Text: string; Color: TAlphaColor; Italic: Boolean = False);
     procedure ReplSend(const Lines: TArray<string>);
+    procedure RunInputKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+      Shift: TShiftState);
+    procedure ShowRunInput(Item: TListBoxItem);
+    procedure HideRunInput;
     procedure ReplEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
       Shift: TShiftState);
     procedure ShowNewestPlotIn(const Dir: string; Since: TDateTime);
@@ -822,6 +831,15 @@ begin
   FHelpViewer.Align := TAlignLayout.Client;
   FHelpViewer.OnLinkClick := HelpLinkClick;
   FHelpViewer.MarkdownText := 'Put the caret on a name in the editor and press F1.';
+  FRunInput := TEdit.Create(Self);
+  FRunInput.Parent := FOutputTab;
+  FRunInput.Align := TAlignLayout.Bottom;
+  FRunInput.TextPrompt := 'The program is waiting: type your answer and press Enter';
+  FRunInput.OnKeyDown := RunInputKeyDown;
+  FRunInput.StyledSettings := FRunInput.StyledSettings - [TStyledSetting.Family, TStyledSetting.Size];
+  FRunInput.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
+  FRunInput.Margins.Rect := TRectF.Create(2, 3, 2, 3);
+  FRunInput.Visible := False;
   FOutput := TListBox.Create(Self);
   FOutput.Parent := FOutputTab;
   FOutput.Align := TAlignLayout.Client;
@@ -1509,6 +1527,7 @@ end;
 
 procedure TfrmMain.SetRunning(Value: Boolean);
 begin
+  HideRunInput;
   FRunButton.Enabled := not Value;
   FRunItem.Enabled := not Value;
   FStopButton.Enabled := Value;
@@ -1561,7 +1580,8 @@ begin
     else
       AddNote(Format('Running %s (JIT off: interpreted)', [Doc.FilePath]), FPal.Note);
   try
-    FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir, False, True);
+    // Standard input too, for input().
+    FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir, True, True);
   except
     on E: Exception do
     begin
@@ -1646,14 +1666,20 @@ var
   Item: TListBoxItem;
   Frame: TFrame;
   Head, Msg: string;
+  Asks: Boolean;
 begin
   if (Kind = okStdErr) and (TryShowFrame(Line) or TryShowFigure(Line) or TryJitReport(Line)) then
     Exit;
+  // A line ending in U+0005 is input()'s prompt: the program waits.
+  Asks := (Kind = okStdOut) and Line.EndsWith(#5);
   while FOutput.Count >= MaxOutputLines do
     FOutput.ListItems[0].Free;
   Item := TListBoxItem.Create(FOutput);
   Item.Parent := FOutput;
-  Item.Text := Line;
+  if Asks then
+    Item.Text := Line.Substring(0, Line.Length - 1)
+  else
+    Item.Text := Line;
   Item.StyledSettings := Item.StyledSettings - [TStyledSetting.FontColor, TStyledSetting.Family];
   Item.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
   SizePaneItem(Item);
@@ -1677,6 +1703,46 @@ begin
       Item.ShowHint := True;
     end;
   end;
+  if Asks then
+    ShowRunInput(Item);
+end;
+
+{ input(): the box for the answer, under the prompt's line. }
+procedure TfrmMain.ShowRunInput(Item: TListBoxItem);
+begin
+  FInputItem := Item;
+  FRunInput.Text := '';
+  FRunInput.Visible := True;
+  FBottomTabs.ActiveTab := FOutputTab;
+  ScrollToEnd(FOutput);
+  FRunInput.SetFocus;
+  FStatus.Text := 'Waiting for input';
+end;
+
+procedure TfrmMain.HideRunInput;
+begin
+  FInputItem := nil;
+  if FRunInput <> nil then
+    FRunInput.Visible := False;
+end;
+
+{ Enter sends the answer to the program and shows it after the prompt. }
+procedure TfrmMain.RunInputKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+  Shift: TShiftState);
+var
+  S: string;
+begin
+  if Key <> vkReturn then
+    Exit;
+  Key := 0;
+  S := FRunInput.Text;
+  if FInputItem <> nil then
+    FInputItem.Text := FInputItem.Text + S;
+  HideRunInput;
+  if (FRunDoc <> nil) and FDocs.Contains(FRunDoc) then
+    FStatus.Text := 'Running ' + FRunDoc.DisplayName + '...';
+  if FRunner.Running then
+    FRunner.WriteInput(S + #10);
 end;
 
 procedure TfrmMain.AddNote(const Text: string; Color: TAlphaColor);
@@ -2324,6 +2390,7 @@ begin
     Exit;
   end;
   FReplDir := ReplWorkDir;
+  FReplAwaitInput := False;
   FReplPartial[okStdOut] := '';
   FReplPartial[okStdErr] := '';
   try
@@ -2389,6 +2456,15 @@ begin
       end
       else if L.StartsWith(#2) then
         ReplAddLine(L.Substring(1), FPal.Error)
+      else if (Kind = okStdOut) and L.EndsWith(#5) then
+      begin
+        // input(): the next line typed is the answer, not a statement.
+        ReplAddLine(L.Substring(0, L.Length - 1), FPal.Text);
+        FReplAwaitInput := True;
+        FReplPrompt.Text := '?';
+        FBottomTabs.ActiveTab := FReplTab;
+        FReplEdit.SetFocus;
+      end
       else if TryShowFrame(L) or TryShowFigure(L) then
         // shown in the plot pane
       else if L.StartsWith(#3'jit ') then
@@ -2407,6 +2483,7 @@ end;
 
 procedure TfrmMain.ReplExit(ExitCode: Integer);
 begin
+  FReplAwaitInput := False;
   if FReplRestart then
   begin
     FReplRestart := False;
@@ -2436,6 +2513,17 @@ begin
   Shown := FReplPrompt.Text;
   for L in Lines do
   begin
+    if FReplAwaitInput then
+    begin
+      // The answer to input(), sent as it is.
+      FReplAwaitInput := False;
+      ReplAddLine('  ' + L, FPal.Link);
+      FReplPrompt.Text := '>';
+      Shown := '>';
+      if not FRepl.WriteInput(L + #10) then
+        ReplAddLine('The REPL is not accepting input.', FPal.Error, True);
+      Continue;
+    end;
     // The echo uses the prompt the REPL last showed; later lines continue it.
     ReplAddLine(Shown + ' ' + L, FPal.Link);
     if Shown = '>' then
@@ -3865,6 +3953,9 @@ begin
     SizePaneItem(FReplList.ListItems[K]);
   FReplEdit.StyledSettings := FReplEdit.StyledSettings - [TStyledSetting.Size];
   FReplEdit.TextSettings.Font.Size := FPrefs.OutputFontSize;
+  // input()'s answer box: a size larger than the output, easy to see.
+  FRunInput.TextSettings.Font.Size := FPrefs.OutputFontSize + 2;
+  FRunInput.Height := Round((FPrefs.OutputFontSize + 2) * 2.2) + 4;
   FReplPrompt.StyledSettings := FReplPrompt.StyledSettings - [TStyledSetting.Size];
   FReplPrompt.TextSettings.Font.Size := FPrefs.OutputFontSize;
   FHelpViewer.FontSize := FPrefs.OutputFontSize;

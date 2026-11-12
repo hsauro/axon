@@ -43,7 +43,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..123] of TBuiltinDoc = (
+  BuiltinDocs: array[0..124] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -139,6 +139,7 @@ const
     (Name: '__native_library'; Params: '(name)'; Text: 'The path a native library name resolves to (for tests)'),
     (Name: '__jit_compiled'; Params: '(f)'; Text: 'True once f has compiled code (JIT; for tests)'),
     (Name: '__jit_reason'; Params: '(f)'; Text: 'Why f was not compiled (JIT; for tests)'),
+    (Name: 'input';    Params: '(prompt)'; Text: 'A line typed by the user, as a string (nothing at the end of the input); the prompt is shown first'),
     (Name: '__jit_mode'; Params: '([mode])'; Text: 'The JIT mode; with "off", "on" or "force", sets it and returns the old one'),
     (Name: '__jit_loops'; Params: '()'; Text: 'How many times a top-level loop has run compiled (JIT; for tests)'),
     // io

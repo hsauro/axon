@@ -372,7 +372,10 @@ program that runs too long.
 While you type, the IDE checks the syntax: about half a second after you stop, a
 syntax error gets a wavy red underline, and hovering over it shows the message.
 When a program stops with an error, the error's line is underlined and the caret
-moves there; in the Output pane each trace line is a link to its place.
+moves there; in the Output pane each trace line is a link to its place. When a
+program asks for input (\code{input("Your name: ")}), a box appears under its
+prompt in the Output pane; type the answer and press \key{Enter}, and it is
+added to the prompt's line.
 
 The grey lines in the Output pane are the IDE's own notes: \emph{Running \ldots}
 and \emph{Finished in \ldots} around each run, and the JIT report after it
@@ -949,6 +952,23 @@ x = 3 2.5 true
 1 2 3
 Total: 42
 \end{axonout}
+
+\paragraph{Asking the user.} \code{input(prompt)} shows the prompt and waits
+for the user to type a line, which it returns as a string, without the line
+ending; \code{input()} asks without a prompt. Convert the answer with
+\code{int} or \code{real} when a number is wanted; text that is not a number
+raises \code{ArgumentError}, which a \code{try} can catch to ask again. In the
+IDE, a box for the answer appears under the prompt in the Output pane (or the
+REPL pane); from a terminal the user types after the prompt, and
+\code{axon prog.sci < answers.txt} takes the answers from a file. At the end of
+the input \code{input} returns \code{nothing}, so a loop can read every line:
+
+\begin{axon}
+name = input("Your name: ")
+println("Hello, " + name + "!")
+n = int(input("How many? "))
+println(n * 2)
+\end{axon}
 
 \paragraph{Choosing the digits.} \code{format(x, d)} gives \code{x} as a string
 with exactly \code{d} digits after the point, for building text. The

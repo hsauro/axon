@@ -276,6 +276,14 @@ end;
 
 { ---- Running tests ---- }
 
+{ The standard input for a test: name.in next to it, or '' for none. }
+function InputFileOf(const Source: string): string;
+begin
+  Result := ChangeFileExt(Source, '.in');
+  if not FileExists(Result) then
+    Result := '';
+end;
+
 function RunCase(const C: TTestCase; out Detail: string): Boolean;
 var
   StdLib: string;
@@ -303,8 +311,9 @@ begin
     SetEnv('AXON_STDLIB', '');
   // graphics.show writes here instead of opening a viewer.
   SetEnv('AXON_SHOW_DIR', TPath.Combine(TPath.GetTempPath, 'axon-test-figures'));
+  // name.in, when present, is what the user types (input).
   Code := RunProcess(ParamStr(0), Args, ExtractFileDir(C.Source), TestTimeoutMs,
-    StdOut, StdErr, TimedOut);
+    StdOut, StdErr, TimedOut, InputFileOf(C.Source));
   if TimedOut then
   begin
     Detail := Format('timed out after %d ms', [TestTimeoutMs]);

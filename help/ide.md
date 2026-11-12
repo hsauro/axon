@@ -32,6 +32,12 @@ When a program stops with an error, the error's line is underlined in the
 editor and the caret moves there. In the Output pane, each trace line
 (`at file:line:col`) is a link to that place.
 
+When a program asks for input (`name = input("Your name: ")`), a box appears
+under its prompt in the Output pane. Type the answer and press <kbd>Enter</kbd>:
+it is sent to the program and added to the prompt's line. In the REPL pane,
+the next line you type is the answer instead of a statement (the prompt
+shows `?`).
+
 The grey lines in the Output pane are the IDE's own notes: *Running …* and
 *Finished in …* around each run, and the JIT report after it. To hide
 them, untick **Show run notes** or **Show JIT report** in

@@ -24,11 +24,12 @@ function NativeSymbol(Lib: NativeUInt; const Name: string): Pointer;
 
 { Runs Exe with Args in WorkDir, capturing stdout and stderr as UTF-8 text.
   Returns the exit code. If the process runs longer than TimeoutMs it is
-  killed, TimedOut is set and the result is -1.
+  killed, TimedOut is set and the result is -1. StdinFile, when given, is
+  the process's standard input; otherwise it has none.
   On POSIX the timeout is not enforced yet. }
 function RunProcess(const Exe: string; const Args: array of string;
   const WorkDir: string; TimeoutMs: Cardinal;
-  out StdOut, StdErr: string; out TimedOut: Boolean): Integer;
+  out StdOut, StdErr: string; out TimedOut: Boolean; const StdinFile: string = ''): Integer;
 
 { The display channel (doc/Axon-Display-Plan.md): a pipe that a front end
   such as the IDE gives axon for pictures, named by the environment variable
@@ -251,12 +252,12 @@ end;
 
 function RunProcess(const Exe: string; const Args: array of string;
   const WorkDir: string; TimeoutMs: Cardinal;
-  out StdOut, StdErr: string; out TimedOut: Boolean): Integer;
+  out StdOut, StdErr: string; out TimedOut: Boolean; const StdinFile: string): Integer;
 const
   PipeSize = 1 shl 16;
 var
   SA: TSecurityAttributes;
-  OutRead, OutWrite, ErrRead, ErrWrite: THandle;
+  OutRead, OutWrite, ErrRead, ErrWrite, InFile: THandle;
   SI: TStartupInfo;
   PI: TProcessInformation;
   CmdLine: string;
@@ -279,6 +280,14 @@ begin
     RaiseLastOSError;
   SetHandleInformation(OutRead, HANDLE_FLAG_INHERIT, 0);
   SetHandleInformation(ErrRead, HANDLE_FLAG_INHERIT, 0);
+  InFile := 0;
+  if StdinFile <> '' then
+  begin
+    InFile := CreateFile(PChar(StdinFile), GENERIC_READ, FILE_SHARE_READ, @SA, OPEN_EXISTING,
+      FILE_ATTRIBUTE_NORMAL, 0);
+    if InFile = INVALID_HANDLE_VALUE then
+      RaiseLastOSError;
+  end;
 
   OutBuf := TBytesStream.Create;
   ErrBuf := TBytesStream.Create;
@@ -286,7 +295,7 @@ begin
     FillChar(SI, SizeOf(SI), 0);
     SI.cb := SizeOf(SI);
     SI.dwFlags := STARTF_USESTDHANDLES;
-    SI.hStdInput := 0;
+    SI.hStdInput := InFile;
     SI.hStdOutput := OutWrite;
     SI.hStdError := ErrWrite;
 
@@ -303,11 +312,15 @@ begin
       CloseHandle(ErrWrite);
       CloseHandle(OutRead);
       CloseHandle(ErrRead);
+      if InFile <> 0 then
+        CloseHandle(InFile);
       RaiseLastOSError;
     end;
-    // The child owns the write ends now.
+    // The child owns the write ends (and the input file) now.
     CloseHandle(OutWrite);
     CloseHandle(ErrWrite);
+    if InFile <> 0 then
+      CloseHandle(InFile);
 
     Started := GetTickCount64;
     while True do
@@ -372,9 +385,9 @@ end;
   can replace it when the macOS test run needs one. }
 function RunProcess(const Exe: string; const Args: array of string;
   const WorkDir: string; TimeoutMs: Cardinal;
-  out StdOut, StdErr: string; out TimedOut: Boolean): Integer;
+  out StdOut, StdErr: string; out TimedOut: Boolean; const StdinFile: string): Integer;
 var
-  Cmd, OutFile, ErrFile, A: string;
+  Cmd, OutFile, ErrFile, A, InFile: string;
   Status: Integer;
   M: TMarshaller;
 begin
@@ -387,7 +400,8 @@ begin
   Cmd := Cmd + ShellQuote(Exe);
   for A in Args do
     Cmd := Cmd + ' ' + ShellQuote(A);
-  Cmd := Cmd + ' </dev/null >' + ShellQuote(OutFile) + ' 2>' + ShellQuote(ErrFile);
+  if StdinFile <> '' then InFile := StdinFile else InFile := '/dev/null';
+  Cmd := Cmd + ' <' + ShellQuote(InFile) + ' >' + ShellQuote(OutFile) + ' 2>' + ShellQuote(ErrFile);
   Status := _system(M.AsUtf8(Cmd).ToPointer);
   if WIFEXITED(Status) then
     Result := WEXITSTATUS(Status)
