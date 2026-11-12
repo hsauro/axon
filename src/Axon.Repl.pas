@@ -190,6 +190,14 @@ begin
         Exit(False);
   end;
 
+  // A keyword (help for) is not a value: its own help.
+  if KeywordHelp(Name) <> nil then
+  begin
+    for L in KeywordHelp(Name) do
+      Show(L);
+    Exit(True);
+  end;
+
   // The name is evaluated as an expression, so an undefined name or an
   // unexported module member raises the usual error.
   try

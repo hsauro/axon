@@ -401,8 +401,9 @@ the selection, to the REPL, which is a quick way to try part of a program.
 
 \key{F1} shows help on the name under the caret: a built-in function, a
 function from an imported module (\code{ode.solve}, or \code{solve} after
-\code{from linalg import solve}), or a function or record in the file with a
-\code{##} comment above it. Below the short description, the Help pane shows
+\code{from linalg import solve}), a function or record in the file with a
+\code{##} comment above it, or a keyword such as \code{for}, \code{while} or
+\code{try}, which shows its forms with examples. Below the short description, the Help pane shows
 the section of the Language Reference that documents the name; its last link
 opens that section in the \textbf{Documentation} tab.
 
@@ -1025,9 +1026,166 @@ medium 21
 3 4
 \end{axonout}
 
-\code{for} walks through a range, the elements of an array (in column-major
-order), a list, the characters of a string or the keys of a dictionary. A short
-\code{if} fits on one line: \code{if x > 0 return 1 end}.
+A short \code{if} fits on one line: \code{if x > 0 return 1 end}.
+
+\subsection{Loops}\label{sec:loops}
+
+\code{for v in values} runs its body once for each element of \code{values},
+with \code{v} holding the element. The commonest values are ranges:
+\code{a:b} counts from \code{a} to \code{b} in steps of 1, and \code{a:h:b}
+in steps of \code{h}, which may be negative or a real.
+
+\begin{axon}
+for i in 1:4
+  print(i, "")
+end
+println()
+for i in 1:3:10          # start, step, stop
+  print(i, "")
+end
+println()
+for i in 5:-1:1          # counting down
+  print(i, "")
+end
+println()
+for t in 0.0:0.25:1.0    # real steps
+  print(t, "")
+end
+println()
+for i in 1:0             # an empty range: the body never runs
+  println("never")
+end
+\end{axon}
+\begin{axonout}
+1 2 3 4
+1 4 7 10
+5 4 3 2 1
+0.0 0.25 0.5 0.75 1.0
+\end{axonout}
+
+A loop over an array gives its elements; a matrix gives them column by
+column. To know where each element is, loop over the indices instead, with
+\code{length(v)} for a vector and \code{size(A, 1)} and \code{size(A, 2)} for
+the rows and columns of a matrix.
+
+\begin{axon}
+v = [10, 20, 30]
+for x in v
+  print(x, "")
+end
+println()
+for i in 1:length(v)     # the position as well as the value
+  println(i, v[i])
+end
+A = [1, 2; 3, 4]
+for x in A               # column by column
+  print(x, "")
+end
+println()
+for r in 1:size(A, 1)    # row by row, through the indices
+  for c in 1:size(A, 2)
+    print(A[r, c], "")
+  end
+end
+println()
+\end{axon}
+\begin{axonout}
+10 20 30
+1 10
+2 20
+3 30
+1 3 2 4
+1 2 3 4
+\end{axonout}
+
+A list gives its items, a dictionary its keys (in the order they were
+added), and a string its characters, each a string of one character.
+
+\begin{axon}
+for name in {"Ann", "Bo"}
+  println("hello", name)
+end
+ages = dict("Ann" => 31, "Bo" => 27)
+for k in keys(ages)
+  println(k, ages[k])
+end
+for ch in "abc"
+  print(upper(ch), "")
+end
+println()
+\end{axon}
+\begin{axonout}
+hello Ann
+hello Bo
+Ann 31
+Bo 27
+A B C
+\end{axonout}
+
+\code{continue} goes on to the next element and \code{break} leaves the
+loop; in nested loops both act on the innermost one. To collect results,
+start with an empty list (or \code{vector()} for numbers) and append to it,
+or, when the count is known, fill a vector made with \code{zeros(n)}.
+
+\begin{axon}
+squares = {}
+for k in 1:5
+  squares = append(squares, k^2)
+end
+println(squares)
+total = 0
+for k in 1:100
+  if mod(k, 7) != 0
+    continue             # skip to the next k
+  end
+  total = total + k
+  if total > 50
+    break                # leave the loop
+  end
+end
+println(total)
+\end{axon}
+\begin{axonout}
+{1, 4, 9, 16, 25}
+70
+\end{axonout}
+
+\code{while condition} runs its body as long as the condition is
+\code{true}, testing it before each turn. For a loop whose end is decided in
+the middle, write \code{while true} and leave with \code{break}.
+
+\begin{axon}
+n = 27
+steps = 0
+while n != 1             # the Collatz sequence from 27
+  if mod(n, 2) == 0
+    n = div(n, 2)
+  else
+    n = 3 * n + 1
+  end
+  steps = steps + 1
+end
+println(steps)
+x = 1.0
+while true
+  x = x / 2
+  if x < 0.01
+    break
+  end
+end
+println(x)
+\end{axon}
+\begin{axonout}
+111
+0.0078125
+\end{axonout}
+
+Two rules are worth knowing. The loop variable is new on each turn and belongs
+to the loop: it does not exist after \code{end}, and assigning to it inside the
+body does not change which element comes next. The values are worked out once,
+when the loop starts, so a loop over \code{v} keeps going through the elements
+\code{v} had then, even if the body changes \code{v}. Loops are compiled, also
+at the top level of a script (Section~\ref{sec:slow} has what can stop that).
 
 \section{Functions}
 

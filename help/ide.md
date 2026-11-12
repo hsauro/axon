@@ -144,8 +144,9 @@ interactive 3D chart:
 
 <kbd>F1</kbd> shows help on the name under the caret: a built-in function, a
 function from an imported module (`ode.solve`, or `solve` after
-`from linalg import solve`), or a function or record defined in the file with a
-`##` comment above it.
+`from linalg import solve`), a function or record defined in the file with a
+`##` comment above it, or a keyword such as `for`, `while` or `try`, which
+shows its forms with examples.
 
 Below the short description, the Help pane shows the section of the Language
 Reference that documents the name, when there is one: the whole module's

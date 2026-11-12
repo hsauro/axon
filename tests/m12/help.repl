@@ -72,7 +72,7 @@ NameError: "undefined_thing" is not defined
 > help
 Type a statement or expression to run it; its value is displayed.
 A trailing ";" suppresses the display.
-help name   shows the documentation of a function, record type or module
+help name   shows the documentation of a function, record type or module, or of a keyword (help for)
 run "file.sci"   runs a file in this session; the names it defines stay
 Ctrl+D (Ctrl+Z then Enter on Windows) ends the session.
 > help = 2

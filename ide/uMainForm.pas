@@ -2680,8 +2680,9 @@ begin
 end;
 
 { The text of "help name" as markdown: unindented lines (headers such as
-  "solve(f, y0, ...)" or "module ode") become an axon code block, indented
-  lines (the description) a paragraph. }
+  "solve(f, y0, ...)" or "module ode") and lines indented by four spaces or
+  more (examples, as in a keyword's help; four removed) become an axon code
+  block, lines indented less (the description) a paragraph. }
 function HelpMarkdown(const Text: string): string;
 var
   Lines: TStringList;
@@ -2696,12 +2697,15 @@ begin
     InCode := False;
     for L in Lines do
     begin
-      if (L <> '') and not L.StartsWith(' ') then
+      if (L <> '') and (not L.StartsWith(' ') or L.StartsWith('    ')) then
       begin
         if not InCode then
           SB.Append(#10'```axon'#10);
         InCode := True;
-        SB.Append(L).Append(#10);
+        if L.StartsWith('    ') then
+          SB.Append(L.Substring(4)).Append(#10)
+        else
+          SB.Append(L).Append(#10);
       end
       else
       begin

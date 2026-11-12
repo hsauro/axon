@@ -24,7 +24,7 @@ uses
 const
   // Anchor, then the built-ins it documents. Keep in step with the
   // reference's headings: a stale anchor only means no section is shown.
-  Sections: array[0..16] of string = (
+  Sections: array[0..24] of string = (
     'printing: print println format',
     'output-and-text-functions: split join trim ltrim rtrim upper lower contains ' +
       'startswith endswith find replace repeat',
@@ -42,9 +42,18 @@ const
     'sparse-operands: sparse speye nnz full splu',
     'lists-records-and-dictionaries: append get keys haskey dict typeof',
     'comparison: isequal',
-    'errors: error',
+    'errors: error try catch',
     'linear-algebra-operators: dot adjoint tr trace',
-    'foreign-functions: keep');
+    'foreign-functions: keep extern',
+    // keywords (help for)
+    'control-flow: for in while break continue if elseif else end',
+    'functions-and-calls: function return',
+    'scopes: local global',
+    'modules: import from as export',
+    'functions-records-and-modules: record',
+    'logical-operators: and or not',
+    'truth-values: true false',
+    'values-types-and-conversions: nothing');
 
 type
   THeading = record

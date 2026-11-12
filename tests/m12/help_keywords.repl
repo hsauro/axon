@@ -1,0 +1,35 @@
+> help end
+end
+  Closes a block: if, for, while, function, try, record. Inside the
+  brackets of an index it means the last position: v[end], A[end, 1].
+> help elseif
+if condition ... elseif condition ... else ... end
+  Runs the first branch whose condition is true, or else the else branch.
+  Conditions must be bools: numbers, strings and arrays are not true or
+  false (use all or any for a bool array). A short if fits on one line.
+  For example:
+    if x > 0
+      println("positive")
+    elseif x < 0
+      println("negative")
+    else
+      println("zero")
+    end
+    if x > 0 println("positive") end
+> help for
+for v in values ... end
+  Runs the body once for each element of values: a range (a:b, or a:h:b with
+  step h), the elements of a vector or matrix (column by column), the items
+  of a list, the keys of a dictionary, or the characters of a string. v is a
+  new variable on each turn and does not exist after the loop. break leaves
+  the loop; continue goes on to the next element. For example:
+    for i in 1:2:9
+      print(i, "")
+    end
+    for i in 1:length(v)       # positions as well as values
+      println(i, v[i])
+    end
+    for name in {"Ann", "Bo"}
+      println("hello", name)
+    end
+  The manual's section "Loops" shows each form.

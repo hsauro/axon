@@ -8,7 +8,9 @@ unit Axon.Help;
    - a record type: record T(field: type, ...), then its docstring;
    - a module: module m, its docstring and its exported names;
    - a built-in: its parameters and a one-line description, from the table
-     below (built-ins have no source to read docstrings from).
+     below (built-ins have no source to read docstrings from);
+   - a keyword (help for): its form, what it does and examples (KeywordHelp),
+     since a keyword is not a value to look up.
    Anything without a docstring shows "  (no documentation)"; any other value
    shows "name is a T". *)
 
@@ -20,6 +22,9 @@ uses
 { The help text for the value V found under Name, as lines without a final
   line break. }
 function HelpText(const Name: string; const V: TAxValue): TArray<string>;
+
+{ The help on a keyword such as for or while, or nil when Name is not one. }
+function KeywordHelp(const Name: string): TArray<string>;
 
 { What "help" alone shows. }
 function HelpUsage: TArray<string>;
@@ -299,6 +304,191 @@ begin
     Format('  foreign function %s from "%s"', [F.Symbol, F.LibName])];
 end;
 
+{ ---- keywords ---- }
+
+type
+  { Help on a keyword: the names it covers (separated by spaces), then its
+    lines: the form (unindented), a description (indented by two spaces), and
+    examples (indented by four, which the IDE shows as code). }
+  TKeywordDoc = record
+    Names: string;
+    Lines: TArray<string>;
+  end;
+
+function KeywordDocs: TArray<TKeywordDoc>;
+
+  function K(const Names: string; const Lines: array of string): TKeywordDoc;
+  var
+    I: Integer;
+  begin
+    Result.Names := ' ' + Names + ' ';
+    SetLength(Result.Lines, Length(Lines));
+    for I := 0 to High(Lines) do
+      Result.Lines[I] := Lines[I];
+  end;
+
+begin
+  Result := [
+    K('for in', [
+      'for v in values ... end',
+      '  Runs the body once for each element of values: a range (a:b, or a:h:b with',
+      '  step h), the elements of a vector or matrix (column by column), the items',
+      '  of a list, the keys of a dictionary, or the characters of a string. v is a',
+      '  new variable on each turn and does not exist after the loop. break leaves',
+      '  the loop; continue goes on to the next element. For example:',
+      '    for i in 1:2:9',
+      '      print(i, "")',
+      '    end',
+      '    for i in 1:length(v)       # positions as well as values',
+      '      println(i, v[i])',
+      '    end',
+      '    for name in {"Ann", "Bo"}',
+      '      println("hello", name)',
+      '    end',
+      '  The manual''s section "Loops" shows each form.']),
+    K('while', [
+      'while condition ... end',
+      '  Runs the body as long as condition, a bool, is true; it is tested before',
+      '  each turn. break leaves the loop, continue starts the next turn. For',
+      '  example:',
+      '    n = 1',
+      '    while n < 100',
+      '      n = n * 2',
+      '    end',
+      '    while true                  # the end is decided in the middle',
+      '      x = x / 2',
+      '      if x < 0.01',
+      '        break',
+      '      end',
+      '    end']),
+    K('break continue', [
+      'break',
+      'continue',
+      '  Inside a for or while loop: break leaves the loop, continue goes on to the',
+      '  next turn. In nested loops both act on the innermost loop. For example:',
+      '    for k in 1:100',
+      '      if mod(k, 7) != 0',
+      '        continue',
+      '      end',
+      '      if k > 50',
+      '        break',
+      '      end',
+      '      println(k)',
+      '    end']),
+    K('if elseif else', [
+      'if condition ... elseif condition ... else ... end',
+      '  Runs the first branch whose condition is true, or else the else branch.',
+      '  Conditions must be bools: numbers, strings and arrays are not true or',
+      '  false (use all or any for a bool array). A short if fits on one line.',
+      '  For example:',
+      '    if x > 0',
+      '      println("positive")',
+      '    elseif x < 0',
+      '      println("negative")',
+      '    else',
+      '      println("zero")',
+      '    end',
+      '    if x > 0 println("positive") end']),
+    K('function return', [
+      'function name(a, b; key = default) ... return value ... end',
+      '  Defines a function. Parameters after ";" are keyword parameters with',
+      '  defaults. return gives the result (several values: return a, b) and ends',
+      '  the call; a function that reaches end returns nothing. A type after a',
+      '  parameter or after the ")" is checked. function(x) ... end without a',
+      '  name is an anonymous function. For example:',
+      '    function area(r: real): real',
+      '      return pi * r^2',
+      '    end',
+      '    function scale(x; by = 2.0)',
+      '      return x * by',
+      '    end',
+      '    function minmax(v)',
+      '      return min(v), max(v)',
+      '    end',
+      '    [lo, hi] = minmax([3, 1, 4])']),
+    K('local global', [
+      'local x = value',
+      'global x',
+      '  local makes a new variable in the current block, hiding any outer one of',
+      '  the same name. global, inside a function, makes x refer to the script''s',
+      '  (module''s) variable x, so the function can assign it; without it, an',
+      '  assignment in a function makes a local variable. For example:',
+      '    count = 0',
+      '    function tick()',
+      '      global count',
+      '      count = count + 1',
+      '    end',
+      '  Passing the value in and returning the new one is often clearer, and',
+      '  such a function can be compiled: count = tick(count).']),
+    K('try catch', [
+      'try ... catch err ... end',
+      '  Runs the try block; if an error is raised in it, the catch block runs',
+      '  with err, a record with fields kind, message and trace. error("text")',
+      '  raises an error. For example:',
+      '    try',
+      '      x = int("12x")',
+      '    catch err',
+      '      println(err.kind, err.message)',
+      '    end']),
+    K('import from as export', [
+      'import m',
+      'import m as a',
+      'from m import f, g',
+      'export function f(...)',
+      '  import loads the module m (a standard module, or m.sci) and names it m',
+      '  (or a); from m import f binds f itself. In a module, export marks what',
+      '  importers may use. For example:',
+      '    import linalg',
+      '    import plot as p',
+      '    from stats import mean']),
+    K('record', [
+      'record Name  field: type ... end',
+      '  Declares a record type; Name(...) makes one, by position or by field',
+      '  name, checking the field types. A literal {a: 1, b: 2.0} makes a record',
+      '  without a declared type. For example:',
+      '    record Point',
+      '      x: real',
+      '      y: real',
+      '    end',
+      '    p = Point(1.0, 2.0)',
+      '    q = Point(y = 5.0, x = 0.0)',
+      '    println(p.x + q.y)']),
+    K('and or not', [
+      'a and b',
+      'a or b',
+      'not a',
+      '  Logical operators on bools. and and or evaluate b only when it is needed.',
+      '  For example:',
+      '    if x > 0 and x < 10',
+      '      println("a digit")',
+      '    end']),
+    K('true false nothing', [
+      'true',
+      'false',
+      'nothing',
+      '  true and false are the two bools. nothing is the value of a function',
+      '  that returns no value, and of a variable declared without one.']),
+    K('end', [
+      'end',
+      '  Closes a block: if, for, while, function, try, record. Inside the',
+      '  brackets of an index it means the last position: v[end], A[end, 1].']),
+    K('extern', [
+      'extern "library"  function name(a: type, ...): type ... end',
+      '  Declares functions of a C library so Axon can call them. See the',
+      '  Language Reference, "Foreign functions".'])];
+end;
+
+{ The help on a keyword, or nil when Name is not one. }
+function KeywordHelp(const Name: string): TArray<string>;
+var
+  D: TKeywordDoc;
+begin
+  for D in KeywordDocs do
+    if D.Names.Contains(' ' + Name + ' ') then
+      Exit(D.Lines);
+  Result := nil;
+end;
+
 function HelpText(const Name: string; const V: TAxValue): TArray<string>;
 var
   T: string;
@@ -334,7 +524,7 @@ begin
   Result := [
     'Type a statement or expression to run it; its value is displayed.',
     'A trailing ";" suppresses the display.',
-    'help name   shows the documentation of a function, record type or module',
+    'help name   shows the documentation of a function, record type or module, or of a keyword (help for)',
     'run "file.sci"   runs a file in this session; the names it defines stay',
     'Ctrl+D (Ctrl+Z then Enter on Windows) ends the session.'];
 end;
