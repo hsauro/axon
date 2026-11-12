@@ -1,6 +1,6 @@
 
 
-
+# We define the return value to help the JIT compiler
 function addNumbers (n) : int
     if (n != 0) 
        return n + addNumbers(n - 1)
