@@ -19,29 +19,26 @@ function bubbleSort (list: vector)
  return list
 end
 
-
-function printNumbers (numbers)
+function outputList (astr, numbers)
   for i in 1:length (numbers)
-      print (numbers[i], " ")
-      if mod (i, 20) == 0
-         println()
+      astr = astr + string (numbers[i]) + " "
+      if mod (i, 30) == 0
+         astr = astr + "\n"
       end
   end
+  return astr
 end
-
-
  
 numbers = vector ([12, 7, 13, 5, 6])
-println (numbers)
-numbers = bubbleSort (numbers) 
-# Sorted is [5, 6, 7, 12, 13]
+println (outputList ("Before sorting:\n", numbers))
 
-# Bigger example
+numbers = bubbleSort (numbers) 
+println (outputList ("After sorting:\n", numbers))
+
+println ("Bigger example")
 numbers = random.randint (1, 100, 100)
-println ("List before sorting:");
-printNumbers (numbers)
+println (outputList ("List before sorting:\n", numbers))
 
 numbers = bubbleSort(numbers)
-println ("List after sorting:");
-printNumbers (numbers)
+println (outputList ("List after sorting:\n", numbers))
 
