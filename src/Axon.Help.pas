@@ -43,7 +43,7 @@ type
 const
   NoDoc = '  (no documentation)';
 
-  BuiltinDocs: array[0..124] of TBuiltinDoc = (
+  BuiltinDocs: array[0..125] of TBuiltinDoc = (
     (Name: 'zeros';    Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of zeros; zeros(n) is an n-vector'),
     (Name: 'ones';     Params: '(m, n)';  Text: 'A real m' + #$00D7 + 'n matrix of ones; ones(n) is an n-vector'),
     (Name: 'eye';      Params: '(m, n)';  Text: 'The m' + #$00D7 + 'n identity matrix; eye(n) is n' + #$00D7 + 'n'),
@@ -61,6 +61,7 @@ const
     (Name: 'tr';       Params: '(A)';     Text: 'The transpose, the same as A'''),
     (Name: 'trace';    Params: '(A)';     Text: 'The sum of the diagonal of a square matrix'),
     (Name: 'isequal';  Params: '(a, b)';  Text: 'True when two values are equal as whole values'),
+    (Name: 'isapprox'; Params: '(a, b; rtol = sqrt(eps), atol = 0)'; Text: 'True when two numbers, or two arrays of one shape element by element, agree within max(atol, rtol * max(|x|, |y|))'),
     (Name: 'isa';      Params: '(x, T)';  Text: 'True when x is exactly of type T: a name such as "int" or "vector{real}", or a record type'),
     (Name: 'keep';     Params: '(f)';     Text: 'Keeps a callback valid after the extern call that received it'),
     (Name: 'parse_function'; Params: '(params, expr)'; Text: 'A function made from text: parse_function("x, y", "2*sin(x) + y^2"), or parse_function("function(x) ... end")'),

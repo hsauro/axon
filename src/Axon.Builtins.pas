@@ -1115,6 +1115,99 @@ begin
   Result := BoolValue(ValuesIdentical(Args[0], Args[1]));
 end;
 
+(* isapprox(a, b; rtol = sqrt(eps), atol = 0): whether two numbers, or two
+   arrays of one shape element by element, are equal within the tolerance
+   |x - y| <= max(atol, rtol * max(|x|, |y|)). Equal values (infinities
+   included) are always close, NaN never is. Arrays of different shapes, or
+   a number and an array, are not close. *)
+const
+  DefaultRtol = 1.4901161193847656e-8;    // sqrt of the double epsilon
+
+function ApproxReal(X, Y, Rtol, Atol: Double): Boolean; inline;
+begin
+  if X = Y then
+    Exit(True);
+  if IsNan(X) or IsNan(Y) or IsInfinite(X) or IsInfinite(Y) then
+    Exit(False);
+  Result := Abs(X - Y) <= Max(Atol, Rtol * Max(Abs(X), Abs(Y)));
+end;
+
+function ApproxNumbers(const X, Y: TAxValue; Rtol, Atol: Double): Boolean;
+var
+  A, B: TComplex;
+begin
+  if (X.Kind = vkComplex) or (Y.Kind = vkComplex) then
+  begin
+    A := ToComplex(X);
+    B := ToComplex(Y);
+    if (A.Re = B.Re) and (A.Im = B.Im) then
+      Exit(True);
+    if IsNan(A.Re) or IsNan(A.Im) or IsNan(B.Re) or IsNan(B.Im) then
+      Exit(False);
+    Exit(CAbs(Cx(A.Re - B.Re, A.Im - B.Im)) <= Max(Atol, Rtol * Max(CAbs(A), CAbs(B))));
+  end;
+  Result := ApproxReal(ToReal(X), ToReal(Y), Rtol, Atol);
+end;
+
+function BIsApprox(const Args: TAxValues): TAxValue;
+var
+  X, Y: TAxValue;
+  A, B: TArrayObj;
+  Rtol, Atol: Double;
+  K: Integer;
+
+  function Tolerance(const V: TAxValue; const Name: string; Default: Double): Double;
+  begin
+    if V.Kind = vkNothing then
+      Exit(Default);
+    if not (V.Kind in [vkInt, vkReal]) then
+      RaiseFmt(TypeError, 'isapprox: %s must be a number, got %s', [Name, TypeName(V)]);
+    Result := ToReal(V);
+    if not (Result >= 0) then
+      RaiseFmt(ArgumentError, 'isapprox: %s cannot be negative or NaN', [Name]);
+  end;
+
+  function AsArr(const V: TAxValue): TArrayObj;
+  begin
+    if V.Kind = vkRange then
+      Result := RangeToArray(AsRange(V))
+    else
+      Result := AsArray(V);
+  end;
+
+begin
+  Rtol := DefaultRtol;
+  Atol := 0;
+  if Length(Args) > 2 then
+    Rtol := Tolerance(Args[2], 'rtol', DefaultRtol);
+  if Length(Args) > 3 then
+    Atol := Tolerance(Args[3], 'atol', 0);
+  X := Args[0];
+  Y := Args[1];
+  for K := 0 to 1 do
+    if not ((NumRank(Args[K]) >= 0) or (Args[K].Kind in [vkArray, vkRange])) then
+      RaiseFmt(TypeError, 'isapprox needs numbers or arrays, got %s', [TypeName(Args[K])]);
+  if (NumRank(X) >= 0) and (NumRank(Y) >= 0) then
+    Exit(BoolValue(ApproxNumbers(X, Y, Rtol, Atol)));
+  if (NumRank(X) >= 0) or (NumRank(Y) >= 0) then
+    Exit(BoolValue(False));               // a number and an array
+  A := AsArr(X);
+  B := AsArr(Y);
+  if (A.Rows <> B.Rows) or (A.Cols <> B.Cols) then
+    Exit(BoolValue(False));
+  if (A.ElemType = etReal) and (B.ElemType = etReal) then
+  begin
+    for K := 0 to A.Count - 1 do
+      if not ApproxReal(A.R[K], B.R[K], Rtol, Atol) then
+        Exit(BoolValue(False));
+  end
+  else
+    for K := 0 to A.Count - 1 do
+      if not ApproxNumbers(A.Get(K), B.Get(K), Rtol, Atol) then
+        Exit(BoolValue(False));
+  Result := BoolValue(True);
+end;
+
 { ---- sparse matrices (M11) ---- }
 
 { 1-based index values (an int, or an int vector or range) as 0-based ints. }
@@ -2359,7 +2452,8 @@ const
     Define(Name, V);
   end;
 
-  procedure Add(const Name: string; Fn: TBuiltinFn; MinArgs, MaxArgs: Integer);
+  procedure Add(const Name: string; Fn: TBuiltinFn; MinArgs, MaxArgs: Integer;
+    const KwNames: TArray<string> = nil);
   var
     B: TBuiltinObj;
     V: TAxValue;
@@ -2369,6 +2463,7 @@ const
     B.Fn := Fn;
     B.MinArgs := MinArgs;
     B.MaxArgs := MaxArgs;
+    B.KwNames := KwNames;
     V := NothingValue;
     V.Kind := vkBuiltin;
     V.Obj := B;
@@ -2390,6 +2485,7 @@ begin
   Add('dot', BDot, 2, 2);
   Add('adjoint', BAdjoint, 1, 1);
   Add('isequal', BIsequal, 2, 2);
+  Add('isapprox', BIsApprox, 2, 2, ['rtol', 'atol']);
   Add('__copies', BCopies, 0, 0);
   Add('__native_library', BCopies, 1, 1);   // handled by the interpreter
   Add('keep', BKeep, 1, 1);

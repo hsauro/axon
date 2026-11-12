@@ -41,7 +41,7 @@ const
     'other-built-in-functions: atexit isa parse_function',
     'sparse-operands: sparse speye nnz full splu',
     'lists-records-and-dictionaries: append get keys haskey dict typeof',
-    'comparison: isequal',
+    'comparison: isequal isapprox',
     'errors: error try catch',
     'linear-algebra-operators: dot adjoint tr trace',
     'foreign-functions: keep extern',

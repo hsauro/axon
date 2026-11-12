@@ -1021,19 +1021,40 @@ end;
 
 function TInterpreter.CallBuiltin(B: TBuiltinObj; E: TCallExpr; Scope: TScope): TAxValues;
 var
-  Args: TAxValues;
-  I: Integer;
+  Args, Kw: TAxValues;
+  Given: TArray<Boolean>;
+  I, K, NPos: Integer;
 begin
   SetLength(Args, E.Args.Count);
+  NPos := 0;
+  SetLength(Kw, Length(B.KwNames));
+  SetLength(Given, Length(B.KwNames));
   for I := 0 to E.Args.Count - 1 do
   begin
     if E.Args[I].Kind = akKeyword then
-      RaiseFmt(ArgumentError, '%s takes no keyword arguments (got %s=)',
-        [B.Name, E.Args[I].Name]);
+    begin
+      // A keyword parameter of the built-in (isapprox(a, b; rtol, atol)).
+      if Length(B.KwNames) = 0 then
+        RaiseFmt(ArgumentError, '%s takes no keyword arguments (got %s=)',
+          [B.Name, E.Args[I].Name]);
+      K := High(B.KwNames);
+      while (K >= 0) and (B.KwNames[K] <> E.Args[I].Name) do
+        Dec(K);
+      if K < 0 then
+        RaiseFmt(ArgumentError, '%s has no keyword parameter "%s"', [B.Name, E.Args[I].Name]);
+      if Given[K] then
+        RaiseFmt(ArgumentError, 'keyword argument "%s" given twice in call to %s',
+          [E.Args[I].Name, B.Name]);
+      Given[K] := True;
+      Kw[K] := Eval(E.Args[I].Value, Scope);
+      Continue;
+    end;
     if E.Args[I].Kind = akPair then
       RaiseError(TypeError, '"=>" pairs are only accepted by dict(...)');
-    Args[I] := Eval(E.Args[I].Value, Scope);
+    Args[NPos] := Eval(E.Args[I].Value, Scope);
+    Inc(NPos);
   end;
+  SetLength(Args, NPos);
   if (Length(Args) < B.MinArgs) or ((B.MaxArgs >= 0) and (Length(Args) > B.MaxArgs)) then
   begin
     if B.MinArgs = B.MaxArgs then
@@ -1046,6 +1067,9 @@ begin
       RaiseFmt(ArgumentError, '%s takes %d to %d arguments, got %d',
         [B.Name, B.MinArgs, B.MaxArgs, Length(Args)]);
   end;
+  // Keyword values after the positional ones (nothing for those not given).
+  if Length(B.KwNames) > 0 then
+    Args := Args + Kw;
   if Assigned(B.MultiFn) then
     Result := B.MultiFn(Args)
   else

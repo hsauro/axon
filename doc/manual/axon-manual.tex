@@ -48,7 +48,9 @@
     sqrt,exp,log,log10,log2,sin,cos,tan,asin,acos,atan,atan2,deg2rad,rad2deg,
     sinh,cosh,tanh,asinh,acosh,atanh,
     abs,int,floor,ceil,round,real,imag,conj,arg,complex,div,mod,min,max,
-    factorial,format,pi,sort,sortperm,atexit},
+    factorial,format,pi,sort,sortperm,atexit,range,isa,tr,trace,split,join,
+    trim,ltrim,rtrim,upper,lower,contains,startswith,endswith,find,replace,
+    repeat,parse_function,isapprox,input,vector},
   sensitive=true,
   morecomment=[l]{\#},
   morestring=[b]",
@@ -3984,6 +3986,7 @@ Function & Result \\
 \endhead
 \code{typeof(x)} & The type of a value, as a string \\
 \code{isequal(a, b)} & Whether two values are equal as whole values \\
+\code{isapprox(a, b; rtol, atol)} & Whether two numbers or arrays agree within a tolerance \\
 \code{isa(x, T)} & Whether x is exactly of type T: a type name such as
   \code|"int"| or \code|"vector{real}"|, or a declared record type \\
 \code{error(message: string)}, \code{error(kind: string, message: string)} & Raises an error \\

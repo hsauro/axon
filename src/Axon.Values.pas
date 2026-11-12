@@ -74,6 +74,10 @@ type
     Fn: TBuiltinFn;
     MultiFn: TBuiltinMultiFn;    // set instead of Fn for builtins returning several values
     MinArgs, MaxArgs: Integer;   // MaxArgs = -1: no limit
+    // Keyword parameters, after a fixed number of positional ones: their
+    // values follow the positional arguments in this order, nothing for
+    // one not given. Empty for a built-in that takes no keywords.
+    KwNames: TArray<string>;
   end;
 
   { An ordered, heterogeneous list. Read-only until M7 adds list operations. }

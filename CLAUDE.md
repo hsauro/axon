@@ -40,7 +40,7 @@ The design lives in `doc/`. The Language Reference is the authority on behaviour
 - `v = append(v, x)` statements run through `TInterpreter.ExecAppendAssign`: the value is taken out of `v`'s cell while `AppendInPlace` (`Axon.Builtins`) grows the list or vector in place if its reference count is then 1 and no wider element type is needed; otherwise `AppendValue` builds a new value, as the plain call does. Compiled code does the same for lists (`rt_list_append`, J10); `append` on vectors stays interpreted.
 - Copy-on-write: `AssignArraySlot` clones an array when `RefCount > 1`. Never keep an extra `TAxValue` copy of the target array alive while deciding, or every write will copy. `__copies()` counts clones for tests.
 - `src/Axon.Complex.pas`: complex arithmetic and principal-value functions
-- `src/Axon.Builtins.pas`: prelude functions
+- `src/Axon.Builtins.pas`: prelude functions. A built-in may take keyword parameters after a fixed number of positional ones (`TBuiltinObj.KwNames`, the `Add` helper's last argument): `CallBuiltin` checks the names and passes their values after the positional arguments, `nothing` for one not given (`isapprox(a, b; rtol, atol)` is the first)
 - `src/Axon.Interp.pas`: tree-walking evaluator and scopes. Constructs from later milestones raise `ENotImplemented` (exit code 2).
   - Scopes are reference-counted by hand (`AddRef`/`Release`), because closures keep their defining scope alive.
   - Variables are `TVarCell`s, which carry the type annotation and the `global` marker.

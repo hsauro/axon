@@ -444,6 +444,7 @@ A result is sparse when both operands are sparse, or when one is a scalar and th
 - On scalars, `==`, `!=`, `<`, `<=`, `>` and `>=` return a `bool`. On arrays they apply elementwise with broadcasting and return a `bool` array.
 - `==` and `!=` accept values of any two types. Values of unrelated types (a string and a number, or `nothing` and anything else) are unequal, so `"1" == 1` is `false`. Numbers of different types compare after promotion, so `1 == 1.0` and `1 == 1.0 + 0i` are `true`. Lists, records and dictionaries compare as whole values and give one `bool`.
 - `isequal(a, b)` compares whole values and returns one `bool`. Arrays are equal when shapes and all elements are equal, and records when field names and values are equal.
+- `isapprox(a, b; rtol = sqrt(eps), atol = 0.0)` compares numbers, or arrays (and ranges) of one shape element by element, within a tolerance, and returns one `bool`: each pair x, y must satisfy |x − y| ≤ max(`atol`, `rtol` · max(|x|, |y|)), with complex values compared by their moduli. The default `rtol` is the square root of the double-precision epsilon, about 1.5e-8; near zero a relative tolerance is never met, so give `atol` there: `isapprox(0.0, 1e-20)` is `false`, `isapprox(0.0, 1e-20, atol = 1e-12)` is `true`. Equal values, infinities included, are always close; NaN never is. Arrays of different shapes, and a number with an array, are not close (`false`, not an error); so a row `[1, 2, 3]` is not close to the column `1:3`. A negative or NaN tolerance raises `ArgumentError`, and arguments that are not numbers or arrays `TypeError`.
 - The order comparisons apply to real numbers and strings. Complex numbers have no ordering and raise `TypeError`.
 - Comparisons involving NaN are false, except `!=`, which is true.
 
@@ -752,6 +753,7 @@ See [Lists, records and dictionaries](#lists-records-and-dictionaries).
 | --- | --- |
 | `typeof(x)` | The type of a value, as a string: `"int"`, `"real"`, `"vector"`, `"matrix"`, `"string"`, `"dict"` and so on |
 | `isequal(a, b)` | Whether two values are equal as whole values (see [Comparison](#comparison)) |
+| `isapprox(a, b; rtol, atol)` | Whether two numbers or arrays agree within a tolerance (see [Comparison](#comparison)) |
 | `isa(x, T)` | Whether `x` is exactly of type `T`, with no widening (`isa(1, "real")` is `false`). `T` is a declared record type, or a string: a type name as in annotations (`"int"`, `"real"`, `"string"`, `"vector"`, `"vector{real}"`, `"matrix{int}"`, `"list"`, `"record"`, `"dict"`, `"function"`, `"nothing"`, …) or a declared record type's name. Any record is a `"record"`; built-in and extern functions are `"function"`s. A `T` that is neither raises `TypeError` |
 | `error(message: string)`, `error(kind: string, message: string)` | Raises an error (see [Errors](#errors)) |
 | `keep(f: function)` | Keeps a callback valid after the `extern` call that received it (see [Foreign functions](#foreign-functions)) |

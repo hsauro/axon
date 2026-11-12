@@ -1355,6 +1355,16 @@ begin
       Result := [Wider];
     end;
   end
+  else if Name = 'isapprox' then
+  begin
+    // Through the interpreter's routine (rt_call); keyword arguments keep
+    // the function interpreted.
+    NeedArgs(2);
+    for A in Args do
+      if not (Numeric(A.Typ) or IsArrayType(A.Typ)) then
+        Reject('isapprox of %s is not compiled', [JTypeName(A.Typ)], E);
+    Result := [jtBool];
+  end
   else if (Name = 'div') or (Name = 'mod') then
   begin
     NeedArgs(2);

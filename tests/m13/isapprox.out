@@ -1,0 +1,11 @@
+true false
+true true
+true false
+false true
+true true true
+false false
+true false
+true false
+ArgumentError isapprox has no keyword parameter "tol"
+ArgumentError isapprox: rtol cannot be negative or NaN
+TypeError isapprox needs numbers or arrays, got string
