@@ -3,30 +3,30 @@
 
 n = 1000
 len = div(10*n, 4)
-needdecimal = true
 a = zeros(len)          # a[1] .. a[len] correspond to BASIC256's a(0) .. a(len-1)
 nines = 0
-predigit = 0            # first predigit is a 0
+predigit = 0.0            # first predigit is a 0
 
-digitcount = 0          # digits printed after the decimal point, for line wrapping
 perline = 80            # digits per row
 
-function outputd(d)
-  global needdecimal
-  global digitcount
-  if needdecimal
+# needdecimal: no "." printed yet; digitcount: digits after the "." (for line wrapping).
+state = {needdecimal: true, digitcount: 0}
+
+function outputd(d, s, perline)
+  if s.needdecimal
     if d == 0
-      return
+      return s
     end
     print(string(int(d)) + ".")
-    needdecimal = false
+    s.needdecimal = false
   else
     print(string(int(d)))
-    digitcount = digitcount + 1
-    if mod(digitcount, perline) == 0
+    s.digitcount = s.digitcount + 1
+    if mod(s.digitcount, perline) == 0
       println()
     end
   end
+  return s
 end
 
 for j in 1:len
@@ -34,6 +34,7 @@ for j in 1:len
 end
 
 for j in 1:n
+  # Change q = 0 to q = 0.0 to see a significant speed change. 
   q = 0
   for i in len:-1:1       # work backwards
     x = 10*a[i] + q*i
@@ -45,25 +46,25 @@ for j in 1:n
   if q == 9
     nines = nines + 1
   elseif q == 10
-    outputd(predigit + 1)
+    state = outputd(predigit + 1, state, perline)
     if nines > 0
       for k in 1:nines
-        outputd(0)
+        state = outputd(0, state, perline)
       end
     end
-    predigit = 0
+    predigit = 0.0
     nines = 0
   else
-    outputd(predigit)
+    state = outputd(predigit, state, perline)
     predigit = q
     if nines != 0
       for k in 1:nines
-        outputd(9)
+        state = outputd(9, state, perline)
       end
       nines = 0
     end
   end
 end
 
-outputd(predigit)
+outputd(predigit, state, perline)
 println()
