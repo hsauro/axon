@@ -36,6 +36,11 @@ procedure RaiseFmt(const Kind, Fmt: string; const Args: array of const);
 // Integer overflow is detected explicitly below, so compiler checks are off.
 {$Q-}
 
+{ S repeated N times, for repeat(s, n) and s * n; What names the operation
+  in errors: ArgumentError for a negative N or a result over 100 million
+  characters. }
+function RepeatText(const S: string; N: Int64; const What: string): string;
+
 implementation
 
 uses
@@ -320,6 +325,11 @@ begin
 
   if (Op = tkPlus) and (A.Kind = vkString) and (B.Kind = vkString) then
     Exit(StringValue(AsString(A) + AsString(B)));
+  // s * n and n * s: the string repeated, as repeat(s, n).
+  if (Op = tkStar) and (A.Kind = vkString) and (B.Kind = vkInt) then
+    Exit(StringValue(RepeatText(AsString(A), B.I, 'string * int')));
+  if (Op = tkStar) and (A.Kind = vkInt) and (B.Kind = vkString) then
+    Exit(StringValue(RepeatText(AsString(B), A.I, 'int * string')));
 
   if (NumRank(A) < 0) or (NumRank(B) < 0) then
     OperandError(Op, A, B);
@@ -330,6 +340,25 @@ begin
     2:    Result := RealArith(Op, ToReal(A), ToReal(B));
   else
     Result := ComplexArith(Op, ToComplex(A), ToComplex(B));
+  end;
+end;
+
+function RepeatText(const S: string; N: Int64; const What: string): string;
+var
+  SB: TStringBuilder;
+  K: Int64;
+begin
+  if N < 0 then
+    RaiseFmt(ArgumentError, '%s: the count cannot be negative, got %d', [What, N]);
+  if N * Length(S) > 100000000 then
+    RaiseFmt(ArgumentError, '%s: the result would be too long', [What]);
+  SB := TStringBuilder.Create;
+  try
+    for K := 1 to N do
+      SB.Append(S);
+    Result := SB.ToString;
+  finally
+    SB.Free;
   end;
 end;
 

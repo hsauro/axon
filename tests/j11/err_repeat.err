@@ -1,0 +1,3 @@
+ArgumentError: string * int: the count cannot be negative, got -2
+  at err_repeat.sci:4:3 in rule
+  at err_repeat.sci:6:1

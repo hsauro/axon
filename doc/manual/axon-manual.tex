@@ -2010,8 +2010,10 @@ Macillus Bacillus
   \code{"n = " + string(n)}; \code{"n = " + n} raises \code{TypeError}.
 \item \code{string(x)} gives any value as text, as \code{println} would show
   it, and \code{format(x, d)} a number with exactly \code{d} decimals.
-\item \code{repeat(s, n)} repeats a string, which is handy for rules and
-  padding, and \code{join(parts, sep)} joins a list of strings with a separator.
+\item \code{s * n} (or \code{n * s}) repeats a string \code{n} times, as
+  \code{repeat(s, n)} does, which is handy for rules and padding:
+  \code{"=" * 20}. \code{join(parts, sep)} joins a list of strings with a
+  separator.
 \item \code{println(a, b, c)} prints its values separated by single spaces;
   to control the spacing exactly, build one string with \code{+} and print
   that.
@@ -2020,7 +2022,7 @@ Macillus Bacillus
 \begin{axon}
 x = 2.0 / 3.0
 println("x = " + string(x) + ", or about " + format(x, 3))
-println(repeat("=", 20))
+println("=" * 20)
 println(join({"Na", "K", "Cl"}, ", "), "|", join({"a", "b"}))
 \end{axon}
 \begin{axonout}
@@ -2097,7 +2099,7 @@ Function & Result \\
 \code{trim(s: string)} & Remove spaces, tabs and line breaks at either end of \code{s} \\
 \code{ltrim(s: string)} & Remove spaces, tabs and line breaks at the start of \code{s} \\
 \code{rtrim(s: string)} & Remove spaces, tabs and line breaks at the end of \code{s}\\
-\code{repeat(s, n)} & Returns a repeated a string {\tt n} times \\
+\code{repeat(s, n)} & \code{s} repeated \code{n} times, as \code{s * n} \\
 \code{replace(s: string, old: string, new: string)} & In \code{s}, replace every \code{old} by \code{new} \\
 \bottomrule
 \end{longtable}

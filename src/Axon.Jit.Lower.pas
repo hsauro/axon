@@ -975,6 +975,17 @@ begin
     ReleaseFieldTemps([L.Opnd, R.Opnd]);
     Exit(MakeValue(jtString, RegOperand(Dst)));
   end;
+  if (E.Op = tkStar) and (((L.Typ = jtString) and (R.Typ = jtInt)) or
+    ((L.Typ = jtInt) and (R.Typ = jtString))) then
+  begin
+    // s * n and n * s: the string repeated, by Axon.Ops as interpreted.
+    Dst := Temp(jtString);
+    A := MakeValue(jtNothing, StringOperand(TokenSpelling[tkStar]));
+    A.Opnd.I := Ord(tkStar);
+    F.Emit(joOp, jtString, Dst, [L.Opnd, A.Opnd, R.Opnd], Site);
+    ReleaseFieldTemps([L.Opnd, R.Opnd]);
+    Exit(MakeValue(jtString, RegOperand(Dst)));
+  end;
   if not Numeric(L.Typ) or not Numeric(R.Typ) then
     Reject('operator %s on %s and %s, a TypeError',
       [TokenSpelling[E.Op], JTypeName(L.Typ), JTypeName(R.Typ)], E);

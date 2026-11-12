@@ -2243,25 +2243,11 @@ end;
 function BRepeat(const Args: TAxValues): TAxValue;
 var
   S: string;
-  N, K: Int64;
-  SB: TStringBuilder;
 begin
   S := NeedString('repeat', Args[0], 'a string');
   if Args[1].Kind <> vkInt then
     RaiseFmt(TypeError, 'repeat: the count must be an int, got %s', [TypeName(Args[1])]);
-  N := Args[1].I;
-  if N < 0 then
-    RaiseFmt(ArgumentError, 'repeat: the count cannot be negative, got %d', [N]);
-  if N * Length(S) > 100000000 then
-    RaiseError(ArgumentError, 'repeat: the result would be too long');
-  SB := TStringBuilder.Create;
-  try
-    for K := 1 to N do
-      SB.Append(S);
-    Result := StringValue(SB.ToString);
-  finally
-    SB.Free;
-  end;
+  Result := StringValue(RepeatText(S, Args[1].I, 'repeat'));
 end;
 
 { ---- isa ---- }
