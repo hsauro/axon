@@ -772,7 +772,7 @@ Like the built-in functions, they are names in the prelude, so a program can ass
 
 ## Standard modules
 
-These modules come with Axon and are imported by name (`import linalg`, `from ode import solve`). `io`, `time`, `random` and `graphics` are core modules written in the interpreter; `linalg`, `fmt`, `ode`, `nonlin`, `antimony`, `plot` and `draw` are standard-library modules written in Axon.
+These modules come with Axon and are imported by name (`import linalg`, `from ode import solve`). `io`, `time`, `random` and `graphics` are core modules written in the interpreter; `linalg`, `fmt`, `ode`, `nonlin`, `antimony`, `plot`, `draw` and `colors` are standard-library modules written in Axon.
 
 ### The linalg module
 
@@ -1115,7 +1115,7 @@ println(sim.t, antimony.value(sim, "A"))
 | `bar(x, heights; width: real = 0.8, label: string, color)`, `bar(heights; …)` | Adds a bar of height `heights[k]` centred on `x[k]`, `width` wide in x units, rising from 0 (falling for a negative height). `x` may instead be a list of strings: the bars go at 1, 2, … and the x axis is labelled with those names. With the heights alone, the bars go at 1, 2, … |
 | `hist(x; bins = 10, label: string, color)` | Adds a histogram of the values `x`: one bar per bin, as high as the number of values in it. Returns `{counts, edges, heights}` |
 | `hist_density(x; bins = 10, label: string, color)` | As `hist`, with heights scaled so the bars' total area is 1, for comparison with a probability density |
-| `surface(x, y, Z; label: string, colormap: string = "viridis", edges: bool = true, elev: real = 30, azim: real = -60)` | Adds the surface with height `Z[i, j]` over `(x[j], y[i])`, coloured by height (`"viridis"` or `"gray"`), seen from the given elevation and azimuth in degrees |
+| `surface(x, y, Z; label: string, colormap: string = "viridis", color_by, edges: bool = true, elev: real = 30, azim: real = -60)` | Adds the surface with height `Z[i, j]` over `(x[j], y[i])`, coloured by height through `colormap` (`"viridis"`, `"plasma"`, `"coolwarm"`, `"gray"` or `"jet"`), seen from the given elevation and azimuth in degrees. With `color_by`, a real matrix of `Z`'s shape, the colours follow its values instead of the heights, which stay as they are: `color_by = log10(1 + Z)` shows the detail of a function whose few large values would otherwise take up the whole colour range. An unknown colour map raises `ArgumentError`, a `color_by` of another shape `DimensionError` |
 | `line3(x, y, z; label: string, color, width: real = 1.5, marker: string, marker_size: real = 5)` | Adds a curve through the points `(x[k], y[k], z[k])` in 3D, such as a trajectory; a NaN in any coordinate leaves a gap |
 | `scatter3(x, y, z; label: string, color, size: real = 6, marker: string = "circle")` | Adds markers at the points in 3D |
 | `view(azim: real, elev: real)` | Sets the viewing direction of a 3D figure, azimuth and elevation in degrees (as MATLAB's `view`; default `-60, 30`) |

@@ -31,6 +31,7 @@ description of Axon. Some sections you may want often:
 | `antimony`: reaction models, simulation and steady states | [The antimony module](Axon-Language-Reference.md#the-antimony-module) |
 | `plot`: line, scatter, bar, histogram, surface | [The plot module](Axon-Language-Reference.md#the-plot-module) |
 | `draw`: shapes, images, a turtle and L-systems on a blank canvas | [The draw module](Axon-Language-Reference.md#the-draw-module) |
+| `colors`: the 140 web colour names | [The colors module](Axon-Language-Reference.md#the-colors-module) |
 | `random`: uniform, normal and integer random numbers | [The random module](Axon-Language-Reference.md#the-random-module) |
 | `time`: clocks and timing code | [The time module](Axon-Language-Reference.md#the-time-module) |
 | `graphics`: drawing to PNG, SVG, PDF | [The graphics module](Axon-Language-Reference.md#the-graphics-module) |

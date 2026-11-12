@@ -5,3 +5,8 @@ true
 true
 2
 true
+plasma 6 6 1.0
+true
+nothing
+ArgumentError
+DimensionError plot.surface: color_by is 2×2 but Z is 6×6

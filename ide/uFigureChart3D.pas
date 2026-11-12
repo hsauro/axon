@@ -31,7 +31,7 @@ function LoadFigure3DText(Plot: TRho3DPlot; const Json: string): Boolean;
 implementation
 
 uses
-  System.SysUtils, System.Math, System.IOUtils, System.UITypes,
+  System.SysUtils, System.Math, System.IOUtils, System.UITypes, Rho3DColorMaps,
   System.Generics.Collections, uFigureChart;
 
 function Vector(J: TJSONValue): TArray<Double>;
@@ -87,10 +87,11 @@ begin
   begin
     Series := Plot.AddSurface(Vector(S.GetValue('x')), Vector(S.GetValue('y')),
       Matrix(S.GetValue('z')));
-    if Str(S.GetValue('colormap')) = 'gray' then
-      Series.ColorMap := cmGray
-    else
-      Series.ColorMap := cmViridis;
+    // Any of the component's maps, by name (viridis, plasma, coolwarm, gray,
+    // jet), and colour values other than the heights (color_by), if given.
+    Series.ColorMap := ColorMapFromName(Str(S.GetValue('colormap')), cmViridis);
+    if (S.GetValue('c') <> nil) and (S.GetValue('c') is TJSONArray) then
+      Series.SetValues(Matrix(S.GetValue('c')));
     if Bool(S.GetValue('edges'), True) then
       Series.FillMode := fmFilledWithEdges
     else

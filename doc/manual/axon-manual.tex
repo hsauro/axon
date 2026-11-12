@@ -1517,15 +1517,24 @@ Module & Contents \\
 \texttt{linalg} & Solving, determinants, inverses, eigenvalues, SVD, QR, LU,
   Cholesky, rank, null space, norms, matrix exponential \\
 \texttt{ode} & \code{ode.solve}: ordinary differential equations, explicit
-  (RK45) and stiff (BDF), with events and dense output \\
+  (RK45) and stiff (BDF), with events and dense output; solving in steps
+  (Section~\ref{sec:ode}) \\
+\texttt{nonlin} & \code{nonlin.solve}: systems of nonlinear equations
+  $f(x) = 0$ (Section~\ref{sec:nonlin}) \\
+\texttt{antimony} & Reaction models written in Antimony: simulation, steady
+  states, conservation laws (Chapter~\ref{ch:antimony}) \\
 \texttt{plot} & Line, scatter, bar, histogram, surface and 3D plots, subplots;
-  PNG, SVG and PDF \\
+  PNG, SVG and PDF (Chapter~\ref{ch:plot}) \\
+\texttt{draw} & Drawing on a blank canvas: shapes, text, images, a turtle,
+  L-systems and animation (Section~\ref{sec:draw}) \\
+\texttt{colors} & The 140 web colour names as colours for drawing
+  (Section~\ref{sec:colors}) \\
 \texttt{random} & Seeded uniform, normal and integer random numbers \\
-\texttt{time} & Clocks and timing code \\
+\texttt{time} & Clocks and timing code (Section~\ref{sec:bench}) \\
 \texttt{io} & Reading and writing files: text, lines, CSV and JSON (Chapter~\ref{ch:files}) \\
 \texttt{fmt} & Display settings, and numbers and arrays as text
   (Section~\ref{sec:fmt}) \\
-\texttt{graphics} & The drawing layer under \texttt{plot} \\
+\texttt{graphics} & The drawing layer under \texttt{plot} and \texttt{draw} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -2592,7 +2601,15 @@ sample mean: 4.950
 \section{Surfaces and 3D plots}
 
 \code{plot.surface(x, y, Z)} draws the surface with height \code{Z[i, j]} above
-the point \code{(x[j], y[i])}, coloured by height (\code{colormap = "viridis"} or \code{"gray"}). \code{plot.line3(x, y, z)} draws a curve through
+the point \code{(x[j], y[i])}, coloured by height. \code{colormap} chooses the
+colours: \code{"viridis"} (the default), \code{"plasma"}, \code{"coolwarm"}
+(blue below the middle, red above), \code{"gray"} or \code{"jet"}. When a few
+large values take up most of the colour range, so that the rest of the
+surface comes out in one colour, colour it by something else with
+\code{color_by}, a matrix the shape of \code{Z}: the heights stay true, and
+\code{plot.surface(x, y, Z, color_by = log10(1 + Z))} colours them on a
+logarithmic scale, which shows the curved valley of the Rosenbrock function
+$(1 - x)^2 + 100 (y - x^2)^2$ that colouring by height hides. \code{plot.line3(x, y, z)} draws a curve through
 points in space, such as a trajectory, and \code{plot.scatter3(x, y, z)}
 markers. They can share a figure, but a figure cannot mix 3D series with 2D
 ones. \code{plot.view(azim, elev)} sets the direction you look from, in
@@ -4386,5 +4403,6 @@ opens as your own copy to change and run.
 \shipped{24_lsystems.sci}
 \shipped{25_pendulum.sci}
 \shipped{26_life.sci}
+\shipped{27_oscillator.sci}
 
 \end{document}

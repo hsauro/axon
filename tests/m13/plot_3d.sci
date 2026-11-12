@@ -34,3 +34,24 @@ plot.line3(g, g, g .* g, color = "red")
 println(length(plot.gcf().series))
 plot.save("_tmp_3d.svg")
 println(io.delete_file("_tmp_3d.svg"))
+
+# Colour maps, and colouring by another matrix than the heights.
+plot.figure()
+plot.surface(g, g, Z, colormap = "plasma", color_by = abs(Z))
+s = plot.gcf().series[1]
+println(s.colormap, size(s.c, 1), size(s.c, 2), s.c[1, 1])
+plot.save("_tmp_3d.png")
+println(io.delete_file("_tmp_3d.png"))
+plot.figure()
+plot.surface(g, g, Z, colormap = "coolwarm")
+println(typeof(plot.gcf().series[1].c))
+try
+  plot.surface(g, g, Z, colormap = "rainbow")
+catch err
+  println(err.kind)
+end
+try
+  plot.surface(g, g, Z, color_by = zeros(2, 2))
+catch err
+  println(err.kind, err.message)
+end

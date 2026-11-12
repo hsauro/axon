@@ -32,6 +32,42 @@ VIRIDIS = [0.267, 0.005, 0.329;
            0.741, 0.873, 0.150;
            0.993, 0.906, 0.144]
 
+# plasma, coolwarm and jet, as the IDE's 3D chart has them (evenly spaced).
+PLASMA = [0.051, 0.031, 0.529;
+          0.255, 0.016, 0.616;
+          0.416, 0.000, 0.659;
+          0.561, 0.051, 0.643;
+          0.694, 0.165, 0.565;
+          0.800, 0.278, 0.471;
+          0.882, 0.392, 0.384;
+          0.949, 0.518, 0.294;
+          0.988, 0.651, 0.212;
+          0.988, 0.808, 0.145;
+          0.941, 0.976, 0.129]
+# A diverging map: blue below the middle, red above.
+COOLWARM = [0.231, 0.298, 0.753;
+            0.384, 0.510, 0.918;
+            0.553, 0.690, 0.996;
+            0.725, 0.816, 0.976;
+            0.867, 0.867, 0.867;
+            0.961, 0.769, 0.675;
+            0.957, 0.604, 0.482;
+            0.871, 0.376, 0.302;
+            0.706, 0.016, 0.149]
+# The rainbow map, for familiarity; viridis or plasma read better.
+JET = [0.000, 0.000, 0.498;
+       0.000, 0.000, 1.000;
+       0.000, 0.498, 1.000;
+       0.000, 1.000, 1.000;
+       0.498, 1.000, 0.498;
+       1.000, 1.000, 0.000;
+       1.000, 0.498, 0.000;
+       1.000, 0.000, 0.000;
+       0.498, 0.000, 0.000]
+
+# The colour maps a surface may have.
+COLORMAPS = {"viridis", "plasma", "coolwarm", "gray", "jet"}
+
 TICK_SIZE = 10.0
 LABEL_SIZE = 11.0
 TITLE_SIZE = 13.0
@@ -472,10 +508,12 @@ export function hist_density(x; bins = 10, label = nothing, color = nothing)
 end
 
 ## Adds the surface z = Z[i, j] over the grid (x[j], y[i]), coloured by height.
-## Keywords: label, colormap ("viridis" or "gray"), edges (draw the mesh),
-## elev and azim (viewing angles in degrees).
-export function surface(x, y, Z; label = nothing, colormap = "viridis", edges = true,
-                        elev = 30.0, azim = -60.0)
+## Keywords: label, colormap ("viridis", "plasma", "coolwarm", "gray" or
+## "jet"), color_by (a matrix the shape of Z to colour by instead of the
+## height, such as log10(1 + Z) for a function with a few large values),
+## edges (draw the mesh), elev and azim (viewing angles in degrees).
+export function surface(x, y, Z; label = nothing, colormap = "viridis", color_by = nothing,
+                        edges = true, elev = 30.0, azim = -60.0)
   global current
   xs = real_vector(x, "plot.surface: x")
   ys = real_vector(y, "plot.surface: y")
@@ -490,11 +528,24 @@ export function surface(x, y, Z; label = nothing, colormap = "viridis", edges = 
   if m < 2 or n < 2
     fail("DimensionError", "plot.surface: the grid needs at least 2 points each way")
   end
-  if colormap != "viridis" and colormap != "gray"
-    fail("ArgumentError", "plot.surface: colormap must be \"viridis\" or \"gray\"")
+  if typeof(colormap) != "string" or not contains_name(COLORMAPS, colormap)
+    fail("ArgumentError", "plot.surface: colormap must be \"viridis\", \"plasma\", " +
+      "\"coolwarm\", \"gray\" or \"jet\"")
+  end
+  c = nothing
+  if typeof(color_by) != "nothing"
+    if typeof(color_by) != "matrix"
+      fail("TypeError", "plot.surface: color_by must be a real matrix, got " + typeof(color_by))
+    end
+    [cm, cn] = size(color_by)
+    if cm != m or cn != n
+      fail("DimensionError", "plot.surface: color_by is " + string(cm) + "×" + string(cn) +
+        " but Z is " + string(m) + "×" + string(n))
+    end
+    c = reshape([color_by] + 0.0, m, n)
   end
   add_series({type: "surface", three_d: true, x: xs, y: ys, z: reshape([Z] + 0.0, m, n),
-              label: label, colormap: colormap, edges: edges})
+              label: label, colormap: colormap, c: c, edges: edges})
   current.elev = elev + 0.0
   current.azim = azim + 0.0
 end
@@ -1133,16 +1184,35 @@ end
 
 # ---------------------------------------------------------------- surfaces
 
+function contains_name(names, name)
+  for k in names
+    if k == name
+      return true
+    end
+  end
+  return false
+end
+
+# The colour at u (0 to 1) of a colour map: between its two nearest anchors.
 function colormap_at(name, u)
   u = min(max(u, 0.0), 1.0)
   if name == "gray"
     g = 0.15 + 0.8 * u
     return [g, g, g]
   end
-  pos = u * 10.0
-  k = min(floor(pos), 9)
+  T = VIRIDIS
+  if name == "plasma"
+    T = PLASMA
+  elseif name == "coolwarm"
+    T = COOLWARM
+  elseif name == "jet"
+    T = JET
+  end
+  last = size(T, 1) - 1
+  pos = u * last
+  k = min(floor(pos), last - 1)
   f = pos - k
-  return (1 - f) * VIRIDIS[k + 1, :] + f * VIRIDIS[k + 2, :]
+  return (1 - f) * T[k + 1, :] + f * T[k + 2, :]
 end
 
 # The finite range of the values (lo > hi when there are none).
@@ -1242,6 +1312,17 @@ function render_3d(fig)
       ys = s.y
       Z = s.z
       [m, n] = size(Z)
+      # Colours from color_by when given, else from the heights.
+      C = Z
+      cmin = zmin
+      cmax = zmax
+      if typeof(s.c) != "nothing"
+        C = s.c
+        [cmin, cmax] = finite_range(C, 1.0 / 0.0, -1.0 / 0.0)
+        if not (cmax > cmin)
+          cmax = cmin + 1
+        end
+      end
       irange = 1:m - 1
       jrange = 1:n - 1
       if ud - od > 0 irange = m - 1:-1:1 end
@@ -1249,8 +1330,9 @@ function render_3d(fig)
       for i in irange
         for j in jrange
           zc = (Z[i, j] + Z[i, j + 1] + Z[i + 1, j + 1] + Z[i + 1, j]) / 4
-          if zc == zc
-            col = colormap_at(s.colormap, (zc - zmin) / (zmax - zmin))
+          cc = (C[i, j] + C[i, j + 1] + C[i + 1, j + 1] + C[i + 1, j]) / 4
+          if zc == zc and cc == cc
+            col = colormap_at(s.colormap, (cc - cmin) / (cmax - cmin))
             [p1x, p1y, q1] = proj(nx(xs[j]), ny(ys[i]), nz(Z[i, j]))
             [p2x, p2y, q2] = proj(nx(xs[j + 1]), ny(ys[i]), nz(Z[i, j + 1]))
             [p3x, p3y, q3] = proj(nx(xs[j + 1]), ny(ys[i + 1]), nz(Z[i + 1, j + 1]))
