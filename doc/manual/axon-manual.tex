@@ -2808,9 +2808,116 @@ turtle draw it: \code{F} moves forward drawing, \code{+} and \code{-} turn,
 plant's \code{X}, only steer the rewriting. \code{draw.lsystem_path} returns
 the points instead, to scale or place before drawing.
 
+\paragraph{Animation.} A loop that redraws the canvas and ends each pass with
+\code{draw.frame()} makes an animation: in the IDE each frame replaces the
+last in the plot pane, which keeps one entry in its history for the whole
+animation. \code{draw.frame(fps = 30)} waits so that frames come that many
+times a second (a program that falls behind just carries on), and
+\code{save = "frames/name"} also writes each frame to a numbered PNG file,
+for making a video. Start each pass with \code{draw.canvas(...)} to draw the
+picture afresh; a loop that keeps adding to the same canvas instead builds a
+picture up gradually, and then each frame sends only what was added. Outside
+the IDE, \code{frame} only paces the loop and saves.
+
+\lstinputlisting[style=axonstyle,firstline=60,lastline=67,
+  title={\small\ttfamily 26\_life.sci, the animation loop}]{../../examples/26_life.sci}
+
+This is the heart of Conway's Game of Life, the Welcome tab's example 26
+(listed in Appendix~\ref{app:examples}): \code{step} is a compiled function
+that computes the next generation of the grid \code{G}, a matrix of 0.0s and
+1.0s, in about 0.2~ms for 15\,000 cells, and \code{draw.image} shows the
+grid with a two-colour palette, a row \code{[r, g, b]} for dead cells and
+one for live ones.
+
 The Welcome tab's examples 22 to 24 draw a Koch snowflake, a Sierpinski
 triangle and nested circles, the Mandelbrot set with a magnified detail, and
-six L-systems, including the dragon and Hilbert curves.
+six L-systems, including the dragon and Hilbert curves; example 25 animates a
+pendulum whose motion an ODE solver computes frame by frame, and example 26
+is the Game of Life.
+
+\subsection{All the draw functions}\label{sec:drawfns}
+
+The tables list every function of the \code{draw} module, with the keywords
+that matter most. Shapes also take \code{color} (the line or outline, black by
+default), \code{width} (in points, 1), and, for closed shapes, \code{fill};
+lines take \code{dash}, \code{cap} and \code{join} (Section~\ref{sec:draw}).
+\code{help draw.circle}, or \key{F1} on a name in the IDE, shows the details,
+and the Language Reference's ``The draw module'' has the full rules.
+
+\paragraph{The canvas.}
+
+\begin{longtable}{@{}p{0.44\linewidth}p{0.5\linewidth}@{}}
+\toprule
+Function & What it does \\
+\midrule
+\endhead
+\code{draw.canvas(; width, height, view, background)} & Starts a new canvas: its size in points (640 by 480), the part of the plane it shows, \code{view = [xmin, xmax, ymin, ymax]}, with y pointing up, and its background colour (white) \\
+\code{draw.show()} & Shows the canvas in the plot pane \\
+\code{draw.save(path)} & Writes it to a \code{.png}, \code{.svg} or \code{.pdf} file \\
+\code{draw.clear()} & Empties the canvas and shows it, keeping its size, view and background \\
+\code{draw.frame(; fps, save)} & Shows the canvas as the next frame of an animation, \code{fps} frames a second (30) \\
+\code{draw.scene()} & The canvas as a \code{graphics} scene record \\
+\bottomrule
+\end{longtable}
+\paragraph{Shapes and text.}
+
+\begin{longtable}{@{}p{0.44\linewidth}p{0.5\linewidth}@{}}
+\toprule
+Function & What it does \\
+\midrule
+\endhead
+\code{draw.line(x1, y1, x2, y2)} & A line between two points \\
+\code{draw.polyline(x, y)} & A line through the points \code{(x[k], y[k])}; a NaN breaks it \\
+\code{draw.polygon(x, y)} & A closed shape through the points \\
+\code{draw.rect(x, y, w, h)} & A rectangle with lower-left corner \code{(x, y)} \\
+\code{draw.circle(x, y, r)} & A circle of radius \code{r} around \code{(x, y)} \\
+\code{draw.ellipse(x, y, rx, ry; angle)} & An ellipse with semi-axes \code{rx} and \code{ry}, turned by \code{angle} degrees \\
+\code{draw.arc(x, y, r, start, sweep; wedge)} & Part of a circle, from \code{start} through \code{sweep} degrees anticlockwise; \code{wedge = true} makes a pie slice \\
+\code{draw.points(x, y; shape, size)} & Markers: \code{"circle"}, \code{"square"}, \code{"diamond"}, \code{"triangle"}, \code{"plus"} or \code{"cross"}, \code{size} points across (4) \\
+\code{draw.text(x, y, s; size, anchor, angle, font, bold)} & Text, centred vertically on \code{y}; \code{anchor} is \code{"start"}, \code{"middle"} or \code{"end"} \\
+\bottomrule
+\end{longtable}
+\paragraph{Images.}
+
+\begin{longtable}{@{}p{0.44\linewidth}p{0.5\linewidth}@{}}
+\toprule
+Function & What it does \\
+\midrule
+\endhead
+\code{draw.image(values; colormap, vmin, vmax, smooth)} & A matrix as pixels, row 1 at the top, coloured by \code{colormap}: \code{"viridis"}, \code{"gray"}, \code{"hsv"}, or a matrix whose rows are colours \code{[r, g, b]} \\
+\code{draw.image_rgb(red, green, blue; alpha)} & A picture from red, green and blue matrices with entries from 0 to 1 \\
+\bottomrule
+\end{longtable}
+\paragraph{The turtle.}
+
+\begin{longtable}{@{}p{0.44\linewidth}p{0.5\linewidth}@{}}
+\toprule
+Function & What it does \\
+\midrule
+\endhead
+\code{draw.turtle(; x, y, heading)} & Places the turtle (by default in the middle, facing up), pen down, black, 1 point wide \\
+\code{draw.forward(d), draw.back(d)} & Moves it \code{d} units, drawing when the pen is down \\
+\code{draw.left(a), draw.right(a)} & Turns it \code{a} degrees \\
+\code{draw.penup(), draw.pendown()} & Lifts and lowers the pen \\
+\code{draw.pen(; color, width)} & Sets the colour and width of what it draws from now on \\
+\code{draw.goto(x, y)} & Moves straight to a point \\
+\code{draw.set_heading(a)} & Faces \code{a} degrees anticlockwise from the x direction (90 is up) \\
+\code{draw.where()} & Its position and heading: \code{[x, y, h] = draw.where()} \\
+\code{draw.push(), draw.pop()} & Saves its position and heading, and returns to them without drawing \\
+\bottomrule
+\end{longtable}
+\paragraph{L-systems.}
+
+\begin{longtable}{@{}p{0.44\linewidth}p{0.5\linewidth}@{}}
+\toprule
+Function & What it does \\
+\midrule
+\endhead
+\code{draw.lsystem(axiom, rules, n)} & Rewrites the string \code{axiom} \code{n} times with the rules, a dictionary from letters to strings \\
+\code{draw.lsystem_draw(s, step, angle)} & Has the turtle draw the string: \code{F} forward, \code{+} and \code{-} turn, \code{[} and \code{]} branch \\
+\code{draw.lsystem_path(s, angle; step, heading)} & The points the string traces, \code{[xs, ys] = ...}, to scale or place before drawing \\
+\bottomrule
+\end{longtable}
 
 \section{Named colours}\label{sec:colors}
 
@@ -4277,5 +4384,7 @@ opens as your own copy to change and run.
 \shipped{22_fractals.sci}
 \shipped{23_mandelbrot.sci}
 \shipped{24_lsystems.sci}
+\shipped{25_pendulum.sci}
+\shipped{26_life.sci}
 
 \end{document}
