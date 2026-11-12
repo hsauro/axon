@@ -66,6 +66,7 @@ Nov 7, 2026 · Herbert Sauro
   - [The random module](#the-random-module)
   - [The graphics module](#the-graphics-module)
   - [The draw module](#the-draw-module)
+  - [The colors module](#the-colors-module)
   - [The ode module](#the-ode-module)
   - [The nonlin module](#the-nonlin-module)
   - [The antimony module](#the-antimony-module)
@@ -938,7 +939,7 @@ dice = random.randint(1, 6, 5)          # five dice rolls
 `draw` is a standard-library module, written in Axon over `graphics`, for drawing on a blank canvas: lines, shapes, text and images, a turtle, and L-systems. It keeps a current canvas, as `plot` keeps a current figure.
 
 - **Coordinates.** `canvas(; width = 640, height = 480, view = nothing, background = "white")` starts a new canvas of `width` by `height` points that shows the rectangle `view = [xmin, xmax, ymin, ymax]` of the plane (by default `[0, width, 0, height]`), with **y pointing up**. Every drawing function takes coordinates in the view; line widths, marker and text sizes are in points. With different scales along x and y, a circle is drawn as the ellipse it becomes, and the angles of ellipses and arcs are exact only when the scales are equal. A canvas that has something drawn and was not shown is shown when a new one starts and when the program ends, as with `plot`; the REPL never ends a program, so there `show()` displays the drawing. Drawing without a canvas starts one with the defaults.
-- **Showing.** `show(; scale = 2.0)` shows the canvas (in the IDE's plot pane), `save(path; scale = 2.0)` writes it as PNG, SVG or PDF, and `scene(; scale = 2.0)` returns it as a `graphics` scene record.
+- **Showing.** `show(; scale = 2.0)` shows the canvas (in the IDE's plot pane), `save(path; scale = 2.0)` writes it as PNG, SVG or PDF, and `scene(; scale = 2.0)` returns it as a `graphics` scene record. `clear(; scale = 2.0)` empties the canvas and shows it empty: everything drawn goes, including what was not shown, the size, view and background stay, and the turtle returns to the middle of the view, heading up (with no canvas, it starts one with the defaults).
 - **Animation.** `frame(; fps = 30, scale = 1.0, save = nothing)` shows the canvas as one frame of an animation through `graphics.frame`: a loop redraws the canvas (starting each pass with `canvas`) and ends each pass with `frame`. A loop that keeps adding to the same canvas instead, without calling `canvas`, builds a picture up gradually: then each frame sends only what was added since the previous one. It waits so that frames come `fps` times a second, measured from the previous frame; a program that falls behind carries on without catching up. With `save` set, each frame is also written to a numbered PNG file, `save + "_00001.png"`, `save + "_00002.png"` and so on, in a folder that must exist. A non-positive `fps` raises `ArgumentError`.
 
 | Function | Draws |
@@ -967,6 +968,26 @@ s = draw.lsystem("F", dict("F" => "F+F-F-F+F"), 3)
 draw.polyline(xs - 0.81, ys - 0.3, color = "blue", width = 1.5)
 draw.save("_tmp_koch.svg")
 ```
+
+### The colors module
+
+`colors` is a standard-library module, written in Axon, that knows the 140 standard web colour names (CSS, from X11), from `"AliceBlue"` to `"YellowGreen"`, as red, green and blue from 0 to 255. A name is found ignoring case, spaces and underscores, and `grey` may be written for `gray`, so `"LightGray"`, `"light grey"` and `"light_grey"` are one colour. The colour names `graphics` itself accepts (`"red"`, `"blue"`, …) are `plot`'s palette and differ from the web colours of the same names; `colors.rgb("Red")` is the web's pure red.
+
+| Function | Result |
+| --- | --- |
+| `rgb(name; alpha)` | The colour as a real vector `[r, g, b]` with components from 0 to 1, as `graphics` and `draw` take colours; with `alpha` (a number from 0 to 1), `[r, g, b, alpha]` |
+| `rgb255(name)` | The colour's red, green and blue as ints from 0 to 255, `[r, g, b]` |
+| `hex(name)` | The colour as text `"#RRGGBB"` |
+| `has(name)` | Whether there is a colour of that name (`false` for a value that is not a string) |
+| `names()` | The 140 names as listed, in alphabetical order |
+
+```axon
+import draw
+import colors
+draw.circle(320, 240, 100, fill = colors.rgb("CornflowerBlue"), color = colors.hex("Navy"))
+```
+
+An unknown name raises `ArgumentError`, a name that is not a string `TypeError`, and an `alpha` outside 0 to 1 `ArgumentError`.
 
 ### The ode module
 

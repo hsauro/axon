@@ -2698,7 +2698,9 @@ draw.line(20, 20, 300, 200, color = "red", width = 3)
 
 Run as a program, it shows a red line on a canvas 640 by 480 points.
 \code{draw.canvas} is needed only for another size, a view, a background
-colour, or to start a new drawing.
+colour, or to start a new drawing. \code{draw.clear()} wipes the current
+canvas and shows it empty, keeping its size, view and background, which is
+handy for starting the picture again partway through a program.
 
 \paragraph{Drawing at the REPL.} A drawing appears by itself when a
 \emph{program} ends, and a REPL session does not end after each line, so at
@@ -2764,7 +2766,12 @@ hexadecimal code \code|"#2ca02c"| as in web pages, or a vector
 \code{[r, g, b, a]}, sets the opacity: 1 is solid, 0.5 half see-through, as
 in the three overlapping circles. \code{"none"} draws nothing, which is how
 the orange circle has a fill and no outline. Because a colour can be a
-vector, it can also be computed, as the tree in the next example is.
+vector, it can also be computed, as the tree in the next example is. For the
+140 standard web colour names, import the \code{colors} module:
+\code{fill = colors.rgb("CornflowerBlue")} gives that colour as a vector, and
+\code{colors.names()} lists the names. (Its \code{"Red"} is the web's pure red,
+where the name \code{"red"} on its own is the softer red of the plot
+palette.)
 
 \paragraph{Putting it together.} Functions that call themselves draw
 fractals naturally, a compiled function can fill an image pixel by pixel, and
@@ -2804,6 +2811,85 @@ the points instead, to scale or place before drawing.
 The Welcome tab's examples 22 to 24 draw a Koch snowflake, a Sierpinski
 triangle and nested circles, the Mandelbrot set with a magnified detail, and
 six L-systems, including the dragon and Hilbert curves.
+
+\section{Named colours}\label{sec:colors}
+
+Plots and drawings take a colour as a name, a hex code or a vector
+(Section~\ref{sec:draw}). The names they know are the sixteen of the plot
+palette. For more, the standard module \code{colors} knows the 140 colour
+names of the web (CSS), from \code{AliceBlue} to \code{YellowGreen}, and gives
+each as the vector that \code{fill} and \code{color} take:
+
+\begin{axon}
+import draw
+import colors
+draw.circle(320, 240, 100, fill = colors.rgb("CornflowerBlue"),
+            color = colors.hex("Navy"), width = 3)
+\end{axon}
+
+\begin{longtable}{@{}p{0.38\linewidth}p{0.56\linewidth}@{}}
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\code{colors.rgb(name)} & The colour as a vector \code{[r, g, b]} of reals
+  from 0 to 1, ready for \code{fill} and \code{color} \\
+\code{colors.rgb(name, alpha = a)} & The same with an opacity \code{a} from 0
+  (invisible) to 1 (solid): \code{[r, g, b, a]} \\
+\code{colors.rgb255(name)} & The red, green and blue parts as integers from
+  0 to 255 \\
+\code{colors.hex(name)} & The colour as text \code|"#RRGGBB"|, which
+  \code{fill} and \code{color} also take \\
+\code{colors.has(name)} & Whether there is a colour of that name \\
+\code{colors.names()} & The 140 names, in alphabetical order \\
+\bottomrule
+\end{longtable}
+
+\begin{axon}
+import colors
+println(colors.hex("CornflowerBlue"), colors.has("Bluish"))
+println(colors.rgb255("light grey"))
+println(colors.rgb("Gold", alpha = 0.5))
+\end{axon}
+\begin{axonout}
+#6495ED false
+1(*@\texttimes@*)3 matrix{int}
+  211  211  211
+1(*@\texttimes@*)4 matrix{real}
+  1.0  0.843137  0.0  0.5
+\end{axonout}
+
+\paragraph{Writing the names.} Names are found whatever their capitals, and
+spaces and underscores are ignored, so \code{"LightGray"},
+\code{"light gray"} and \code{"light_gray"} are the same colour. The web spells
+some greys with an \emph{e} and some with an \emph{a} (\code{LightGrey} but
+\code{DarkGray}); \code{colors} takes either spelling for all of them. A name
+it does not know raises \code{ArgumentError} at once, at the line that asks
+for it, where a misspelt palette name is reported only when the drawing is
+shown; \code{colors.has} checks a name first.
+
+\paragraph{Two reds.} The palette name \code{"red"}, used alone, is the
+slightly soft red that plots give their fourth series, and \code{"blue"},
+\code{"green"} and the others are likewise the plot palette's. The web colour
+of the same name is the pure one: \code{colors.rgb("Red")} is
+\code{[1.0, 0.0, 0.0]}. Programs that use the palette names keep their
+colours; the web's are there when asked for by \code{colors}.
+
+\paragraph{Going through the list.} \code{colors.names()} returns a list, so a
+\code{for} loop walks through it: \code{for name in colors.names()}, with a
+test inside to pick some, such as \code{startswith(name, "Dark")}. When the
+position matters as well, as in laying the colours out in a grid, loop over
+\code{1:length(names)}. Figure~\ref{fig:colors_chart.pdf} shows every colour,
+drawn by this program:
+
+\ex{colors_chart.sci}
+
+\fig{colors_chart.pdf}{0.98}{The 140 named colours of the \code{colors}
+module, from \texttt{colors\_chart.sci}.}
+
+The canvas's view counts y upwards, so the program numbers its rows from the
+bottom, \code{rows - 1 - div(k - 1, cols)}, to put the first colour at the top
+left. The Language Reference has the details in ``The colors module''.
 
 % ===================================================================
 \chapter{Writing a module}\label{ch:module}
@@ -3749,6 +3835,15 @@ too. Loops inside it are still tried, so the expensive inner loop is often
 compiled anyway. Otherwise, make the called function compile (see the next
 paragraphs), or move the repeated work into a function that compiles and
 call that from the loop.
+
+\paragraph{A matrix of integers.} Compiled code works with vectors of reals or
+integers and with matrices of reals. A matrix whose entries are all whole
+numbers, such as \code{A = [2, 1; 4, 3]}, is a \code|matrix{int}|, and a
+function given it runs interpreted; the report says \emph{parameter A is
+passed a matrix\{int\}}. Write one entry as a real, \code{[2.0, 1; 4, 3]},
+which makes the whole matrix real, or pass \code{A + 0.0}. Numerical methods
+such as Gaussian elimination divide by the entries anyway, so reals are what
+they need.
 
 \paragraph{A function that uses \code{global}.} \code{global} is not
 compiled. Pass the value in as a parameter and return the new value instead:

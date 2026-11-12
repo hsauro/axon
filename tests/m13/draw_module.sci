@@ -43,3 +43,17 @@ println(draw.lsystem("AB", dict("A" => "AB", "B" => "A"), 3))
 println(length(xs), xs[2], ys[3], xs[4] == xs[4], xs[5], ys[5])
 draw.save("_tmp_draw.png")
 println(io.delete_file("_tmp_draw.png"))
+
+# clear: the canvas emptied and shown, its size, view and background kept,
+# the turtle back in the middle heading up.
+draw.canvas(width = 200, height = 100, view = [-1, 1, 0, 1], background = "black")
+draw.circle(0, 0.5, 0.25)
+draw.turtle(x = 0.5, y = 0.5, heading = 0)
+draw.forward(0.2)
+draw.clear()
+s = draw.scene()
+println(length(s.items), s.width, s.height, s.background)
+[x, y, h] = draw.where()
+println(x, y, h)
+draw.line(-1, 0, 1, 1)
+println(length(draw.scene().items))

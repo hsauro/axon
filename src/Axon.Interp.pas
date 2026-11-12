@@ -1181,7 +1181,7 @@ begin
     Key := Key + Chr(Ord('a') + Ord(Types[K]));
   if not F.JitCodes.TryGetValue(Key, Result) then
   begin
-    Result := JitCompile(F.Decl, F, F.FileName, Types, F.IsClosure, F.JitReason);
+    Result := JitCompile(F.Decl, F, F.FileName, Types, F.IsClosure, F.JitReason, Args);
     F.JitCodes.Add(Key, Result);
   end;
   F.JitLastTypes := Types;

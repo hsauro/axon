@@ -104,7 +104,8 @@ function JitTypeOf(const V: TAxValue): TJType;
   arguments it is called with, or returns nil, with the reason, when it is
   rejected or MIR is unavailable. }
 function JitCompile(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
-  const ArgTypes: TArray<TJType>; IsClosure: Boolean; out Reason: string): TJitCode;
+  const ArgTypes: TArray<TJType>; IsClosure: Boolean; out Reason: string;
+  const ArgValues: TAxValues = nil): TJitCode;
 
 { Compiles a top-level loop (J12): Decl is the declaration made for it, its
   body the loop; FuncObj resolves calls in the module root; Outer looks up
@@ -830,7 +831,8 @@ begin
 end;
 
 function JitCompile(Decl: TFunctionDecl; FuncObj: TObject; const FileName: string;
-  const ArgTypes: TArray<TJType>; IsClosure: Boolean; out Reason: string): TJitCode;
+  const ArgTypes: TArray<TJType>; IsClosure: Boolean; out Reason: string;
+  const ArgValues: TAxValues): TJitCode;
 var
   E: TJEntry;
   Types: TArray<TJType>;
@@ -841,7 +843,8 @@ begin
     Reason := 'the JIT is unavailable: ' + MirError;
     Exit;
   end;
-  if not SignatureFor(Decl, ArgTypes, Types, Reason) then
+  // The values, when given, let a rejection say what was passed.
+  if not SignatureFor(Decl, ArgTypes, Types, Reason, ArgValues) then
   begin
     LogDecision(Format('rejected %s: %s'#9'%s', [Decl.Name, Reason, FileName]));
     Exit;

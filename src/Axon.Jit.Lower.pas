@@ -216,7 +216,7 @@ type
   be typed. jtNothing in ArgTypes is an argument of a type that does not
   compile. }
 function SignatureFor(Decl: TFunctionDecl; const ArgTypes: TArray<TJType>;
-  out ParamTypes: TArray<TJType>; out Reason: string): Boolean;
+  out ParamTypes: TArray<TJType>; out Reason: string; const ArgValues: TAxValues = nil): Boolean;
 
 (* The parameter types as text: "int, vector{real}". *)
 function TypesText(const Types: TArray<TJType>): string;
@@ -3376,8 +3376,77 @@ begin
   Result := False;
 end;
 
+(* Why a value passed to parameter Name does not compile, and what to do,
+  for the JIT report: "parameter A is passed a matrix{int}, ...". *)
+function UncompiledArgument(const Name: string; const V: TAxValue): string;
+var
+  What, Hint: string;
+  A: TArrayObj;
+begin
+  Hint := '';
+  case V.Kind of
+    vkArray:
+      begin
+        A := AsArray(V);
+        if A.IsVector then
+          What := Format('a vector{%s}', [ElemTypeName(A.ElemType)])
+        else
+          What := Format('a matrix{%s}', [ElemTypeName(A.ElemType)]);
+        case A.ElemType of
+          etInt:
+            Hint := Format('; matrices compile when they hold reals: write one entry as a real ' +
+              '(2.0 rather than 2), or pass %s + 0.0', [Name]);
+          etBool:
+            Hint := '; arrays of bools are not compiled';
+          etComplex:
+            Hint := '; complex numbers are not compiled';
+        end;
+      end;
+    vkComplex:
+      begin
+        What := 'a complex number';
+        Hint := '; complex numbers are not compiled';
+      end;
+    vkRange:
+      begin
+        What := 'a range';
+        Hint := Format('; ranges are not compiled as values: pass vector(%s) instead', [Name]);
+      end;
+    vkDict:
+      begin
+        What := 'a dictionary';
+        Hint := '; dictionaries are not compiled';
+      end;
+    vkList:
+      begin
+        What := 'a list';
+        Hint := '; a list compiles when all its items have one type';
+      end;
+    vkNothing:
+      begin
+        What := 'nothing';
+        Hint := '; nothing is not compiled';
+      end;
+    vkFunction, vkBuiltin:
+      begin
+        What := 'a function';
+        Hint := '; functions passed as values are not compiled yet';
+      end;
+    vkRecord:
+      begin
+        What := 'a record';
+        Hint := '; a record compiles when the values of all its fields do';
+      end;
+  else
+    What := 'a ' + TypeName(V);
+  end;
+  if Hint = '' then
+    Hint := ', a type that is not compiled';
+  Result := Format('parameter %s is passed %s%s', [Name, What, Hint]);
+end;
+
 function SignatureFor(Decl: TFunctionDecl; const ArgTypes: TArray<TJType>;
-  out ParamTypes: TArray<TJType>; out Reason: string): Boolean;
+  out ParamTypes: TArray<TJType>; out Reason: string; const ArgValues: TAxValues): Boolean;
 var
   K: Integer;
   P: TParam;
@@ -3415,6 +3484,8 @@ begin
     begin
       if P.TypeRef <> nil then
         Reason := Format('parameter %s: %s', [P.Name, TypeHint(P.TypeRef)])
+      else if K < Length(ArgValues) then
+        Reason := UncompiledArgument(P.Name, ArgValues[K])
       else
         Reason := Format('parameter %s is passed a value of a type that is not compiled', [P.Name]);
       Exit(False);

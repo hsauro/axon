@@ -182,6 +182,21 @@ export function frame(; fps = 30, scale = 1.0, save = nothing)
   changed = false
 end
 
+## Clears the canvas and shows it empty: everything drawn on it goes (also
+## what was not shown yet), its size, view and background stay, and the
+## turtle goes back to the middle, heading up. With no canvas yet, it makes
+## one with the defaults, as the drawing functions do.
+export function clear(; scale = 2.0)
+  global items
+  global changed
+  global sent
+  c = canvas_now()
+  items = {}
+  sent = 0
+  reset_turtle((c.view[1] + c.view[2]) / 2, (c.view[3] + c.view[4]) / 2, 90.0)
+  show(scale = scale)
+end
+
 function show_unshown()
   flush()
   if changed and length(items) > 0
