@@ -132,6 +132,15 @@
                 <Source>
                     <Source Name="MainSource">AxonIDE.dpr</Source>
                 </Source>
+                <Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\CustomTrackbarPackage.bpl">File C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\CustomTrackbarPackage.bpl not found</Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\HexColorPickerFmxDT370.bpl">File C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\HexColorPickerFmxDT370.bpl not found</Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\mbColorLibDXE8.bpl">File C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\mbColorLibDXE8.bpl not found</Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\MyFmxComponents.bpl">(untitled)</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\dcloffice2k370.bpl">Microsoft Office 2000 Sample Automation Server Wrapper Components</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\dclofficexp370.bpl">Microsoft Office XP Sample Automation Server Wrapper Components</Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\HexaColorPickerDT.bpl">File C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\HexaColorPickerDT.bpl not found</Excluded_Packages>
+                </Excluded_Packages>
             </Delphi.Personality>
             <Platforms>
                 <Platform value="OSX64">False</Platform>
