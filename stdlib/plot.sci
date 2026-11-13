@@ -1487,11 +1487,12 @@ function render_3d(fig)
   cy = top + (H - top) / 2
   scale = min(W, H - top) * 0.3
   # Projection of a normalised point (u, v, w): screen x, screen y and depth
-  # (larger is farther). The viewer is at elevation el above the rotated
-  # u-v plane, looking towards +v; heights are squashed to 0.8.
+  # (larger is farther). The view is MATLAB's view(azim, elev), as in the
+  # IDE's 3D chart: at azim 0 the viewer looks along +v with u to the right,
+  # at azim 90 along -u with v to the right; heights are squashed to 0.8.
   proj = function(u, v, w)
-    rx = ca * u - sa * v
-    ry = sa * u + ca * v
+    rx = ca * u + sa * v
+    ry = -sa * u + ca * v
     wz = 0.8 * w
     return cx + scale * rx, cy - scale * (se * ry + ce * wz), ce * ry - se * wz
   end
@@ -1568,7 +1569,7 @@ function render_3d(fig)
   # Bars: whole bars, far to near by where they stand (they never overlap
   # there, so that hides them correctly), each drawn as the faces that look
   # towards the viewer, the sides darkened a little so the bars read as
-  # solid. In (u, v, w), towards the viewer is (-ce sa, -ce ca, se).
+  # solid. In (u, v, w), towards the viewer is (ce sa, -ce ca, se).
   for s in fig.series
     if s.type == "bar3"
       [m, n] = size(s.z)
@@ -1603,7 +1604,7 @@ function render_3d(fig)
       keys = zeros(m * n)
       for i in 1:m
         for j in 1:n
-          keys[(i - 1) * n + j] = -(sa * nx(s.x[j]) + ca * ny(s.y[i]))
+          keys[(i - 1) * n + j] = -(-sa * nx(s.x[j]) + ca * ny(s.y[i]))
         end
       end
       w0 = nz(0.0)
@@ -1630,7 +1631,7 @@ function render_3d(fig)
           faces = {}
           if sa != 0
             uf = u0
-            if sa < 0 uf = u1 end
+            if sa > 0 uf = u1 end
             faces = append(faces, face([uf, uf, uf, uf], [v0, v1, v1, v0], [wlo, wlo, whi, whi],
                                        col, 0.3))
           end
@@ -1692,9 +1693,18 @@ function render_3d(fig)
     end
   end
 
-  # Axis labels at the front edges. Bars with names (bar3 given lists for x
-  # or y) put the names along the edge instead of the range, and the label,
-  # if there is one, beyond them.
+  # Axis labels at the front edges: x's along v = vf and y's along u = uf,
+  # the sides nearer the viewer, and z's above the corner furthest left.
+  # Bars with names (bar3 given lists for x or y) put the names along the
+  # edge instead of the range, and the label, if there is one, beyond them.
+  [t1, t2, dlo] = proj(0, -1, -1)
+  [t1, t2, dhi] = proj(0, 1, -1)
+  vf = -1
+  if dhi < dlo vf = 1 end
+  [t1, t2, dlo] = proj(-1, 0, -1)
+  [t1, t2, dhi] = proj(1, 0, -1)
+  uf = -1
+  if dhi < dlo uf = 1 end
   xnames = nothing
   ynames = nothing
   for s in fig.series
@@ -1704,36 +1714,49 @@ function render_3d(fig)
     end
   end
   if typeof(xnames) == "nothing"
-    [ax, ay, ad] = proj(0, -1.25, -1)
+    [ax, ay, ad] = proj(0, 1.25 * vf, -1)
     items = append(items, text_item(ax, ay, axis_text(fig.xlabel, "x", xmin, xmax),
                                     size_or(fig.xlabel_size, TICK_SIZE), "middle", "top"))
   else
-    for k in 1:length(xnames)
-      [ax, ay, ad] = proj(nx(k), -1.12, -1)
+    [px1, py1, d1] = proj(nx(1), 1.12 * vf, -1)
+    [px2, py2, d2] = proj(nx(2), 1.12 * vf, -1)
+    step = name_step(xnames, px2 - px1, py2 - py1, TICK_SIZE)
+    for k in 1:step:length(xnames)
+      [ax, ay, ad] = proj(nx(k), 1.12 * vf, -1)
       items = append(items, text_item(ax, ay, xnames[k], TICK_SIZE, "middle", "top"))
     end
     if typeof(fig.xlabel) != "nothing"
-      [ax, ay, ad] = proj(0, -1.8, -1)
+      [ax, ay, ad] = proj(0, 1.8 * vf, -1)
       items = append(items, text_item(ax, ay, fig.xlabel, size_or(fig.xlabel_size, TICK_SIZE),
                                       "middle", "top"))
     end
   end
   if typeof(ynames) == "nothing"
-    [bx, by, bd] = proj(1.25, 0, -1)
+    [bx, by, bd] = proj(1.25 * uf, 0, -1)
     items = append(items, text_item(bx, by, axis_text(fig.ylabel, "y", ymin, ymax),
                                     size_or(fig.ylabel_size, TICK_SIZE), "middle", "top"))
   else
-    for k in 1:length(ynames)
-      [bx, by, bd] = proj(1.12, ny(k), -1)
+    [px1, py1, d1] = proj(1.12 * uf, ny(1), -1)
+    [px2, py2, d2] = proj(1.12 * uf, ny(2), -1)
+    step = name_step(ynames, px2 - px1, py2 - py1, TICK_SIZE)
+    for k in 1:step:length(ynames)
+      [bx, by, bd] = proj(1.12 * uf, ny(k), -1)
       items = append(items, text_item(bx, by, ynames[k], TICK_SIZE, "middle", "top"))
     end
     if typeof(fig.ylabel) != "nothing"
-      [bx, by, bd] = proj(1.8, 0, -1)
+      [bx, by, bd] = proj(1.8 * uf, 0, -1)
       items = append(items, text_item(bx, by, fig.ylabel, size_or(fig.ylabel_size, TICK_SIZE),
                                       "middle", "top"))
     end
   end
-  [zx, zy, zd] = proj(-1, -1, 1.15)
+  zx = 1.0 / 0.0
+  for c in corners
+    [cxp, cyp, cd] = proj(c[1], c[2], 1.15)
+    if cxp < zx
+      zx = cxp
+      zy = cyp
+    end
+  end
   items = append(items, text_item(zx, zy, axis_text(fig.zlabel, "z", zmin, zmax),
                                   size_or(fig.zlabel_size, TICK_SIZE), "middle", "bottom"))
   if typeof(fig.title) != "nothing"
@@ -1747,6 +1770,29 @@ function render_3d(fig)
     items = append(items, legend_items(labelled, W - lw - 12.0, top + 8.0, lw, lh))
   end
   return {width: W, height: H, background: "white", items: items}
+end
+
+# Every how many names to write along an edge so that they do not overlap:
+# neighbouring names are (dx, dy) apart on the page, and written size points
+# high; one far enough apart either across or down is enough.
+function name_step(names, dx, dy, size)
+  n = length(names)
+  if n < 2
+    return 1
+  end
+  w = 0.0
+  for name in names
+    w = max(w, graphics.text_width(name, size))
+  end
+  across = n
+  down = n
+  if abs(dx) > 0
+    across = ceil((w + 4) / abs(dx))
+  end
+  if abs(dy) > 0
+    down = ceil(size * 1.3 / abs(dy))
+  end
+  return max(1, int(min(across, down)))
 end
 
 function axis_text(label, name, lo, hi)

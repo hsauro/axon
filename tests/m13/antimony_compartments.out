@@ -1,0 +1,30 @@
+{"S", "P"} {"X"} {"a", "b"}
+dict("inside" => 2, "outside" => 10) dict("S" => "inside", "X" => "outside", "P" => "outside")
+{"k1", "k2", "k3", "X", "inside", "outside"} 1×2 matrix{real}
+  2.0  10.0
+function(_t, _y, _p)
+  S = _y[1]
+  P = _y[2]
+  k1 = _p[1]
+  k2 = _p[2]
+  k3 = _p[3]
+  X = _p[4]
+  inside = _p[5]
+  outside = _p[6]
+  b = log(X)
+  a = 2*b
+  _v1 = k1*exp(a/2)
+  _v2 = inside*k2*S
+  _v3 = outside*k3*P
+  return [(_v1 - _v2)/inside; (_v2 - _v3)/outside]
+end
+success true
+true
+true
+true true
+dict("c1" => 2, "c2" => 10) {"B"}
+reduced success true
+augmented success true
+ArgumentError species A has an assignment rule but changes in a reaction; mark it $A (a boundary species)
+ArgumentError the assignment rules for x, y depend on each other in a cycle
+Invalid species declaration: species A in

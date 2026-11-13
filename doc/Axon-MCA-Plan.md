@@ -253,10 +253,14 @@ parallel once approved.
 
 ## Out of scope for now
 
-- Antimony features beyond the current subset: assignment and rate rules,
-  events, compartments and volumes, function definitions, units, and
-  parameters defined by expressions (`k1 = 2*k2`). These would be needed for
-  many published models; each is its own small step and can follow later.
+- Antimony features beyond the current subset: rate rules, events,
+  function definitions, units, and parameters defined by expressions
+  (`k1 = 2*k2`). Compartments, species declarations and assignment rules were
+  added afterwards (2026-11-13) for Millard et al.'s E. coli model
+  (`UserExamples/ecoli.txt`), whose control coefficients agree with
+  Tellurium's to about 1e-5 (`tests/m13/antimony_ecoli.sci`). Doing that
+  exposed a bug in MIR v1.0.0's optimiser, which compiled two of its 68 rate
+  laws wrongly; MIR is now pinned to a later commit.
 - Second-order (non-linear) control coefficients.
 - Time-dependent control coefficients along a simulation.
 - Symbolic elasticities (D2).

@@ -3283,6 +3283,20 @@ species. One \code{$} marks the name everywhere in the model. Its value is
 assigned like a parameter's, and the module passes it to the rate laws with
 the parameters.
 
+Larger models, such as those exported from SBML, also declare compartments
+and species, \code{compartment cell, outside} and
+\code{species A in cell, $X in outside}, and define values by assignment
+rules, \code{MgATP := MG*ATP/(Kd + MG)}, which are recomputed whenever the
+rates are. In such models a rate law gives an amount per unit time (often the
+compartment's size times a rate), so a species' concentration changes by its
+share of $N v$ divided by the size of its compartment; the module does that,
+and divides the rows of $N$ the same way for the conservation analysis below,
+so that conserved totals hold for concentrations. Rate laws may use \code{ln},
+the natural logarithm. Millard and colleagues' model of \emph{E. coli}'s core
+metabolism, with 64 floating species, 68 reactions, three compartments and
+three rules, loads this way, and its steady state, time course and control
+coefficients agree with Tellurium's.
+
 \section{Running a simulation}\label{sec:sim}
 
 The whole program is short:
@@ -3937,12 +3951,14 @@ feedback-inhibited pathway, from \texttt{mca.sci}.}
   module ships in the standard library.
 \end{itemize}
 
-The module reads only part of Antimony. It does not read compartments,
-events, function definitions or assignments of expressions. Each could be
-added in the same way as boundary species were: a boundary species keeps its
-name in the rate laws, gets no row in $N$, and takes its value from the
-parameter vector. The Language Reference's section ``The antimony module''
-lists exactly what is read.
+The module reads only part of Antimony. It does not read rate rules,
+events, function definitions or initial assignments of expressions. Each
+could be added in the same way as boundary species, compartments and
+assignment rules were: a boundary species keeps its name in the rate laws,
+gets no row in $N$, and takes its value from the parameter vector; a rule
+becomes one more line of the generated function, before the rates. The
+Language Reference's section ``The antimony module'' lists exactly what is
+read.
 
 % ===================================================================
 \chapter{Performance}\label{ch:perf}

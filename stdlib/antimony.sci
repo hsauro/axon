@@ -10,10 +10,18 @@
 ## appear in a reaction are species (initial values); the rest are
 ## parameters. "$X" in a reaction makes X a boundary species, held fixed:
 ##   $X0 -> S1; k1*X0             # a source at a fixed concentration
-## so the species that change are the floating ones. simulate solves a whole time span; simulator, step and set
-## advance a simulation in steps, changing values between them; steady_state
-## finds where the species stop changing. See the Language Reference, "The
-## antimony module".
+## so the species that change are the floating ones. Compartments, species
+## declarations and assignment rules are read too:
+##   compartment cell, outside; cell = 1; outside = 100
+##   species S1 in cell, $X0 in outside
+##   MgATP := MG*ATP/(Kd + MG)    # recomputed whenever the rates are
+## A rate law gives an amount per unit time, so a species' concentration
+## changes by its share of N v divided by its compartment's size.
+## simulate solves a whole time span; simulator, step and set advance a
+## simulation in steps, changing values between them; steady_state finds
+## where the species stop changing; control and response give the control
+## and response coefficients. See the Language Reference, "The antimony
+## module".
 
 import io
 import linalg
@@ -31,15 +39,21 @@ export record Reaction
 end
 
 ## A model: its reactions in order, its floating species (name to initial
-## value, or nothing when none was assigned) in the order they first appear,
-## its parameters (name to value) in the order they were assigned, and its
-## boundary species ($X in a reaction: name to value, or nothing), which stay
-## fixed, in the order they first appear.
+## value, or nothing when none was assigned) in the order they are first
+## declared or used, its parameters (name to value) in the order they were
+## assigned, its boundary species ($X: name to value, or nothing), which stay
+## fixed, its compartments (name to size, nothing for 1), the compartment of
+## each species declared in one (species_in: species name to compartment
+## name), and its assignment rules (rules: name to the expression, as
+## written, that gives its value).
 export record Model
   reactions: list
   species: dict
   parameters: dict
   boundary: dict
+  compartments: dict
+  species_in: dict
+  rules: dict
 end
 
 
@@ -135,19 +149,39 @@ function arrow_of(statement)
 end
 
 
+# A declared compartment, "name" or "name = size": its name and size
+# (nothing when none is given).
+function declared(item, statement)
+  parts = split(item, "=")
+  name = trim(parts[1])
+  if name == "" or length(parts) > 2 or length(split(name)) != 1
+    error("Invalid declaration: " + statement)
+  end
+  if length(parts) == 2
+    return name, read_number(trim(parts[2]))
+  end
+  return name, nothing
+end
+
+
 ## The model in the text source.
 export function load(source)
   statements = statements_of(source)
   reactions = {}
-  species = dict()    # every name in a reaction
-  boundary = dict()   # the names marked with "$" anywhere
-  values = dict()     # every assignment; split into species and parameters at the end
-  unnamed = 0         # reactions given no name so far
+  species = dict()       # every species, declared or in a reaction, in order
+  reacting = dict()      # the names that take part in a reaction
+  boundary = dict()      # the names marked with "$" anywhere
+  compartments = dict()  # name to size (nothing: 1)
+  species_in = dict()    # species to compartment
+  rules = dict()         # name to expression
+  values = dict()        # every assignment; sorted out at the end
+  unnamed = 0            # reactions given no name so far
 
   i = 1
   while i <= length(statements)
     statement = statements[i]
     arrow = arrow_of(statement)
+    first = split(statement)[1]
 
     if arrow != nothing
       # An optional name before a colon, "J1: A -> B"; unnamed reactions
@@ -173,6 +207,7 @@ export function load(source)
       for side in {reactants, products}
         for s in keys(side)
           species[s] = nothing
+          reacting[s] = true
         end
       end
 
@@ -182,6 +217,54 @@ export function load(source)
         error("Missing rate law for reaction: " + statement)
       end
       reactions = append(reactions, Reaction(name, reactants, products, statements[i]))
+    elseif first == "compartment"
+      # compartment cell, outside = 100
+      for item in split(trim(statement[12:end]), ",")
+        [name, size] = declared(item, statement)
+        compartments[name] = nothing
+        if size != nothing
+          values[name] = size
+        end
+      end
+    elseif first == "species"
+      # species A in cell, $B in cell, C
+      for item in split(trim(statement[8:end]), ",")
+        words = split(trim(item))
+        place = nothing
+        if length(words) == 3 and words[2] == "in"
+          place = words[3]
+        elseif length(words) != 1
+          error("Invalid species declaration: " + statement)
+        end
+        name = words[1]
+        if startswith(name, "$")
+          name = trim(name[2:end])
+          boundary[name] = nothing
+        end
+        if name == ""
+          error("Invalid species declaration: " + statement)
+        end
+        species[name] = nothing
+        if place != nothing
+          species_in[name] = place
+          if not haskey(compartments, place)
+            compartments[place] = nothing
+          end
+        end
+      end
+    elseif contains(statement, ":=")
+      # An assignment rule, name := expression.
+      k = find(statement, ":=")
+      name = trim(statement[1:k - 1])
+      if startswith(name, "$")
+        name = trim(name[2:end])
+        boundary[name] = nothing
+      end
+      expr = trim(statement[k + 2:end])
+      if name == "" or expr == "" or length(split(name)) != 1
+        error("Invalid assignment rule: " + statement)
+      end
+      rules[name] = expr
     else
       parts = split(statement, "=")
       if length(parts) != 2
@@ -199,27 +282,50 @@ export function load(source)
   end
 
   # A name marked "$" once is a boundary species everywhere, as in Antimony;
-  # the others in reactions float.
+  # a name with a rule is computed, so it is neither a species that changes
+  # nor a value of its own.
+  for name in keys(rules)
+    if haskey(reacting, name) and not haskey(boundary, name)
+      error("ArgumentError", "species " + name + " has an assignment rule but changes in " +
+        "a reaction; mark it $" + name + " (a boundary species)")
+    end
+    if haskey(compartments, name)
+      error("ArgumentError", "the size of compartment " + name +
+        " is given by a rule, which is not read")
+    end
+  end
   floating = dict()
   for name in keys(species)
-    if not haskey(boundary, name)
+    if not haskey(boundary, name) and not haskey(rules, name)
       floating[name] = nothing
     end
   end
+  fixed = dict()
+  for name in keys(boundary)
+    if not haskey(rules, name)
+      fixed[name] = nothing
+    end
+  end
 
-  # Assignments may come before or after the reactions that use a name.
+  # Assignments may come before or after the reactions that use a name. A
+  # value for a name with a rule would only be where it starts; the rule
+  # decides, so it is left out.
   parameters = dict()
   for name in keys(values)
-    if haskey(floating, name)
+    if haskey(rules, name)
+      # computed
+    elseif haskey(floating, name)
       floating[name] = values[name]
-    elseif haskey(boundary, name)
-      boundary[name] = values[name]
+    elseif haskey(fixed, name)
+      fixed[name] = values[name]
+    elseif haskey(compartments, name)
+      compartments[name] = values[name]
     else
       parameters[name] = values[name]
     end
   end
 
-  return Model(reactions, floating, parameters, boundary)
+  return Model(reactions, floating, parameters, fixed, compartments, species_in, rules)
 end
 
 
@@ -246,13 +352,50 @@ end
 
 
 ## The names of the values in parameter_values(model): the parameters, then
-## the boundary species.
+## the boundary species, then the compartments.
 export function parameter_names(model)
   names = keys(model.parameters)
   for b in keys(model.boundary)
     names = append(names, b)
   end
+  for c in keys(model.compartments)
+    names = append(names, c)
+  end
   return names
+end
+
+
+## The size of each floating species' compartment, in the order of
+## species_names (1 for a species in no compartment, or in one whose size was
+## never assigned): a species' concentration changes at its row of N v
+## divided by it.
+export function volumes(model)
+  names = keys(model.species)
+  v = ones(length(names))
+  for i in 1:length(names)
+    if haskey(model.species_in, names[i])
+      size = model.compartments[model.species_in[names[i]]]
+      if size != nothing
+        v[i] = size
+      end
+    end
+  end
+  return v
+end
+
+
+# The stoichiometry matrix with each species' row divided by its
+# compartment's size: dy/dt = (this) v for the concentrations y. Its
+# conservation laws hold for concentrations.
+function scaled_stoichiometry(model)
+  N = stoichiometry(model)
+  v = volumes(model)
+  for i in 1:length(v)
+    if v[i] != 1
+      N[i, :] = N[i, :] / v[i]
+    end
+  end
+  return N
 end
 
 
@@ -302,12 +445,14 @@ function term(c, v)
 end
 
 
-## The parameters' values, then the boundary species' values, as a real
-## vector in the order of parameter_names(model): the vector rhs(model) reads
-## as its third argument. A boundary species with no assigned value is 0.
+## The parameters' values, then the boundary species' values, then the
+## compartments' sizes, as a real vector in the order of
+## parameter_names(model): the vector rhs(model) reads as its third
+## argument. A boundary species with no assigned value is 0, a compartment
+## with no size 1.
 export function parameter_values(model)
   names = keys(model.parameters)
-  p = zeros(length(names) + length(model.boundary))
+  p = zeros(length(names) + length(model.boundary) + length(model.compartments))
   for i in 1:length(names)
     p[i] = model.parameters[names[i]]
   end
@@ -319,6 +464,14 @@ export function parameter_values(model)
       p[k] = v
     end
   end
+  for c in keys(model.compartments)
+    k = k + 1
+    v = model.compartments[c]
+    if v == nothing
+      v = 1
+    end
+    p[k] = v
+  end
   return p
 end
 
@@ -327,17 +480,24 @@ end
 # built-in functions; parse_function reports any other name with its
 # position.
 function check_rates(model)
-  known = join(keys(model.species), ", ")
-  pnames = parameter_names(model)
-  if length(pnames) > 0
-    if known != ""
-      known = known + ", "
+  names = keys(model.species)
+  for n in parameter_names(model)
+    names = append(names, n)
+  end
+  for n in keys(model.rules)
+    names = append(names, n)
+  end
+  known = join(names, ", ")
+  for n in keys(model.rules)
+    try
+      parse_function(known, translate(model.rules[n]))
+    catch err
+      error(err.kind, "assignment rule for " + n + ": " + err.message)
     end
-    known = known + join(pnames, ", ")
   end
   for r in model.reactions
     try
-      parse_function(known, r.rate)
+      parse_function(known, translate(r.rate))
     catch err
       error(err.kind, "rate law of reaction " + r.name + ": " + err.message)
     end
@@ -345,9 +505,127 @@ function check_rates(model)
 end
 
 
+# Whether c, one character, can start a name, or is a digit.
+function is_letter(c)
+  return ("a" <= c and c <= "z") or ("A" <= c and c <= "Z") or c == "_"
+end
+function is_digit(c)
+  return "0" <= c and c <= "9"
+end
+
+# An expression's text in pieces: names, numbers (with an exponent) and the
+# characters between them, which join back to the text.
+function pieces(expr)
+  result = {}
+  n = length(expr)
+  i = 1
+  while i <= n
+    c = expr[i]
+    j = i
+    if is_letter(c)
+      while j < n and (is_letter(expr[j + 1]) or is_digit(expr[j + 1]))
+        j = j + 1
+      end
+    elseif is_digit(c) or (c == "." and i < n and is_digit(expr[i + 1]))
+      while j < n and (is_digit(expr[j + 1]) or expr[j + 1] == ".")
+        j = j + 1
+      end
+      if j < n and (expr[j + 1] == "e" or expr[j + 1] == "E")
+        k = j + 2
+        if k <= n and (expr[k] == "+" or expr[k] == "-")
+          k = k + 1
+        end
+        if k <= n and is_digit(expr[k])
+          j = k
+          while j < n and is_digit(expr[j + 1])
+            j = j + 1
+          end
+        end
+      end
+    end
+    result = append(result, expr[i:j])
+    i = j + 1
+  end
+  return result
+end
+
+# The names an expression uses.
+function names_in(expr)
+  result = {}
+  for piece in pieces(expr)
+    if is_letter(piece[1])
+      result = append(result, piece)
+    end
+  end
+  return result
+end
+
+# A rate law or rule as Axon code: Antimony's ln is Axon's log (Antimony's
+# log is the natural logarithm too).
+function translate(expr)
+  if find(expr, "ln") == 0
+    return expr
+  end
+  ps = pieces(expr)
+  for k in 1:length(ps)
+    if ps[k] == "ln"
+      ps[k] = "log"
+    end
+  end
+  return join(ps, "")
+end
+
+# The rules' names in an order in which each comes after the rules it uses.
+function ordered_rules(model)
+  names = keys(model.rules)
+  uses = dict()
+  for n in names
+    deps = {}
+    for t in names_in(model.rules[n])
+      if haskey(model.rules, t) and t != n
+        deps = append(deps, t)
+      end
+    end
+    uses[n] = deps
+  end
+  done = dict()
+  order = {}
+  while length(order) < length(names)
+    progress = false
+    for n in names
+      if not haskey(done, n)
+        ready = true
+        for d in uses[n]
+          if not haskey(done, d)
+            ready = false
+          end
+        end
+        if ready
+          order = append(order, n)
+          done[n] = true
+          progress = true
+        end
+      end
+    end
+    if not progress
+      left = {}
+      for n in names
+        if not haskey(done, n)
+          left = append(left, n)
+        end
+      end
+      error("ArgumentError", "the assignment rules for " + join(left, ", ") +
+        " depend on each other in a cycle")
+    end
+  end
+  return order
+end
+
+
 # The first lines of the functions rhs_text and rates_text write: the header,
-# the species, parameters and boundary species as local names set from _y
-# and _p, and the rates _v1, _v2, ... of the reactions in order.
+# the species, parameters, boundary species and compartments as local names
+# set from _y and _p, the assignment rules (each after those it uses), and
+# the rates _v1, _v2, ... of the reactions in order.
 function rate_lines(model, header)
   check_rates(model)
   names = keys(model.species)
@@ -359,8 +637,11 @@ function rate_lines(model, header)
   for i in 1:length(pnames)
     lines = append(lines, "  " + pnames[i] + " = _p[" + string(i) + "]")
   end
+  for n in ordered_rules(model)
+    lines = append(lines, "  " + n + " = " + translate(model.rules[n]))
+  end
   for j in 1:length(model.reactions)
-    lines = append(lines, "  _v" + string(j) + " = " + model.reactions[j].rate)
+    lines = append(lines, "  _v" + string(j) + " = " + translate(model.reactions[j].rate))
   end
   return lines
 end
@@ -387,6 +668,11 @@ export function rhs_text(model)
       s = s[4:end]
     else
       s = "-" + s[4:end]
+    end
+    # Rates are amounts per unit time: a concentration changes by the
+    # amount over its compartment's size.
+    if s != "0.0" and haskey(model.species_in, names[i])
+      s = "(" + s + ")/" + model.species_in[names[i]]
     end
     rows = append(rows, s)
   end
@@ -583,7 +869,7 @@ end
 ## first, up to the rank of N. Both lists are in the order of species_names.
 export function conservation(model)
   names = species_names(model)
-  N = stoichiometry(model)
+  N = scaled_stoichiometry(model)
   [m, r] = size(N)
   rank = 0
   if r > 0
@@ -660,7 +946,7 @@ export function steady_state(model; guess = nothing, method = "reduced", ftol = 
     guess = y0
   end
   if method == "augmented"
-    K = linalg.null(stoichiometry(model)')       # orthonormal; K' N = 0
+    K = linalg.null(scaled_stoichiometry(model)')   # orthonormal; K' N = 0
     totals = K' * y0
     residual = function(y, p) return f(0.0, y, p) + K * (K' * y - totals) end
     r = nonlin.solve(residual, guess, params = p, ftol = ftol, max_iters = max_iters)

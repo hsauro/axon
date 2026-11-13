@@ -13,6 +13,12 @@ tests/m13/tellurium/mca_reference.json. The Axon test
 tests/m13/antimony_tellurium.sci then compares antimony.control with them.
 Each model's Antimony text goes in the file too, so both sides use the same
 model. It also prints the matrices, to read.
+
+The E. coli model in tests/m13/tellurium/ecoli.ant (Millard et al.'s core
+metabolism: 64 floating species, 68 reactions, three compartments and three
+assignment rules; a copy of UserExamples/ecoli.txt) gets its own file,
+tests/m13/tellurium/ecoli_reference.json: the steady state, fluxes, scaled
+elasticities and scaled control coefficients, for tests/m13/antimony_ecoli.sci.
 """
 
 import json
@@ -106,6 +112,28 @@ def main():
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=1)
+    print("wrote", os.path.normpath(target))
+
+    # The E. coli model: written compactly (the matrices are 68 x 68 and 64 x 68).
+    folder = os.path.dirname(target)
+    with open(os.path.join(folder, "ecoli.ant"), encoding="utf-8") as f:
+        source = f.read()
+    r = te.loada(source)
+    r.conservedMoietyAnalysis = True
+    r.steadyState()
+    ecoli = {
+        "tellurium": te.__version__, "roadrunner": roadrunner.__version__,
+        "species": [str(s) for s in r.getFloatingSpeciesIds()],
+        "y": [float(v) for v in r.getFloatingSpeciesConcentrations()],
+        "reactions": [str(s) for s in r.getReactionIds()],
+        "J": [float(v) for v in r.getReactionRates()],
+        "elasticities": named(r.getScaledElasticityMatrix()),
+        "flux_control": named(r.getScaledFluxControlCoefficientMatrix()),
+        "concentration_control": named(r.getScaledConcentrationControlCoefficientMatrix()),
+    }
+    target = os.path.join(folder, "ecoli_reference.json")
+    with open(target, "w", encoding="utf-8") as f:
+        json.dump(ecoli, f)
     print("wrote", os.path.normpath(target))
 
 
