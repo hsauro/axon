@@ -1,3 +1,8 @@
 Waves t y
 nothing t nothing
 nothing
+18.0 14.0 nothing
+nothing
+ArgumentError plot.ylabel: size must be positive
+TypeError plot.title: size must be a number, got string
+true

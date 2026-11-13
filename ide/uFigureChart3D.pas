@@ -158,6 +158,7 @@ var
   Series, Lim: TJSONArray;
   K: Integer;
   HasSurface: Boolean;
+  AxisSize: Double;
 begin
   Result := False;
   begin
@@ -176,6 +177,15 @@ begin
     Plot.AxisTitleX := Str(Fig.GetValue('xlabel'));
     Plot.AxisTitleY := Str(Fig.GetValue('ylabel'));
     Plot.AxisTitleZ := Str(Fig.GetValue('zlabel'));
+    // Font sizes from plot.title and the labels (the chart has one size for
+    // its three axis titles: the largest given), else the chart's defaults.
+    Plot.ChartTitleFontSize := Num(Fig.GetValue('title_size'), 15);
+    AxisSize := Max(Num(Fig.GetValue('xlabel_size'), 0), Max(Num(Fig.GetValue('ylabel_size'), 0),
+      Num(Fig.GetValue('zlabel_size'), 0)));
+    if AxisSize > 0 then
+      Plot.AxisTitleFontSize := AxisSize
+    else
+      Plot.AxisTitleFontSize := 12.5;
     Plot.LegendVisible := Bool(Fig.GetValue('legend'), True);
     Plot.ShowColorBar := HasSurface;
 

@@ -2600,6 +2600,10 @@ sample mean: 4.950
 
 \section{Surfaces and 3D plots}
 
+\code{plot.title}, \code{plot.xlabel}, \code{plot.ylabel} and \code{plot.zlabel}
+take a font size in points, \code{plot.xlabel("time (s)", size = 14)}, for
+figures that will be shown on a slide or printed small.
+
 \code{plot.surface(x, y, Z)} draws the surface with height \code{Z[i, j]} above
 the point \code{(x[j], y[i])}, coloured by height. \code{colormap} chooses the
 colours: \code{"viridis"} (the default), \code{"plasma"}, \code{"coolwarm"}

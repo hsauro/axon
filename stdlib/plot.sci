@@ -100,7 +100,45 @@ function new_figure(width, height, title)
   return {width: width + 0.0, height: height + 0.0, title: title, xlabel: nothing,
           ylabel: nothing, zlabel: nothing, xlim: nothing, ylim: nothing, grid: true,
           legend: true, series: {}, three_d: false, elev: 30.0, azim: -60.0,
-          xcategories: nothing, xticks: nothing, legend_position: "best"}
+          xcategories: nothing, xticks: nothing, legend_position: "best",
+          title_size: nothing, xlabel_size: nothing, ylabel_size: nothing,
+          zlabel_size: nothing}
+end
+
+# A figure record with the font-size fields, which records saved before they
+# existed (and read back with io.read_json) lack: nothing, the default size.
+function sized(fig)
+  try
+    s = fig.title_size
+  catch err
+    fig.title_size = nothing
+    fig.xlabel_size = nothing
+    fig.ylabel_size = nothing
+    fig.zlabel_size = nothing
+  end
+  return fig
+end
+
+# A size that was set, or the default.
+function size_or(v, default)
+  if typeof(v) == "nothing"
+    return default
+  end
+  return v
+end
+
+# A font size for a title or label: nothing (the default) or a positive number.
+function font_size(size, what)
+  if typeof(size) == "nothing"
+    return nothing
+  end
+  if typeof(size) != "int" and typeof(size) != "real"
+    fail("TypeError", what + ": size must be a number, got " + typeof(size))
+  end
+  if not (size > 0)
+    fail("ArgumentError", what + ": size must be positive")
+  end
+  return size + 0.0
 end
 
 # Every plotting call goes through here (or plot.figure), so the figure is
@@ -607,36 +645,50 @@ function label_text(text, what)
   return text
 end
 
-## Sets the title of the current figure; nothing removes it.
-export function title(text)
+## Sets the title of the current figure; nothing removes it. size is the
+## font size in points (13 by default, bold).
+export function title(text; size = nothing)
   global current
   label_text(text, "plot.title: the title")
+  size = font_size(size, "plot.title")
   figure_now()
+  current = sized(current)
   current.title = text
+  current.title_size = size
 end
 
-## Sets the x-axis label; nothing removes it.
-export function xlabel(text)
+## Sets the x-axis label; nothing removes it. size is the font size in
+## points (11 by default; 10 on a 3D figure).
+export function xlabel(text; size = nothing)
   global current
   label_text(text, "plot.xlabel: the label")
+  size = font_size(size, "plot.xlabel")
   figure_now()
+  current = sized(current)
   current.xlabel = text
+  current.xlabel_size = size
 end
 
-## Sets the y-axis label; nothing removes it.
-export function ylabel(text)
+## Sets the y-axis label; nothing removes it. size as for xlabel.
+export function ylabel(text; size = nothing)
   global current
   label_text(text, "plot.ylabel: the label")
+  size = font_size(size, "plot.ylabel")
   figure_now()
+  current = sized(current)
   current.ylabel = text
+  current.ylabel_size = size
 end
 
-## Sets the z-axis label (surfaces); nothing removes it.
-export function zlabel(text)
+## Sets the z-axis label (surfaces); nothing removes it. size as for xlabel.
+export function zlabel(text; size = nothing)
   global current
   label_text(text, "plot.zlabel: the label")
+  size = font_size(size, "plot.zlabel")
   figure_now()
+  current = sized(current)
   current.zlabel = text
+  current.zlabel_size = size
 end
 
 ## Puts the x-axis ticks at the given positions, labelled with the given
@@ -889,6 +941,7 @@ function text_item(x, y, s, size, anchor, baseline)
 end
 
 function render(fig)
+  fig = sized(fig)
   if fig.three_d
     return render_3d(fig)
   end
@@ -945,13 +998,16 @@ function render_2d(fig)
     wmax = max(wmax, graphics.text_width(s, TICK_SIZE))
   end
 
-  # Margins around the plot area.
+  # Margins around the plot area, from the title's and labels' sizes.
+  ts = size_or(fig.title_size, TITLE_SIZE)
+  xs = size_or(fig.xlabel_size, LABEL_SIZE)
+  ys = size_or(fig.ylabel_size, LABEL_SIZE)
   top = 12.0
-  if typeof(fig.title) != "nothing" top = TITLE_SIZE * 2.2 end
+  if typeof(fig.title) != "nothing" top = ts * 2.2 end
   left = 12.0 + wmax + 8.0
-  if typeof(fig.ylabel) != "nothing" left = left + LABEL_SIZE * 1.8 end
+  if typeof(fig.ylabel) != "nothing" left = left + ys * 1.8 end
   bottom = 12.0 + TICK_SIZE * 1.6
-  if typeof(fig.xlabel) != "nothing" bottom = bottom + LABEL_SIZE * 1.8 end
+  if typeof(fig.xlabel) != "nothing" bottom = bottom + xs * 1.8 end
   right = 20.0
   [labelled, lw, lh] = legend_size(fig.series)
   show_legend = fig.legend and length(labelled) > 0
@@ -1025,17 +1081,17 @@ function render_2d(fig)
 
   # Labels and title.
   if typeof(fig.xlabel) != "nothing"
-    items = append(items, text_item((px0 + px1) / 2, H - 10.0, fig.xlabel, LABEL_SIZE,
+    items = append(items, text_item((px0 + px1) / 2, H - 10.0, fig.xlabel, xs,
                                     "middle", "bottom"))
   end
   if typeof(fig.ylabel) != "nothing"
-    items = append(items, {kind: "text", x: 10.0 + LABEL_SIZE, y: (py0 + py1) / 2,
-                           text: fig.ylabel, size: LABEL_SIZE, anchor: "middle",
+    items = append(items, {kind: "text", x: 10.0 + ys, y: (py0 + py1) / 2,
+                           text: fig.ylabel, size: ys, anchor: "middle",
                            baseline: "alphabetic", angle: 90.0, color: "black"})
   end
   if typeof(fig.title) != "nothing"
     items = append(items, {kind: "text", x: (px0 + px1) / 2, y: top / 2, text: fig.title,
-                           size: TITLE_SIZE, anchor: "middle", baseline: "middle",
+                           size: ts, anchor: "middle", baseline: "middle",
                            bold: true, color: "black"})
   end
   if show_legend
@@ -1268,8 +1324,9 @@ function render_3d(fig)
   sa = sin(az)
   ce = cos(el)
   se = sin(el)
+  ts = size_or(fig.title_size, TITLE_SIZE)
   top = 12.0
-  if typeof(fig.title) != "nothing" top = TITLE_SIZE * 2.2 end
+  if typeof(fig.title) != "nothing" top = ts * 2.2 end
   cx = W / 2
   cy = top + (H - top) / 2
   scale = min(W, H - top) * 0.3
@@ -1385,17 +1442,17 @@ function render_3d(fig)
 
   # Axis labels at the front edges.
   [ax, ay, ad] = proj(0, -1.25, -1)
-  items = append(items, text_item(ax, ay, axis_text(fig.xlabel, "x", xmin, xmax), TICK_SIZE,
-                                  "middle", "top"))
+  items = append(items, text_item(ax, ay, axis_text(fig.xlabel, "x", xmin, xmax),
+                                  size_or(fig.xlabel_size, TICK_SIZE), "middle", "top"))
   [bx, by, bd] = proj(1.25, 0, -1)
-  items = append(items, text_item(bx, by, axis_text(fig.ylabel, "y", ymin, ymax), TICK_SIZE,
-                                  "middle", "top"))
+  items = append(items, text_item(bx, by, axis_text(fig.ylabel, "y", ymin, ymax),
+                                  size_or(fig.ylabel_size, TICK_SIZE), "middle", "top"))
   [zx, zy, zd] = proj(-1, -1, 1.15)
-  items = append(items, text_item(zx, zy, axis_text(fig.zlabel, "z", zmin, zmax), TICK_SIZE,
-                                  "middle", "bottom"))
+  items = append(items, text_item(zx, zy, axis_text(fig.zlabel, "z", zmin, zmax),
+                                  size_or(fig.zlabel_size, TICK_SIZE), "middle", "bottom"))
   if typeof(fig.title) != "nothing"
     items = append(items, {kind: "text", x: W / 2, y: top / 2, text: fig.title,
-                           size: TITLE_SIZE, anchor: "middle", baseline: "middle",
+                           size: ts, anchor: "middle", baseline: "middle",
                            bold: true, color: "black"})
   end
   # A legend of the labelled series, top right.

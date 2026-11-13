@@ -220,10 +220,12 @@ begin
   end;
 end;
 
-procedure SetTitle(T: TTextProperty; J: TJSONValue);
+procedure SetTitle(T: TTextProperty; J, Size: TJSONValue; Default: Single);
 begin
   T.Text := Str(J);
   T.Visible := T.Text <> '';
+  // plot.title(..., size = ...) and the labels' sizes; else the chart's own.
+  T.FontSize := Num(Size, Default);
 end;
 
 function ReadJson(const FileName: string): TJSONValue;
@@ -287,9 +289,9 @@ begin
           HasBars := True;
       end;
 
-    SetTitle(Plot.ChartTitle, Fig.GetValue('title'));
-    SetTitle(Plot.XAxisTitle, Fig.GetValue('xlabel'));
-    SetTitle(Plot.YAxisTitle, Fig.GetValue('ylabel'));
+    SetTitle(Plot.ChartTitle, Fig.GetValue('title'), Fig.GetValue('title_size'), 16);
+    SetTitle(Plot.XAxisTitle, Fig.GetValue('xlabel'), Fig.GetValue('xlabel_size'), 14);
+    SetTitle(Plot.YAxisTitle, Fig.GetValue('ylabel'), Fig.GetValue('ylabel_size'), 14);
 
     // Fixed limits, or the chart's autoscale.
     Plot.AutoXScaling := True;
