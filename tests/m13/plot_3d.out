@@ -30,3 +30,4 @@ ArgumentError plot.bar3: clim must be [lo, hi] with lo < hi, both finite
 TypeError plot.bar3: clim must be a real vector, got string
 TypeError plot.bar3: x: categories must be strings, got int
 DimensionError plot.bar3: Z is 2×3 but needs length(y) × length(x) = 2×2
+true

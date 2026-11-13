@@ -136,3 +136,13 @@ try
 catch err
   println(err.kind, err.message)
 end
+
+# Many names in a small figure: turned to run across the edge in pictures.
+many = {}
+for k in 1:40
+  many = append(many, "reaction_" + string(k))
+end
+plot.figure(width = 400, height = 300)
+plot.bar3(many, {"a", "b"}, ones(2, 40))
+plot.save("_tmp_3d.png")
+println(io.delete_file("_tmp_3d.png"))

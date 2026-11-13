@@ -1718,17 +1718,19 @@ function render_3d(fig)
     items = append(items, text_item(ax, ay, axis_text(fig.xlabel, "x", xmin, xmax),
                                     size_or(fig.xlabel_size, TICK_SIZE), "middle", "top"))
   else
-    [px1, py1, d1] = proj(nx(1), 1.12 * vf, -1)
-    [px2, py2, d2] = proj(nx(2), 1.12 * vf, -1)
-    step = name_step(xnames, px2 - px1, py2 - py1, TICK_SIZE)
-    for k in 1:step:length(xnames)
-      [ax, ay, ad] = proj(nx(k), 1.12 * vf, -1)
-      items = append(items, text_item(ax, ay, xnames[k], TICK_SIZE, "middle", "top"))
+    nn = length(xnames)
+    epx = zeros(nn)
+    epy = zeros(nn)
+    eqx = zeros(nn)
+    eqy = zeros(nn)
+    for k in 1:nn
+      [epx[k], epy[k], ed] = proj(nx(k), vf, -1)
+      [eqx[k], eqy[k], ed] = proj(nx(k), 1.12 * vf, -1)
     end
-    if typeof(fig.xlabel) != "nothing"
-      [ax, ay, ad] = proj(0, 1.8 * vf, -1)
-      items = append(items, text_item(ax, ay, fig.xlabel, size_or(fig.xlabel_size, TICK_SIZE),
-                                      "middle", "top"))
+    [lx, ly, ld] = proj(0, 1.8 * vf, -1)
+    for it in edge_names(xnames, epx, epy, eqx, eqy, TICK_SIZE, fig.xlabel,
+                         size_or(fig.xlabel_size, TICK_SIZE), lx, ly)
+      items = append(items, it)
     end
   end
   if typeof(ynames) == "nothing"
@@ -1736,17 +1738,19 @@ function render_3d(fig)
     items = append(items, text_item(bx, by, axis_text(fig.ylabel, "y", ymin, ymax),
                                     size_or(fig.ylabel_size, TICK_SIZE), "middle", "top"))
   else
-    [px1, py1, d1] = proj(1.12 * uf, ny(1), -1)
-    [px2, py2, d2] = proj(1.12 * uf, ny(2), -1)
-    step = name_step(ynames, px2 - px1, py2 - py1, TICK_SIZE)
-    for k in 1:step:length(ynames)
-      [bx, by, bd] = proj(1.12 * uf, ny(k), -1)
-      items = append(items, text_item(bx, by, ynames[k], TICK_SIZE, "middle", "top"))
+    nn = length(ynames)
+    epx = zeros(nn)
+    epy = zeros(nn)
+    eqx = zeros(nn)
+    eqy = zeros(nn)
+    for k in 1:nn
+      [epx[k], epy[k], ed] = proj(uf, ny(k), -1)
+      [eqx[k], eqy[k], ed] = proj(1.12 * uf, ny(k), -1)
     end
-    if typeof(fig.ylabel) != "nothing"
-      [bx, by, bd] = proj(1.8 * uf, 0, -1)
-      items = append(items, text_item(bx, by, fig.ylabel, size_or(fig.ylabel_size, TICK_SIZE),
-                                      "middle", "top"))
+    [lx, ly, ld] = proj(1.8 * uf, 0, -1)
+    for it in edge_names(ynames, epx, epy, eqx, eqy, TICK_SIZE, fig.ylabel,
+                         size_or(fig.ylabel_size, TICK_SIZE), lx, ly)
+      items = append(items, it)
     end
   end
   zx = 1.0 / 0.0
@@ -1770,6 +1774,67 @@ function render_3d(fig)
     items = append(items, legend_items(labelled, W - lw - 12.0, top + 8.0, lw, lh))
   end
   return {width: W, height: H, background: "white", items: items}
+end
+
+# The text items naming the bars along one edge of a 3D picture, and the
+# axis label: the names stand at (qx[k], qy[k]), just outside the edge's
+# points (px[k], py[k]), written flat when they all fit, with the label at
+# (lx, ly). When they would overlap they are turned to run out from the
+# edge, across it, where each needs only its height, so many more fit; one
+# pointing left is turned round so that it reads towards the edge rather
+# than upside down. Every so many are then left out if even that is not
+# enough, and the label goes beyond the longest.
+function edge_names(names, px, py, qx, qy, size, label, label_size, lx, ly)
+  out = {}
+  n = length(names)
+  dx = 0.0
+  dy = 0.0
+  if n > 1
+    dx = px[2] - px[1]
+    dy = py[2] - py[1]
+  end
+  if name_step(names, dx, dy, size) == 1
+    for k in 1:n
+      out = append(out, text_item(qx[k], qy[k], names[k], size, "middle", "top"))
+    end
+    if typeof(label) != "nothing"
+      out = append(out, text_item(lx, ly, label, label_size, "middle", "top"))
+    end
+    return out
+  end
+  # The unit direction out from the edge on the page, square to it.
+  el = sqrt(dx * dx + dy * dy)
+  ex = dx / el
+  ey = dy / el
+  rx = qx[1] - px[1]
+  ry = qy[1] - py[1]
+  along = rx * ex + ry * ey
+  ux = rx - along * ex
+  uy = ry - along * ey
+  ul = sqrt(ux * ux + uy * uy)
+  ux = ux / ul
+  uy = uy / ul
+  step = max(1, int(ceil(size * 1.3 / el)))
+  # The page's y runs down, and a text's angle is anticlockwise.
+  angle = -atan2(uy, ux) * 180 / pi
+  anchor = "start"
+  if ux < 0
+    angle = angle + 180
+    anchor = "end"
+  end
+  widest = 0.0
+  for k in 1:step:n
+    out = append(out, {kind: "text", x: px[k] + 6 * ux, y: py[k] + 6 * uy, text: names[k],
+                       size: size + 0.0, anchor: anchor, baseline: "middle", angle: angle,
+                       color: "black"})
+    widest = max(widest, graphics.text_width(names[k], size))
+  end
+  if typeof(label) != "nothing"
+    reach = 12 + widest + label_size
+    out = append(out, text_item((px[1] + px[n]) / 2 + reach * ux, (py[1] + py[n]) / 2 + reach * uy,
+                                label, label_size, "middle", "middle"))
+  end
+  return out
 end
 
 # Every how many names to write along an edge so that they do not overlap:
