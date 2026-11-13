@@ -131,7 +131,9 @@ begin
   if Ctx <> nil then
     Exit;
   axmir_set_error_handler(MirFailed);
-  Ctx := axmir_init(2);
+  // MIR's optimisation level, 2 by default; AXON_MIR_OPT (0-3) changes it, to
+  // tell an optimiser bug from a code-generation one (see lib/README.md).
+  Ctx := axmir_init(StrToIntDef(GetEnvironmentVariable('AXON_MIR_OPT'), 2));
   ComputeLayout;
   H := JitHelpers;
   MIR_load_external(Ctx, 'rt_error', H.Error);
