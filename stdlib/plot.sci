@@ -102,7 +102,7 @@ function new_figure(width, height, title)
           legend: true, series: {}, three_d: false, elev: 30.0, azim: -60.0,
           xcategories: nothing, xticks: nothing, legend_position: "best",
           title_size: nothing, xlabel_size: nothing, ylabel_size: nothing,
-          zlabel_size: nothing}
+          zlabel_size: nothing, tick_size: nothing}
 end
 
 # A figure record with the font-size fields, which records saved before they
@@ -115,6 +115,11 @@ function sized(fig)
     fig.xlabel_size = nothing
     fig.ylabel_size = nothing
     fig.zlabel_size = nothing
+  end
+  try
+    s = fig.tick_size
+  catch err
+    fig.tick_size = nothing
   end
   return fig
 end
@@ -822,6 +827,19 @@ export function zlabel(text; size = nothing)
   current.zlabel_size = size
 end
 
+## Sets the font size of the tick labels in points, on every axis of the
+## current figure (in a figure with subplots, the current cell): the numbers,
+## and names such as bar categories and plot.bar3's names, which a smaller
+## size lets more of fit. nothing goes back to the default (10 in pictures;
+## the IDE's charts use their own). A size that is not a positive number
+## raises TypeError or ArgumentError.
+export function tick_size(size)
+  global current
+  figure_now()
+  current = sized(current)
+  current.tick_size = font_size(size, "plot.tick_size")
+end
+
 ## Puts the x-axis ticks at the given positions, labelled with the given
 ## strings, in place of round numbers (and of bar categories).
 export function xticks(positions, labels)
@@ -1121,12 +1139,13 @@ function render_2d(fig)
     xlabels = {}
     for v in xt xlabels = append(xlabels, tick_label(v, xstep)) end
   end
+  ks = size_or(fig.tick_size, TICK_SIZE)
   ylabels = {}
   wmax = 0.0
   for v in yt
     s = tick_label(v, ystep)
     ylabels = append(ylabels, s)
-    wmax = max(wmax, graphics.text_width(s, TICK_SIZE))
+    wmax = max(wmax, graphics.text_width(s, ks))
   end
 
   # Margins around the plot area, from the title's and labels' sizes.
@@ -1137,7 +1156,7 @@ function render_2d(fig)
   if typeof(fig.title) != "nothing" top = ts * 2.2 end
   left = 12.0 + wmax + 8.0
   if typeof(fig.ylabel) != "nothing" left = left + ys * 1.8 end
-  bottom = 12.0 + TICK_SIZE * 1.6
+  bottom = 12.0 + ks * 1.6
   if typeof(fig.xlabel) != "nothing" bottom = bottom + xs * 1.8 end
   right = 20.0
   [labelled, lw, lh] = legend_size(fig.series)
@@ -1165,7 +1184,7 @@ function render_2d(fig)
     end
     items = append(items, {kind: "line", x: [px, px], y: [py1, py1 + 4.0], color: "black",
                            width: 0.8})
-    items = append(items, text_item(px, py1 + 6.0, xlabels[k], TICK_SIZE, "middle", "top"))
+    items = append(items, text_item(px, py1 + 6.0, xlabels[k], ks, "middle", "top"))
   end
   for k in 1:length(yt)
     py = Y(yt[k])
@@ -1175,7 +1194,7 @@ function render_2d(fig)
     end
     items = append(items, {kind: "line", x: [px0 - 4.0, px0], y: [py, py], color: "black",
                            width: 0.8})
-    items = append(items, text_item(px0 - 6.0, py, ylabels[k], TICK_SIZE, "end", "middle"))
+    items = append(items, text_item(px0 - 6.0, py, ylabels[k], ks, "end", "middle"))
   end
 
   # The series, clipped to the plot area.
@@ -1728,7 +1747,7 @@ function render_3d(fig)
       [eqx[k], eqy[k], ed] = proj(nx(k), 1.12 * vf, -1)
     end
     [lx, ly, ld] = proj(0, 1.8 * vf, -1)
-    for it in edge_names(xnames, epx, epy, eqx, eqy, TICK_SIZE, fig.xlabel,
+    for it in edge_names(xnames, epx, epy, eqx, eqy, size_or(fig.tick_size, TICK_SIZE), fig.xlabel,
                          size_or(fig.xlabel_size, TICK_SIZE), lx, ly)
       items = append(items, it)
     end
@@ -1748,7 +1767,7 @@ function render_3d(fig)
       [eqx[k], eqy[k], ed] = proj(1.12 * uf, ny(k), -1)
     end
     [lx, ly, ld] = proj(1.8 * uf, 0, -1)
-    for it in edge_names(ynames, epx, epy, eqx, eqy, TICK_SIZE, fig.ylabel,
+    for it in edge_names(ynames, epx, epy, eqx, eqy, size_or(fig.tick_size, TICK_SIZE), fig.ylabel,
                          size_or(fig.ylabel_size, TICK_SIZE), lx, ly)
       items = append(items, it)
     end

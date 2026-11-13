@@ -6,3 +6,8 @@ nothing
 ArgumentError plot.ylabel: size must be positive
 TypeError plot.title: size must be a number, got string
 true
+nothing
+7.0
+nothing
+ArgumentError plot.tick_size: size must be positive
+true

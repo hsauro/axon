@@ -2602,7 +2602,9 @@ sample mean: 4.950
 
 \code{plot.title}, \code{plot.xlabel}, \code{plot.ylabel} and \code{plot.zlabel}
 take a font size in points, \code{plot.xlabel("time (s)", size = 14)}, for
-figures that will be shown on a slide or printed small.
+figures that will be shown on a slide or printed small, and
+\code{plot.tick_size(8)} sets the size of the tick labels, which lets more
+names fit along an axis.
 
 \code{plot.surface(x, y, Z)} draws the surface with height \code{Z[i, j]} above
 the point \code{(x[j], y[i])}, coloured by height. \code{colormap} chooses the

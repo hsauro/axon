@@ -33,3 +33,24 @@ catch err
 end
 import io
 println(io.delete_file("_tmp_labels.png"))
+
+# The tick labels' size: kept in the figure (nothing at first), used in 2D
+# and 3D pictures, reset with nothing, checked.
+plot.figure()
+println(typeof(plot.gcf().tick_size))
+plot.line([1; 2], [1; 2])
+plot.tick_size(7)
+println(plot.gcf().tick_size)
+plot.save("_tmp_labels.png")
+plot.figure()
+plot.bar3({"a", "b", "c"}, {"x", "y"}, ones(2, 3))
+plot.tick_size(6.5)
+plot.save("_tmp_labels.png")
+plot.tick_size(nothing)
+println(typeof(plot.gcf().tick_size))
+try
+  plot.tick_size(-1)
+catch err
+  println(err.kind, err.message)
+end
+println(io.delete_file("_tmp_labels.png"))

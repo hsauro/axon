@@ -292,6 +292,9 @@ begin
     SetTitle(Plot.ChartTitle, Fig.GetValue('title'), Fig.GetValue('title_size'), 16);
     SetTitle(Plot.XAxisTitle, Fig.GetValue('xlabel'), Fig.GetValue('xlabel_size'), 14);
     SetTitle(Plot.YAxisTitle, Fig.GetValue('ylabel'), Fig.GetValue('ylabel_size'), 14);
+    // Tick labels' size: plot.tick_size, else the chart's default (14).
+    Plot.XAxisFontSize := Num(Fig.GetValue('tick_size'), 14);
+    Plot.YAxisFontSize := Num(Fig.GetValue('tick_size'), 14);
 
     // Fixed limits, or the chart's autoscale.
     Plot.AutoXScaling := True;

@@ -235,6 +235,9 @@ begin
     Plot.AxisTitleZ := Str(Fig.GetValue('zlabel'));
     // Font sizes from plot.title and the labels, else the chart's defaults.
     Plot.ChartTitleFontSize := Num(Fig.GetValue('title_size'), 15);
+    // Tick labels and names (also the legend and colour bar text, which the
+    // chart sizes with them): plot.tick_size, else the chart's default (11).
+    Plot.TickFontSize := Num(Fig.GetValue('tick_size'), 11);
     Plot.AxisTitleFontSizeX := Num(Fig.GetValue('xlabel_size'), 12.5);
     Plot.AxisTitleFontSizeY := Num(Fig.GetValue('ylabel_size'), 12.5);
     Plot.AxisTitleFontSizeZ := Num(Fig.GetValue('zlabel_size'), 12.5);
