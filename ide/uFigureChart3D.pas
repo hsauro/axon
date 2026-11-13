@@ -7,7 +7,9 @@ unit uFigureChart3D;
    graphics.show writes the figure record of the plot module as JSON next to
    the PNG it shows (same name, .json). A 3-D figure has three_d = true and
    series of these types: "surface" (x, y, the matrix z over the grid
-   (x[j], y[i]), colormap "viridis" or "gray", edges), "line3" (x, y, z, with
+   (x[j], y[i]), colormap by name, c from color_by, edges), "bar3" (the same,
+   a bar from 0 to z[i][j] at each grid point, width a fraction of the grid
+   spacing, color for bars in one colour), "line3" (x, y, z, with
    null for a gap, color, width, marker, marker_size) and "scatter3" (x, y,
    z, color, size, marker); each may have a label. The figure's title,
    xlabel, ylabel, zlabel, xlim, ylim, legend, azim and elev (degrees, the
@@ -75,7 +77,7 @@ begin
   Series.ShowInLegend := Series.Title <> '';
 end;
 
-procedure AddSeries(Plot: TRho3DPlot; S: TJSONObject; var HasSurface: Boolean);
+procedure AddSeries(Plot: TRho3DPlot; S: TJSONObject; var HasColorBar: Boolean);
 var
   Kind: string;
   Series: TRho3DSeries;
@@ -83,21 +85,34 @@ var
   X, Y, Z: TArray<Double>;
 begin
   Kind := Str(S.GetValue('type'));
-  if Kind = 'surface' then
+  if (Kind = 'surface') or (Kind = 'bar3') then
   begin
-    Series := Plot.AddSurface(Vector(S.GetValue('x')), Vector(S.GetValue('y')),
-      Matrix(S.GetValue('z')));
+    if Kind = 'surface' then
+      Series := Plot.AddSurface(Vector(S.GetValue('x')), Vector(S.GetValue('y')),
+        Matrix(S.GetValue('z')))
+    else
+      // A bar at (x[j], y[i]) from 0 to z[i][j], width a fraction of the spacing.
+      Series := Plot.AddBars(Vector(S.GetValue('x')), Vector(S.GetValue('y')),
+        Matrix(S.GetValue('z')), Num(S.GetValue('width'), 0.8));
     // Any of the component's maps, by name (viridis, plasma, coolwarm, gray,
     // jet), and colour values other than the heights (color_by), if given.
     Series.ColorMap := ColorMapFromName(Str(S.GetValue('colormap')), cmViridis);
-    if (S.GetValue('c') <> nil) and (S.GetValue('c') is TJSONArray) then
+    if S.GetValue('c') is TJSONArray then
       Series.SetValues(Matrix(S.GetValue('c')));
+    // Bars in one colour (bar3's color) instead of the colour map.
+    if (Kind = 'bar3') and ((S.GetValue('color') is TJSONString) or
+       (S.GetValue('color') is TJSONArray)) then
+    begin
+      Series.Color := ParseColor(S.GetValue('color'), TAlphaColors.Steelblue);
+      Series.ColorByValue := False;
+    end
+    else
+      HasColorBar := True;
     if Bool(S.GetValue('edges'), True) then
       Series.FillMode := fmFilledWithEdges
     else
       Series.FillMode := fmFilled;
     Label_(Series, S);
-    HasSurface := True;
   end
   else if (Kind = 'line3') or (Kind = 'scatter3') then
   begin
@@ -157,7 +172,7 @@ function LoadFigure3DObj(Plot: TRho3DPlot; Fig: TJSONObject): Boolean;
 var
   Series, Lim: TJSONArray;
   K: Integer;
-  HasSurface: Boolean;
+  HasColorBar: Boolean;
 begin
   Result := False;
   begin
@@ -167,10 +182,10 @@ begin
 
     Plot.Clear;
     Plot.UseGradient := False;          // series take their own colours
-    HasSurface := False;
+    HasColorBar := False;
     for K := 0 to Series.Count - 1 do
       if Series.Items[K] is TJSONObject then
-        AddSeries(Plot, TJSONObject(Series.Items[K]), HasSurface);
+        AddSeries(Plot, TJSONObject(Series.Items[K]), HasColorBar);
 
     Plot.ChartTitle := Str(Fig.GetValue('title'));
     Plot.AxisTitleX := Str(Fig.GetValue('xlabel'));
@@ -182,7 +197,7 @@ begin
     Plot.AxisTitleFontSizeY := Num(Fig.GetValue('ylabel_size'), 12.5);
     Plot.AxisTitleFontSizeZ := Num(Fig.GetValue('zlabel_size'), 12.5);
     Plot.LegendVisible := Bool(Fig.GetValue('legend'), True);
-    Plot.ShowColorBar := HasSurface;
+    Plot.ShowColorBar := HasColorBar;
 
     // Fixed limits, or automatic (NaN).
     Plot.AutoScale;

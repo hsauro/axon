@@ -55,3 +55,56 @@ try
 catch err
   println(err.kind, err.message)
 end
+
+# 3D bars: Z alone, with x and y, a vector, one colour, and the errors.
+B = [1.0, -2.0, 3.0; 0.5, 0.0, -1.0]
+plot.figure()
+plot.bar3(B, label = "bars")
+s = plot.gcf().series[1]
+println(s.type, s.x[3], s.y[2], s.width, s.colormap, typeof(s.color), typeof(s.c))
+plot.save("_tmp_3d.png")
+println(io.delete_file("_tmp_3d.png"))
+plot.figure()
+plot.bar3([10.0; 20.0; 30.0], [0.0; 5.0], B, width = 0.5, color = "orange", edges = false,
+          elev = 20, azim = 30)
+f = plot.gcf()
+s = f.series[1]
+println(s.x[2], s.y[2], s.width, s.color, s.edges, f.elev, f.azim)
+plot.save("_tmp_3d.svg")
+println(io.delete_file("_tmp_3d.svg"))
+plot.figure()
+plot.bar3([1.0; 2.0; 4.0], color_by = [3.0; 2.0; 1.0], colormap = "jet")
+s = plot.gcf().series[1]
+println(size(s.z, 1), size(s.z, 2), s.c[3, 1])
+try
+  plot.bar3([1.0, 2.0], B)
+catch err
+  println(err.kind, err.message)
+end
+try
+  plot.bar3([1.0; 2.0], [1.0; 2.0], B)
+catch err
+  println(err.kind, err.message)
+end
+try
+  plot.bar3(B, width = 1.5)
+catch err
+  println(err.kind, err.message)
+end
+try
+  plot.bar3(B, colormap = "rainbow")
+catch err
+  println(err.kind)
+end
+try
+  plot.bar3("tall")
+catch err
+  println(err.kind, err.message)
+end
+plot.figure()
+plot.line([1.0; 2.0], [1.0; 2.0])
+try
+  plot.bar3(B)
+catch err
+  println(err.kind, err.message)
+end

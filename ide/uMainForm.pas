@@ -794,7 +794,7 @@ begin
   FPlotChart.Margins.Rect := TRectF.Create(4, 4, 4, 4);
   FPlotChart.ZoomPanEnabled := True;
   FPlotChart.Visible := False;
-  // 3-D figures (surfaces, line3, scatter3): drag rotates, right-drag pans,
+  // 3-D figures (surfaces, bar3, line3, scatter3): drag rotates, right-drag pans,
   // wheel zooms, double-click edits; see uFigureChart3D.
   FPlot3D := TRho3DPlot.Create(Self);
   FPlot3D.Parent := Right;

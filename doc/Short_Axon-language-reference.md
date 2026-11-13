@@ -255,7 +255,8 @@ end
 `plot.hist(x, bins=10)` — equal-width bins by default; `bins` can also be a vector of explicit edges. `plot.hist_density(x, bins=10)` — same but scaled so total bar area = 1 (for comparing against a density curve). Both **return a record**: `.counts`, `.edges`, `.heights`.
 
 ### Surfaces & 3D
-- `plot.surface(x, y, Z, colormap="viridis"|"gray")` — height `Z[i,j]` above point `(x[j], y[i])` (note index order), colored by height.
+- `plot.surface(x, y, Z, colormap="viridis"|"plasma"|"coolwarm"|"gray"|"jet")` — height `Z[i,j]` above point `(x[j], y[i])` (note index order), colored by height (or by `color_by`, a matrix the shape of `Z`).
+- `plot.bar3(x, y, Z, ...)` or `plot.bar3(Z)` — 3D bars: a bar at `(x[j], y[i])` from 0 to `Z[i,j]` (down for negative values), colored by height through `colormap`, or all one `color`; `width` is a fraction of the grid spacing (default 0.8).
 - `plot.line3(x, y, z, ...)` — 3D curve (e.g. a trajectory); same style/color/width keywords as `line`.
 - `plot.scatter3(x, y, z, ...)` — 3D markers.
 - `plot.view(azim, elev)` — viewing direction in degrees (like MATLAB's `view`).

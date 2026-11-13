@@ -73,3 +73,7 @@ Each example opens as your own copy, so you can change it and run it with
 - [The Mandelbrot set, as an image](../examples/23_mandelbrot.sci)
 - [L-systems and the turtle](../examples/24_lsystems.sci)
 - [An animated pendulum](../examples/25_pendulum.sci)
+- [Conway's Game of Life, animated](../examples/26_life.sci)
+- [A chemical oscillator: time course and phase plot](../examples/27_oscillator.sci)
+- [Colour maps: the Rosenbrock function six ways](../examples/28_colormaps.sci)
+- [3D bar charts: a 2-D histogram, and heights above and below zero](../examples/29_bars3d.sci)

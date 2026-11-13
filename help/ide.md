@@ -132,7 +132,7 @@ Line, scatter, bar and histogram plots are shown in an interactive chart:
 | Click a legend entry | Hide or show that series |
 | Right-click | Copy the image, or export it as PNG or PDF |
 
-3D plots (`plot.surface`, `plot.line3`, `plot.scatter3`) are shown in an
+3D plots (`plot.surface`, `plot.bar3`, `plot.line3`, `plot.scatter3`) are shown in an
 interactive 3D chart:
 
 | Action | Effect |

@@ -10,3 +10,14 @@ true
 nothing
 ArgumentError
 DimensionError plot.surface: color_by is 2×2 but Z is 6×6
+bar3 3.0 2.0 0.8 viridis nothing nothing
+true
+20.0 5.0 0.5 orange false 20.0 30.0
+true
+3 1 1.0
+TypeError plot.bar3: give x, y and Z, or Z alone
+DimensionError plot.bar3: Z is 2×3 but needs length(y) × length(x) = 2×2
+ArgumentError plot.bar3: width must be above 0 and at most 1
+ArgumentError
+TypeError plot.bar3: Z must be a real matrix, got string
+ArgumentError a figure cannot mix 3D plots (surface, bar3, line3, scatter3) with 2D ones

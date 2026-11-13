@@ -470,7 +470,7 @@ Right-click & Copy the image, or export it as PNG or PDF \\
 \end{tabular}
 \end{center}
 
-3D plots (surfaces, \code{line3} and \code{scatter3}) are drawn in an interactive
+3D plots (surfaces, \code{bar3}, \code{line3} and \code{scatter3}) are drawn in an interactive
 3D chart:
 
 \begin{center}
@@ -2629,6 +2629,21 @@ vertical axis.
 \fig{lorenz.pdf}{0.65}{The Lorenz attractor as a 3D curve, from
 \texttt{lorenz.sci}.}
 
+\code{plot.bar3(x, y, Z)} draws a 3D bar chart: a bar standing at
+\code{(x[j], y[i])} for each entry of \code{Z}, rising from 0 to
+\code{Z[i, j]}, or going down for a negative value. \code{plot.bar3(Z)} alone
+puts the bars at 1, 2, \ldots{} both ways. The bars are coloured by height
+with the same colour maps and \code{color_by} as surfaces; for heights of both
+signs, the diverging map \code{"coolwarm"} shows which bars go up and which go
+down. \code{color} gives every bar one colour instead, and \code{width} sets
+how much of the grid spacing a bar takes (0.8 by default; 1 makes neighbours
+touch). A count of points in a grid of bins, a 2-D histogram, is a natural use:
+the Welcome tab's example 29 draws one.
+
+\ex{bars3d.sci}
+\fig{bars3d.pdf}{0.65}{3D bars above and below zero, from
+\texttt{bars3d.sci}.}
+
 In the IDE, 3D figures appear in an interactive chart that you rotate by
 dragging (Section~\ref{sec:plotpane}).
 
@@ -4411,5 +4426,6 @@ opens as your own copy to change and run.
 \shipped{26_life.sci}
 \shipped{27_oscillator.sci}
 \shipped{28_colormaps.sci}
+\shipped{29_bars3d.sci}
 
 \end{document}

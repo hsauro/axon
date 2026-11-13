@@ -1,4 +1,4 @@
-## Line, scatter, bar, histogram, surface and 3D curve and scatter plots, saved as PNG, SVG or PDF. Plotting calls
+## Line, scatter, bar, histogram, surface, 3D bar and 3D curve and scatter plots, saved as PNG, SVG or PDF. Plotting calls
 ## add to the current figure; plot.save writes it. See the Language
 ## Reference, "The plot module".
 
@@ -189,7 +189,7 @@ function add_series(s)
   global current
   figure_now()
   if s.three_d != current.three_d and length(current.series) > 0
-    fail("ArgumentError", "a figure cannot mix 3D plots (surface, line3, scatter3) with 2D ones")
+    fail("ArgumentError", "a figure cannot mix 3D plots (surface, bar3, line3, scatter3) with 2D ones")
   end
   current.three_d = s.three_d
   current.series = append(current.series, s)
@@ -588,6 +588,97 @@ export function surface(x, y, Z; label = nothing, colormap = "viridis", color_by
   current.azim = azim + 0.0
 end
 
+## Adds a 3D bar chart: a bar standing at (x[j], y[i]) for each entry of Z,
+## rising from 0 to Z[i, j], or going down for a negative value (NaN leaves
+## the place empty). bar3(Z) alone places the bars at 1, 2, ... both ways; a
+## vector Z is one column of bars along y. The bars are coloured by height.
+## Keywords: width (of each bar, as a fraction of the grid spacing, at most
+## 1), colormap ("viridis", "plasma", "coolwarm", "gray" or "jet"), color_by
+## (a matrix the shape of Z to colour by instead of the height), color (one
+## colour for every bar instead of the colour map), label, edges (outline the
+## bars), elev and azim (viewing angles in degrees).
+export function bar3(x, y = nothing, Z = nothing; width = 0.8, colormap = "viridis",
+                     color_by = nothing, color = nothing, label = nothing, edges = true,
+                     elev = 30.0, azim = -60.0)
+  global current
+  if typeof(y) == "nothing" and typeof(Z) == "nothing"
+    Z = x
+  elseif typeof(y) == "nothing" or typeof(Z) == "nothing"
+    fail("TypeError", "plot.bar3: give x, y and Z, or Z alone")
+  end
+  t = typeof(Z)
+  if t == "vector" or t == "range"
+    Z = reshape([Z], length(Z), 1)
+  elseif t != "matrix"
+    fail("TypeError", "plot.bar3: Z must be a real matrix, got " + t)
+  end
+  if eltype(Z) == "complex"
+    fail("TypeError", "plot.bar3: Z must be real, not complex")
+  end
+  [m, n] = size(Z)
+  if typeof(y) == "nothing"
+    xs = real_vector(1:n, "plot.bar3: x")
+    ys = real_vector(1:m, "plot.bar3: y")
+  else
+    xs = real_vector(x, "plot.bar3: x")
+    ys = real_vector(y, "plot.bar3: y")
+    if m != length(ys) or n != length(xs)
+      fail("DimensionError", "plot.bar3: Z is " + string(m) + "×" + string(n) +
+        " but needs length(y) × length(x) = " + string(length(ys)) + "×" + string(length(xs)))
+    end
+  end
+  if m < 1 or n < 1
+    fail("DimensionError", "plot.bar3: Z is empty")
+  end
+  if typeof(width) != "int" and typeof(width) != "real"
+    fail("TypeError", "plot.bar3: width must be a number, got " + typeof(width))
+  end
+  if not (width > 0 and width <= 1)
+    fail("ArgumentError", "plot.bar3: width must be above 0 and at most 1")
+  end
+  if typeof(colormap) != "string" or not contains_name(COLORMAPS, colormap)
+    fail("ArgumentError", "plot.bar3: colormap must be \"viridis\", \"plasma\", " +
+      "\"coolwarm\", \"gray\" or \"jet\"")
+  end
+  c = nothing
+  if typeof(color_by) != "nothing"
+    if typeof(color_by) == "vector" and n == 1
+      color_by = reshape([color_by], length(color_by), 1)
+    end
+    if typeof(color_by) != "matrix"
+      fail("TypeError", "plot.bar3: color_by must be a real matrix, got " + typeof(color_by))
+    end
+    [cm, cn] = size(color_by)
+    if cm != m or cn != n
+      fail("DimensionError", "plot.bar3: color_by is " + string(cm) + "×" + string(cn) +
+        " but Z is " + string(m) + "×" + string(n))
+    end
+    c = reshape([color_by] + 0.0, m, n)
+  end
+  add_series({type: "bar3", three_d: true, x: xs, y: ys, z: reshape([Z] + 0.0, m, n),
+              label: label, colormap: colormap, c: c, color: color, width: width + 0.0,
+              edges: edges})
+  current.elev = elev + 0.0
+  current.azim = azim + 0.0
+end
+
+# The distance between neighbouring bar centres: the smallest gap between
+# distinct values of v, or 1 when there is none (one row or column).
+function bar_spacing(v)
+  s = sort(v)
+  d = 0.0
+  for k in 2:length(s)
+    g = s[k] - s[k - 1]
+    if g > 0 and (d == 0 or g < d)
+      d = g
+    end
+  end
+  if d == 0
+    return 1.0
+  end
+  return d
+end
+
 ## Adds a curve through the points (x[k], y[k], z[k]) in 3D, such as a
 ## trajectory. A NaN in any coordinate leaves a gap. Keywords: label, color,
 ## width (points), and marker (a marker shape at each point, with
@@ -786,7 +877,7 @@ export function show(; scale = 2.0)
 end
 
 # Whether the IDE's interactive charts can draw the figure: every 2-D figure
-# goes to the 2-D chart and every 3-D figure (surfaces, line3, scatter3) to
+# goes to the 2-D chart and every 3-D figure (surfaces, bar3, line3, scatter3) to
 # the 3-D chart. A figure with subplots goes to a grid of such charts.
 function interactive(fig)
   return length(fig.series) > 0
@@ -1215,6 +1306,11 @@ function legend_items(labelled, bx, by, bw, bh)
     elseif s.type == "surface"
       items = append(items, {kind: "rect", x: bx + 9.0, y: cy - 5.0, w: 16.0, h: 10.0,
                              fill: colormap_at(s.colormap, 0.5)})
+    elseif s.type == "bar3"
+      fill = s.color
+      if typeof(fill) == "nothing" fill = colormap_at(s.colormap, 0.5) end
+      items = append(items, {kind: "rect", x: bx + 9.0, y: cy - 5.0, w: 16.0, h: 10.0,
+                             fill: fill})
     elseif s.type == "line3"
       items = append(items, {kind: "line", x: [bx + 6.0, bx + 28.0], y: [cy, cy],
                              color: s.color, width: s.width})
@@ -1284,8 +1380,9 @@ end
 
 # A 3D figure as a picture (plot.save, and plot.show outside the IDE). Every
 # series shares one box, scaled to the data of all of them; surfaces are
-# drawn back to front, then curves and markers over them. (The IDE's 3D
-# chart sorts everything together, so curves also pass behind surfaces.)
+# drawn back to front, then bars, then curves and markers over them. (The
+# IDE's 3D chart sorts everything together, so curves also pass behind
+# surfaces and bars.)
 function render_3d(fig)
   W = fig.width
   H = fig.height
@@ -1297,9 +1394,18 @@ function render_3d(fig)
   zmin = inf
   zmax = -inf
   for s in fig.series
-    [xmin, xmax] = finite_range(s.x, xmin, xmax)
-    [ymin, ymax] = finite_range(s.y, ymin, ymax)
-    [zmin, zmax] = finite_range(s.z, zmin, zmax)
+    if s.type == "bar3"
+      # The whole bars: their widths about the centres, and 0, where they start.
+      hx = s.width * bar_spacing(s.x) / 2
+      hy = s.width * bar_spacing(s.y) / 2
+      [xmin, xmax] = finite_range([s.x - hx; s.x + hx], xmin, xmax)
+      [ymin, ymax] = finite_range([s.y - hy; s.y + hy], ymin, ymax)
+      [zmin, zmax] = finite_range([0.0; reshape(s.z, length(s.z))], zmin, zmax)
+    else
+      [xmin, xmax] = finite_range(s.x, xmin, xmax)
+      [ymin, ymax] = finite_range(s.y, ymin, ymax)
+      [zmin, zmax] = finite_range(s.z, zmin, zmax)
+    end
   end
   if xmin > xmax
     xmin = 0.0
@@ -1398,6 +1504,93 @@ function render_3d(fig)
             if s.edges edge = "#00000040" end
             items = append(items, {kind: "polygon", x: [p1x, p2x, p3x, p4x],
                                    y: [p1y, p2y, p3y, p4y], fill: col, color: edge, width: 0.4})
+          end
+        end
+      end
+    end
+  end
+
+  # Bars: whole bars, far to near by where they stand (they never overlap
+  # there, so that hides them correctly), each drawn as the faces that look
+  # towards the viewer, the sides darkened a little so the bars read as
+  # solid. In (u, v, w), towards the viewer is (-ce sa, -ce ca, se).
+  for s in fig.series
+    if s.type == "bar3"
+      [m, n] = size(s.z)
+      hx = s.width * bar_spacing(s.x) / 2
+      hy = s.width * bar_spacing(s.y) / 2
+      C = s.z
+      if typeof(s.c) != "nothing" C = s.c end
+      [cmin, cmax] = finite_range(C, inf, -inf)
+      if not (cmax > cmin) cmax = cmin + 1 end
+      edge = "none"
+      if s.edges edge = "#00000059" end
+      # The items of one face through the corners (us[k], vs[k], ws[k]):
+      # the face in its colour, then shade (0 to 1) of black over it.
+      face = function(us, vs, ws, col, shade)
+        px = zeros(4)
+        py = zeros(4)
+        for k in 1:4
+          [px[k], py[k], d] = proj(us[k], vs[k], ws[k])
+        end
+        if shade > 0
+          return {{kind: "polygon", x: px, y: py, fill: col, color: "none", width: 0.5},
+                  {kind: "polygon", x: px, y: py, fill: [0.0, 0.0, 0.0, shade], color: edge,
+                   width: 0.5}}
+        end
+        return {{kind: "polygon", x: px, y: py, fill: col, color: edge, width: 0.5}}
+      end
+      # Far to near: by the depth of the bar's foot along the ground.
+      keys = zeros(m * n)
+      for i in 1:m
+        for j in 1:n
+          keys[(i - 1) * n + j] = -(sa * nx(s.x[j]) + ca * ny(s.y[i]))
+        end
+      end
+      w0 = nz(0.0)
+      for k in sortperm(keys)
+        i = div(k - 1, n) + 1
+        j = mod(k - 1, n) + 1
+        z = s.z[i, j]
+        if z == z and abs(z) < inf
+          if typeof(s.color) != "nothing"
+            col = s.color
+          else
+            col = "gray"
+            cc = C[i, j]
+            if cc == cc
+              col = colormap_at(s.colormap, (cc - cmin) / (cmax - cmin))
+            end
+          end
+          u0 = nx(s.x[j] - hx)
+          u1 = nx(s.x[j] + hx)
+          v0 = ny(s.y[i] - hy)
+          v1 = ny(s.y[i] + hy)
+          wlo = min(w0, nz(z))
+          whi = max(w0, nz(z))
+          faces = {}
+          if sa != 0
+            uf = u0
+            if sa < 0 uf = u1 end
+            faces = append(faces, face([uf, uf, uf, uf], [v0, v1, v1, v0], [wlo, wlo, whi, whi],
+                                       col, 0.3))
+          end
+          if ca != 0
+            vf = v0
+            if ca < 0 vf = v1 end
+            faces = append(faces, face([u0, u1, u1, u0], [vf, vf, vf, vf], [wlo, wlo, whi, whi],
+                                       col, 0.15))
+          end
+          if se != 0
+            wf = wlo
+            if se > 0 wf = whi end
+            faces = append(faces, face([u0, u1, u1, u0], [v0, v0, v1, v1], [wf, wf, wf, wf],
+                                       col, 0.0))
+          end
+          for f in faces
+            for it in f
+              items = append(items, it)
+            end
           end
         end
       end
