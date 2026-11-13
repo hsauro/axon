@@ -2613,7 +2613,9 @@ surface comes out in one colour, colour it by something else with
 \code{color_by}, a matrix the shape of \code{Z}: the heights stay true, and
 \code{plot.surface(x, y, Z, color_by = log10(1 + Z))} colours them on a
 logarithmic scale, which shows the curved valley of the Rosenbrock function
-$(1 - x)^2 + 100 (y - x^2)^2$ that colouring by height hides. \code{plot.line3(x, y, z)} draws a curve through
+$(1 - x)^2 + 100 (y - x^2)^2$ that colouring by height hides. The Welcome
+tab's example 28 draws that function once with each colour map, in a grid of
+3D subplots. \code{plot.line3(x, y, z)} draws a curve through
 points in space, such as a trajectory, and \code{plot.scatter3(x, y, z)}
 markers. They can share a figure, but a figure cannot mix 3D series with 2D
 ones. \code{plot.view(azim, elev)} sets the direction you look from, in
@@ -4408,5 +4410,6 @@ opens as your own copy to change and run.
 \shipped{25_pendulum.sci}
 \shipped{26_life.sci}
 \shipped{27_oscillator.sci}
+\shipped{28_colormaps.sci}
 
 \end{document}

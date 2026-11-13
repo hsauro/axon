@@ -1863,6 +1863,22 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
+                <DeployFile LocalName="..\examples\28_colormaps.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <RemoteName>28_colormaps.sci</RemoteName>
+                        <Operation>0</Operation>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\28_colormaps.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <RemoteName>28_colormaps.sci</RemoteName>
+                        <Operation>0</Operation>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployFile LocalName="..\help\getting-started.md" Configuration="Debug" Class="File">
                     <Platform Name="OSXARM64">
                         <RemoteDir>Contents\MacOS\help\</RemoteDir>
