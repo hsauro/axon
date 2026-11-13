@@ -16,8 +16,9 @@ end
 
 # true heights, but log colours
 plot.surface(xs, ys, Z, color_by = log10(1 + Z), colormap = "plasma", label="Height of Function")
-plot.xlabel("X Axis A long axis this is")
+plot.xlabel("X Axis", size=22)
 plot.ylabel("Y Axis A long axis is this")
+plot.title ("Hello", size=32)
 plot.show()
 
 #plot.figure()
