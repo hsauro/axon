@@ -8,7 +8,9 @@
 ## Statements end at ";" or at the end of a line, and "//" or "#" starts a
 ## comment. "->" and "=>" are both read as reactions. Assigned names that
 ## appear in a reaction are species (initial values); the rest are
-## parameters. simulate solves a whole time span; simulator, step and set
+## parameters. "$X" in a reaction makes X a boundary species, held fixed:
+##   $X0 -> S1; k1*X0             # a source at a fixed concentration
+## so the species that change are the floating ones. simulate solves a whole time span; simulator, step and set
 ## advance a simulation in steps, changing values between them; steady_state
 ## finds where the species stop changing. See the Language Reference, "The
 ## antimony module".
@@ -28,13 +30,16 @@ export record Reaction
   rate: string
 end
 
-## A model: its reactions in order, its species (name to initial value, or
-## nothing when none was assigned) in the order they first appear, and its
-## parameters (name to value) in the order they were assigned.
+## A model: its reactions in order, its floating species (name to initial
+## value, or nothing when none was assigned) in the order they first appear,
+## its parameters (name to value) in the order they were assigned, and its
+## boundary species ($X in a reaction: name to value, or nothing), which stay
+## fixed, in the order they first appear.
 export record Model
   reactions: list
   species: dict
   parameters: dict
+  boundary: dict
 end
 
 
@@ -100,6 +105,25 @@ function parse_side(side)
 end
 
 
+# The side with "$" taken off the names of boundary species, and boundary
+# with those names added.
+function strip_boundary(side, boundary)
+  result = dict()
+  for name in keys(side)
+    plain = name
+    if startswith(name, "$")
+      plain = trim(name[2:end])
+      if plain == ""
+        error("Invalid species term: '" + name + "'")
+      end
+      boundary[plain] = nothing
+    end
+    result[plain] = get(result, plain, 0) + side[name]
+  end
+  return result, boundary
+end
+
+
 # The arrow in a reaction ("->" or "=>"), or nothing if it is not a reaction.
 function arrow_of(statement)
   for arrow in {"->", "=>"}
@@ -115,7 +139,8 @@ end
 export function load(source)
   statements = statements_of(source)
   reactions = {}
-  species = dict()
+  species = dict()    # every name in a reaction
+  boundary = dict()   # the names marked with "$" anywhere
   values = dict()     # every assignment; split into species and parameters at the end
   unnamed = 0         # reactions given no name so far
 
@@ -143,8 +168,8 @@ export function load(source)
       if length(sides) != 2
         error("Invalid reaction: " + statement)
       end
-      reactants = parse_side(sides[1])
-      products = parse_side(sides[2])
+      [reactants, boundary] = strip_boundary(parse_side(sides[1]), boundary)
+      [products, boundary] = strip_boundary(parse_side(sides[2]), boundary)
       for side in {reactants, products}
         for s in keys(side)
           species[s] = nothing
@@ -162,23 +187,39 @@ export function load(source)
       if length(parts) != 2
         error("Invalid assignment: " + statement)
       end
-      values[trim(parts[1])] = read_number(trim(parts[2]))
+      name = trim(parts[1])
+      if startswith(name, "$")
+        name = trim(name[2:end])
+        boundary[name] = nothing
+      end
+      values[name] = read_number(trim(parts[2]))
     end
 
     i = i + 1
   end
 
+  # A name marked "$" once is a boundary species everywhere, as in Antimony;
+  # the others in reactions float.
+  floating = dict()
+  for name in keys(species)
+    if not haskey(boundary, name)
+      floating[name] = nothing
+    end
+  end
+
   # Assignments may come before or after the reactions that use a name.
   parameters = dict()
   for name in keys(values)
-    if haskey(species, name)
-      species[name] = values[name]
+    if haskey(floating, name)
+      floating[name] = values[name]
+    elseif haskey(boundary, name)
+      boundary[name] = values[name]
     else
       parameters[name] = values[name]
     end
   end
 
-  return Model(reactions, species, parameters)
+  return Model(reactions, floating, parameters, boundary)
 end
 
 
@@ -191,9 +232,27 @@ end
 # ------------------------------------------------------------ analysis
 
 ## The species names, in the order of the rows of stoichiometry(model) and
-## the components of a simulation.
+## the components of a simulation: the floating species, not the boundary
+## ones.
 export function species_names(model)
   return keys(model.species)
+end
+
+
+## The boundary species' names ($X), in the order they first appear.
+export function boundary_names(model)
+  return keys(model.boundary)
+end
+
+
+## The names of the values in parameter_values(model): the parameters, then
+## the boundary species.
+export function parameter_names(model)
+  names = keys(model.parameters)
+  for b in keys(model.boundary)
+    names = append(names, b)
+  end
+  return names
 end
 
 
@@ -243,24 +302,38 @@ function term(c, v)
 end
 
 
-## The parameters' values as a real vector, in the order of
-## keys(model.parameters): the vector rhs(model) reads as its third argument.
+## The parameters' values, then the boundary species' values, as a real
+## vector in the order of parameter_names(model): the vector rhs(model) reads
+## as its third argument. A boundary species with no assigned value is 0.
 export function parameter_values(model)
   names = keys(model.parameters)
-  p = zeros(length(names))
+  p = zeros(length(names) + length(model.boundary))
   for i in 1:length(names)
     p[i] = model.parameters[names[i]]
+  end
+  k = length(names)
+  for b in keys(model.boundary)
+    k = k + 1
+    v = model.boundary[b]
+    if v != nothing
+      p[k] = v
+    end
   end
   return p
 end
 
 
-# Each rate law may use only species, parameters and built-in functions;
-# parse_function reports any other name with its position.
+# Each rate law may use only species, parameters, boundary species and
+# built-in functions; parse_function reports any other name with its
+# position.
 function check_rates(model)
   known = join(keys(model.species), ", ")
-  if length(model.parameters) > 0
-    known = known + ", " + join(keys(model.parameters), ", ")
+  pnames = parameter_names(model)
+  if length(pnames) > 0
+    if known != ""
+      known = known + ", "
+    end
+    known = known + join(pnames, ", ")
   end
   for r in model.reactions
     try
@@ -272,14 +345,14 @@ function check_rates(model)
 end
 
 
-## The text of the function that rhs(model) makes, to read or check: the
-## species and parameters as local names set from _y and _p, the rates _v1,
-## _v2, ... of the reactions in order, and the derivatives.
-export function rhs_text(model)
+# The first lines of the functions rhs_text and rates_text write: the header,
+# the species, parameters and boundary species as local names set from _y
+# and _p, and the rates _v1, _v2, ... of the reactions in order.
+function rate_lines(model, header)
   check_rates(model)
   names = keys(model.species)
-  pnames = keys(model.parameters)
-  lines = {"function(_t, _y, _p)"}
+  pnames = parameter_names(model)
+  lines = {header}
   for i in 1:length(names)
     lines = append(lines, "  " + names[i] + " = _y[" + string(i) + "]")
   end
@@ -289,6 +362,16 @@ export function rhs_text(model)
   for j in 1:length(model.reactions)
     lines = append(lines, "  _v" + string(j) + " = " + model.reactions[j].rate)
   end
+  return lines
+end
+
+
+## The text of the function that rhs(model) makes, to read or check: the
+## species, parameters and boundary species as local names set from _y and
+## _p, the rates _v1, _v2, ... of the reactions in order, and the derivatives.
+export function rhs_text(model)
+  names = keys(model.species)
+  lines = rate_lines(model, "function(_t, _y, _p)")
 
   # Row i of N v: the rates that change species i, with their coefficients.
   N = stoichiometry(model)
@@ -315,12 +398,61 @@ end
 
 ## The right-hand side of the model's differential equations, dy/dt = N v(y),
 ## as a function f(t, y, p) for ode.solve with params = p: y holds the
-## species in the order of species_names(model) and p the parameters'
-## values, as parameter_values(model) gives them. The rate laws become one
-## function made with parse_function, so they are checked here, and the JIT
-## compiles it.
+## floating species in the order of species_names(model) and p the
+## parameters' and boundary species' values, as parameter_values(model)
+## gives them. The rate laws become one function made with parse_function,
+## so they are checked here, and the JIT compiles it.
 export function rhs(model)
   return parse_function(rhs_text(model))
+end
+
+
+## The reactions' names, in order: the columns of stoichiometry(model).
+export function reaction_names(model)
+  names = {}
+  for r in model.reactions
+    names = append(names, r.name)
+  end
+  return names
+end
+
+
+## The text of the function that rates(model) makes: as rhs_text, but taking
+## (_y, _p) and returning the rates [_v1; _v2; ...] themselves.
+export function rates_text(model)
+  lines = rate_lines(model, "function(_y, _p)")
+  vs = {}
+  for j in 1:length(model.reactions)
+    vs = append(vs, "_v" + string(j))
+  end
+  lines = append(lines, "  return [" + join(vs, "; ") + "]")
+  lines = append(lines, "end")
+  return join(lines, "\n")
+end
+
+
+## The reaction rates as a function v(y, p): y holds the floating species in
+## the order of species_names(model) and p the values parameter_values(model)
+## gives; the result is the vector of rates in the order of
+## reaction_names(model). Compiled by the JIT, as rhs is.
+export function rates(model)
+  return parse_function(rates_text(model))
+end
+
+
+# y as a real vector.
+function real_vector(y)
+  return reshape([y] + 0.0, length([y]))
+end
+
+
+## The reaction rates at the floating species' values y, with the model's
+## parameter and boundary values: the fluxes, when y is a steady state.
+export function fluxes(model, y)
+  if length(model.reactions) == 0
+    return zeros(0)
+  end
+  return real_vector(rates(model)(real_vector(y), parameter_values(model)))
 end
 
 
@@ -343,12 +475,12 @@ end
 ## parameters between steps with set(sim, name, value). The model is made
 ## into code once, here, and the solver keeps its state from step to step,
 ## starting afresh only after a change. A record with fields t (the time,
-## from t_start), y (the species' values), p (the parameters' values),
-## species and parameters (their names, in the order of y and p) and solver
-## (an ode.integrator).
+## from t_start), y (the floating species' values), p (the parameters' and
+## boundary species' values), species and parameters (their names, in the
+## order of y and p) and solver (an ode.integrator).
 export function simulator(model; t_start = 0.0, method = "rk45", rtol = 1e-6, atol = 1e-9)
   return {t: t_start + 0.0, y: initial(model), p: parameter_values(model),
-          species: species_names(model), parameters: keys(model.parameters),
+          species: species_names(model), parameters: parameter_names(model),
           solver: ode.integrator(rhs(model), method = method, rtol = rtol, atol = atol)}
 end
 
@@ -375,8 +507,8 @@ function position(names, name)
 end
 
 
-## sim with the species or parameter called name set to value, from the next
-## step on.
+## sim with the species, parameter or boundary species called name set to
+## value, from the next step on.
 export function set(sim, name, value)
   i = position(sim.species, name)
   if i > 0
@@ -392,7 +524,7 @@ export function set(sim, name, value)
 end
 
 
-## The value of the species or parameter called name in sim.
+## The value of the species, parameter or boundary species called name in sim.
 export function value(sim, name)
   i = position(sim.species, name)
   if i > 0
@@ -592,4 +724,211 @@ end
 export function reduced_jacobian(model, y)
   cons = conservation(model)
   return jacobian(model, y)[cons.ind, :] * cons.link
+end
+
+
+# ------------------------------------------------------------ control analysis
+
+NAN = 0.0 / 0.0
+
+# y as a real vector of the floating species' values, checked against the
+# model.
+function species_values(model, y, where)
+  t = typeof(y)
+  if t != "vector" and t != "matrix" and t != "real" and t != "int"
+    error("TypeError", where + ": y must be a real vector, got " + t)
+  end
+  y = real_vector(y)
+  if length(y) != length(model.species)
+    error("DimensionError", where + ": y has " + string(length(y)) +
+      " values but the model has " + string(length(model.species)) + " floating species")
+  end
+  return y
+end
+
+# The derivatives of the rates v(y, p) with respect to each entry of y (by =
+# "species") or of p (by = "parameters"): one row per reaction, one column
+# per entry. Five-point differences, as libRoadRunner computes them:
+# (v(x - 2h) - 8 v(x - h) + 8 v(x + h) - v(x + 2h)) / 12h, with h relative to
+# the entry (eps^(1/5) |x|, or eps^(1/5) 1e-6 for an entry of 0); the error
+# is of order h^4.
+function rate_derivatives(model, y, by)
+  p = parameter_values(model)
+  x = p
+  if by == "species" x = y end
+  n = length(model.reactions)
+  D = zeros(n, length(x))
+  if n == 0 or length(x) == 0
+    return D
+  end
+  v = rates(model)
+  for j in 1:length(x)
+    h = 7.40095979741405e-4 * max(abs(x[j]), 1e-6)
+    h = (x[j] + h) - x[j]          # a step that x[j] + h represents exactly
+    f = zeros(n, 4)
+    k = 0
+    for s in {-2.0, -1.0, 1.0, 2.0}
+      k = k + 1
+      xs = x
+      xs[j] = x[j] + s * h
+      if by == "species"
+        f[:, k] = real_vector(v(xs, p))
+      else
+        f[:, k] = real_vector(v(y, xs))
+      end
+    end
+    D[:, j] = (f[:, 1] - 8 * f[:, 2] + 8 * f[:, 3] - f[:, 4]) / (12 * h)
+  end
+  return D
+end
+
+# M scaled: M[i, j] col[j] / row[i], NaN where row[i] is 0.
+function scale(M, row, col)
+  [m, n] = size(M)
+  S = zeros(m, n)
+  for i in 1:m
+    for j in 1:n
+      if row[i] == 0
+        S[i, j] = NAN
+      else
+        S[i, j] = M[i, j] * col[j] / row[i]
+      end
+    end
+  end
+  return S
+end
+
+## The elasticities of the reactions with respect to the floating species at
+## the species' values y: E[i, j] is the derivative of reaction i's rate
+## with respect to species j (rows in the order of reaction_names, columns in
+## the order of species_names), by five-point differences, as libRoadRunner
+## computes them. scaled = true gives the scaled elasticities
+## E[i, j] y[j] / v[i] instead (NaN where the rate v[i] is 0).
+export function elasticities(model, y; scaled = false)
+  y = species_values(model, y, "antimony.elasticities")
+  E = rate_derivatives(model, y, "species")
+  if scaled
+    E = scale(E, fluxes(model, y), y)
+  end
+  return E
+end
+
+## The elasticities of the reactions with respect to the parameters, then the
+## boundary species (the columns in the order of parameter_names), at the
+## floating species' values y. scaled = true gives E[i, k] p[k] / v[i].
+export function parameter_elasticities(model, y; scaled = false)
+  y = species_values(model, y, "antimony.parameter_elasticities")
+  E = rate_derivatives(model, y, "parameters")
+  if scaled
+    E = scale(E, fluxes(model, y), parameter_values(model))
+  end
+  return E
+end
+
+## The result of control(model): the floating species and the reactions, the
+## steady state y and its fluxes J (J[i] is reaction i's rate), the
+## elasticities (reactions × species), the flux control coefficients
+## (flux_control[i, j]: of the flux through reaction i by reaction j) and the
+## concentration control coefficients (concentration_control[i, j]: of
+## species i by reaction j). All scaled when scaled is true.
+export record Control
+  species: list
+  reactions: list
+  y: vector
+  J: vector
+  elasticities: matrix
+  flux_control: matrix
+  concentration_control: matrix
+  scaled: bool
+end
+
+## Metabolic control analysis of the model at a steady state: a Control
+## record. y is the steady state (the floating species' values); by default
+## it is found with steady_state(model). With the elasticities E (unscaled),
+## the reduced stoichiometry Nr and link matrix L of conservation(model), the
+## reduced Jacobian Jr = Nr E L gives the concentration control coefficients
+## Cs = -L Jr^-1 Nr and the flux control coefficients CJ = I + E Cs (Reder
+## 1988), which hold with conserved moieties, branches and cycles. Scaled
+## (the default): CJ[i, j] J[j] / J[i] and Cs[i, j] J[j] / y[i], NaN where
+## the flux or concentration divided by is 0. Each row of the scaled flux
+## control coefficients sums to 1 and of the concentration ones to 0.
+export function control(model; y = nothing, scaled = true)
+  c = unscaled_control(model, y, "antimony.control")
+  if scaled
+    return Control(species_names(model), reaction_names(model), c.y, c.J,
+                   scale(c.E, c.J, c.y), scale(c.CJ, c.J, c.J), scale(c.Cs, c.y, c.J), true)
+  end
+  return Control(species_names(model), reaction_names(model), c.y, c.J, c.E, c.CJ, c.Cs,
+                 false)
+end
+
+# The steady state (y, or steady_state(model) when y is nothing), its fluxes
+# J, the unscaled elasticities E and control coefficients CJ and Cs.
+function unscaled_control(model, y, where)
+  if typeof(y) == "nothing"
+    ss = steady_state(model)
+    if ss.status != "success"
+      error("ArgumentError", where + ": the steady state was not found (status " +
+        ss.status + ", |f| = " + string(ss.fnorm) + "); give it as y")
+    end
+    y = ss.y
+  end
+  y = species_values(model, y, where)
+  E = rate_derivatives(model, y, "species")
+  J = fluxes(model, y)
+  cons = conservation(model)
+  m = length(y)
+  n = length(J)
+  Cs = zeros(m, n)
+  if length(cons.ind) > 0
+    Jr = cons.Nr * E * cons.link
+    try
+      Cs = 0.0 - cons.link * (Jr \ cons.Nr)
+    catch err
+      if err.kind == "SingularMatrix"
+        error("SingularMatrix", where + ": the reduced Jacobian is singular at " +
+          "this point, so the control coefficients are not defined")
+      end
+      error(err.kind, err.message)
+    end
+  end
+  return {y: y, J: J, E: E, CJ: eye(n) + E * Cs, Cs: Cs}
+end
+
+## The result of response(model): the parameters (the parameters, then the
+## boundary species, as parameter_names gives them: the columns of both
+## matrices), the floating species and the reactions (the rows of
+## concentration and of flux), the steady state y and its fluxes J, and the
+## response coefficients: flux[i, k] of the flux through reaction i to
+## parameter k, concentration[i, k] of species i to parameter k. Scaled when
+## scaled is true.
+export record Response
+  parameters: list
+  species: list
+  reactions: list
+  y: vector
+  J: vector
+  flux: matrix
+  concentration: matrix
+  scaled: bool
+end
+
+## The response coefficients of the steady state to every parameter and
+## boundary species, as a Response record: how the fluxes and concentrations
+## change with each. y is the steady state, by default steady_state(model).
+## They are the control coefficients times the parameter elasticities P:
+## R^J = CJ P and R^S = Cs P (unscaled). Scaled (the default): R^J[i, k]
+## p[k] / J[i] and R^S[i, k] p[k] / y[i], NaN where the value divided by is 0.
+export function response(model; y = nothing, scaled = true)
+  c = unscaled_control(model, y, "antimony.response")
+  P = rate_derivatives(model, c.y, "parameters")
+  RJ = c.CJ * P
+  RS = c.Cs * P
+  if scaled
+    p = parameter_values(model)
+    RJ = scale(RJ, c.J, p)
+    RS = scale(RS, c.y, p)
+  end
+  return Response(parameter_names(model), species_names(model), reaction_names(model), c.y,
+                  c.J, RJ, RS, scaled)
 end

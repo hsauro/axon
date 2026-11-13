@@ -1,0 +1,33 @@
+{"S1"} {"X0", "X1"}
+{"k1", "km1", "k2", "X0", "X1"}
+dict("X0" => 10, "X1" => 0) dict("k1" => 1, "km1" => 0.5, "k2" => 2)
+dict("X0" => 1) dict("X1" => 1)
+1×2 matrix{real}
+  1.0  -1.0
+1×5 matrix{real}
+  1.0  0.5  2.0  10.0  0.0
+function(_t, _y, _p)
+  S1 = _y[1]
+  k1 = _p[1]
+  km1 = _p[2]
+  k2 = _p[3]
+  X0 = _p[4]
+  X1 = _p[5]
+  _v1 = k1*X0 - km1*S1
+  _v2 = k2*S1
+  return [_v1 - _v2]
+end
+success true
+true
+{"S1"} {}
+true
+{"k1", "km1", "k2", "X0", "X1"}
+5.0 0.0
+{"B", "C"} {"A", "D"} dict("A" => 2, "D" => 3)
+2×2 matrix{real}
+  1.0  0.0
+  0.0  1.0
+1×2 matrix{real}
+  2.0  0.0
+dict()
+Invalid species term: '$'

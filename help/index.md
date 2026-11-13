@@ -77,3 +77,4 @@ Each example opens as your own copy, so you can change it and run it with
 - [A chemical oscillator: time course and phase plot](../examples/27_oscillator.sci)
 - [Colour maps: the Rosenbrock function six ways](../examples/28_colormaps.sci)
 - [3D bar charts: a 2-D histogram, and heights above and below zero](../examples/29_bars3d.sci)
+- [Metabolic control analysis: which steps control the flux?](../examples/30_control.sci)

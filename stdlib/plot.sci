@@ -549,9 +549,11 @@ end
 ## Keywords: label, colormap ("viridis", "plasma", "coolwarm", "gray" or
 ## "jet"), color_by (a matrix the shape of Z to colour by instead of the
 ## height, such as log10(1 + Z) for a function with a few large values),
-## edges (draw the mesh), elev and azim (viewing angles in degrees).
+## clim ([lo, hi]: the values the two ends of the colour map stand for,
+## instead of the smallest and largest), edges (draw the mesh), elev and azim
+## (viewing angles in degrees).
 export function surface(x, y, Z; label = nothing, colormap = "viridis", color_by = nothing,
-                        edges = true, elev = 30.0, azim = -60.0)
+                        clim = nothing, edges = true, elev = 30.0, azim = -60.0)
   global current
   xs = real_vector(x, "plot.surface: x")
   ys = real_vector(y, "plot.surface: y")
@@ -582,8 +584,9 @@ export function surface(x, y, Z; label = nothing, colormap = "viridis", color_by
     end
     c = reshape([color_by] + 0.0, m, n)
   end
+  climits = color_limits(clim, "plot.surface")
   add_series({type: "surface", three_d: true, x: xs, y: ys, z: reshape([Z] + 0.0, m, n),
-              label: label, colormap: colormap, c: c, edges: edges})
+              label: label, colormap: colormap, c: c, clim: climits, edges: edges})
   current.elev = elev + 0.0
   current.azim = azim + 0.0
 end
@@ -591,15 +594,19 @@ end
 ## Adds a 3D bar chart: a bar standing at (x[j], y[i]) for each entry of Z,
 ## rising from 0 to Z[i, j], or going down for a negative value (NaN leaves
 ## the place empty). bar3(Z) alone places the bars at 1, 2, ... both ways; a
-## vector Z is one column of bars along y. The bars are coloured by height.
-## Keywords: width (of each bar, as a fraction of the grid spacing, at most
-## 1), colormap ("viridis", "plasma", "coolwarm", "gray" or "jet"), color_by
-## (a matrix the shape of Z to colour by instead of the height), color (one
-## colour for every bar instead of the colour map), label, edges (outline the
-## bars), elev and azim (viewing angles in degrees).
+## vector Z is one column of bars along y. x or y may instead be a list of
+## names, such as reactions or species: the bars then stand at 1, 2, ... on
+## that axis, which is labelled with the names. The bars are coloured by
+## height. Keywords: width (of each bar, as a fraction of the grid spacing,
+## at most 1), colormap ("viridis", "plasma", "coolwarm", "gray" or "jet"),
+## color_by (a matrix the shape of Z to colour by instead of the height),
+## clim ([lo, hi]: the values the two ends of the colour map stand for, such
+## as [-1, 1] to put the middle of "coolwarm" at 0), color (one colour for
+## every bar instead of the colour map), label, edges (outline the bars),
+## elev and azim (viewing angles in degrees).
 export function bar3(x, y = nothing, Z = nothing; width = 0.8, colormap = "viridis",
-                     color_by = nothing, color = nothing, label = nothing, edges = true,
-                     elev = 30.0, azim = -60.0)
+                     color_by = nothing, clim = nothing, color = nothing, label = nothing,
+                     edges = true, elev = 30.0, azim = -60.0)
   global current
   if typeof(y) == "nothing" and typeof(Z) == "nothing"
     Z = x
@@ -616,10 +623,20 @@ export function bar3(x, y = nothing, Z = nothing; width = 0.8, colormap = "virid
     fail("TypeError", "plot.bar3: Z must be real, not complex")
   end
   [m, n] = size(Z)
+  xnames = nothing
+  ynames = nothing
   if typeof(y) == "nothing"
     xs = real_vector(1:n, "plot.bar3: x")
     ys = real_vector(1:m, "plot.bar3: y")
   else
+    if typeof(x) == "list"
+      xnames = category_names(x, "plot.bar3: x")
+      x = 1:length(x)
+    end
+    if typeof(y) == "list"
+      ynames = category_names(y, "plot.bar3: y")
+      y = 1:length(y)
+    end
     xs = real_vector(x, "plot.bar3: x")
     ys = real_vector(y, "plot.bar3: y")
     if m != length(ys) or n != length(xs)
@@ -655,11 +672,34 @@ export function bar3(x, y = nothing, Z = nothing; width = 0.8, colormap = "virid
     end
     c = reshape([color_by] + 0.0, m, n)
   end
+  climits = color_limits(clim, "plot.bar3")
   add_series({type: "bar3", three_d: true, x: xs, y: ys, z: reshape([Z] + 0.0, m, n),
-              label: label, colormap: colormap, c: c, color: color, width: width + 0.0,
-              edges: edges})
+              label: label, colormap: colormap, c: c, clim: climits, color: color,
+              width: width + 0.0, edges: edges, xnames: xnames, ynames: ynames})
   current.elev = elev + 0.0
   current.azim = azim + 0.0
+end
+
+# The names of a list of categories, checked to be strings.
+function category_names(v, what)
+  for c in v
+    if typeof(c) != "string"
+      fail("TypeError", what + ": categories must be strings, got " + typeof(c))
+    end
+  end
+  return v
+end
+
+# clim checked: nothing, or [lo, hi] as a real vector with lo < hi.
+function color_limits(clim, where)
+  if typeof(clim) == "nothing"
+    return nothing
+  end
+  c = real_vector(clim, where + ": clim")
+  if length(c) != 2 or not (c[1] < c[2]) or abs(c[1]) == 1.0 / 0.0 or abs(c[2]) == 1.0 / 0.0
+    fail("ArgumentError", where + ": clim must be [lo, hi] with lo < hi, both finite")
+  end
+  return c
 end
 
 # The distance between neighbouring bar centres: the smallest gap between
@@ -1367,6 +1407,16 @@ function colormap_at(name, u)
   return (1 - f) * T[k + 1, :] + f * T[k + 2, :]
 end
 
+# A surface's clim, or nothing for one saved before clim existed (a figure
+# record read back with io.read_json).
+function clim_of(s)
+  try
+    return s.clim
+  catch err
+    return nothing
+  end
+end
+
 # The finite range of the values (lo > hi when there are none).
 function finite_range(v, lo, hi)
   for t in v
@@ -1486,6 +1536,11 @@ function render_3d(fig)
           cmax = cmin + 1
         end
       end
+      lims = clim_of(s)
+      if typeof(lims) != "nothing"
+        cmin = lims[1]
+        cmax = lims[2]
+      end
       irange = 1:m - 1
       jrange = 1:n - 1
       if ud - od > 0 irange = m - 1:-1:1 end
@@ -1523,6 +1578,10 @@ function render_3d(fig)
       if typeof(s.c) != "nothing" C = s.c end
       [cmin, cmax] = finite_range(C, inf, -inf)
       if not (cmax > cmin) cmax = cmin + 1 end
+      if typeof(s.clim) != "nothing"
+        cmin = s.clim[1]
+        cmax = s.clim[2]
+      end
       edge = "none"
       if s.edges edge = "#00000059" end
       # The items of one face through the corners (us[k], vs[k], ws[k]):
@@ -1633,13 +1692,47 @@ function render_3d(fig)
     end
   end
 
-  # Axis labels at the front edges.
-  [ax, ay, ad] = proj(0, -1.25, -1)
-  items = append(items, text_item(ax, ay, axis_text(fig.xlabel, "x", xmin, xmax),
-                                  size_or(fig.xlabel_size, TICK_SIZE), "middle", "top"))
-  [bx, by, bd] = proj(1.25, 0, -1)
-  items = append(items, text_item(bx, by, axis_text(fig.ylabel, "y", ymin, ymax),
-                                  size_or(fig.ylabel_size, TICK_SIZE), "middle", "top"))
+  # Axis labels at the front edges. Bars with names (bar3 given lists for x
+  # or y) put the names along the edge instead of the range, and the label,
+  # if there is one, beyond them.
+  xnames = nothing
+  ynames = nothing
+  for s in fig.series
+    if s.type == "bar3"
+      if typeof(xnames) == "nothing" xnames = s.xnames end
+      if typeof(ynames) == "nothing" ynames = s.ynames end
+    end
+  end
+  if typeof(xnames) == "nothing"
+    [ax, ay, ad] = proj(0, -1.25, -1)
+    items = append(items, text_item(ax, ay, axis_text(fig.xlabel, "x", xmin, xmax),
+                                    size_or(fig.xlabel_size, TICK_SIZE), "middle", "top"))
+  else
+    for k in 1:length(xnames)
+      [ax, ay, ad] = proj(nx(k), -1.12, -1)
+      items = append(items, text_item(ax, ay, xnames[k], TICK_SIZE, "middle", "top"))
+    end
+    if typeof(fig.xlabel) != "nothing"
+      [ax, ay, ad] = proj(0, -1.8, -1)
+      items = append(items, text_item(ax, ay, fig.xlabel, size_or(fig.xlabel_size, TICK_SIZE),
+                                      "middle", "top"))
+    end
+  end
+  if typeof(ynames) == "nothing"
+    [bx, by, bd] = proj(1.25, 0, -1)
+    items = append(items, text_item(bx, by, axis_text(fig.ylabel, "y", ymin, ymax),
+                                    size_or(fig.ylabel_size, TICK_SIZE), "middle", "top"))
+  else
+    for k in 1:length(ynames)
+      [bx, by, bd] = proj(1.12, ny(k), -1)
+      items = append(items, text_item(bx, by, ynames[k], TICK_SIZE, "middle", "top"))
+    end
+    if typeof(fig.ylabel) != "nothing"
+      [bx, by, bd] = proj(1.8, 0, -1)
+      items = append(items, text_item(bx, by, fig.ylabel, size_or(fig.ylabel_size, TICK_SIZE),
+                                      "middle", "top"))
+    end
+  end
   [zx, zy, zd] = proj(-1, -1, 1.15)
   items = append(items, text_item(zx, zy, axis_text(fig.zlabel, "z", zmin, zmax),
                                   size_or(fig.zlabel_size, TICK_SIZE), "middle", "bottom"))

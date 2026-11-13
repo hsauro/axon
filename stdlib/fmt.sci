@@ -88,10 +88,14 @@ end
 ## decimals, digits (6 by default, as arrays are displayed) and sci, as for
 ## number; header (false: true puts a line such as "2x3 matrix{int}" first);
 ## sep (two spaces); align (true: each column right-aligned to its widest
-## entry). Every row and column is included, whatever set_size says. The
-## text has no line break at the end.
+## entry); rows and cols (lists of names: the row names down the left,
+## padded to the longest, and the column names on a line above the entries,
+## each column as wide as its widest entry or its name; unaligned, the names
+## are fields like the entries, as for CSV). Every row and column
+## is included, whatever set_size says. The text has no line break at the
+## end.
 export function matrix(A; decimals = nothing, digits = 6, sci = false, header = false,
-                       sep = "  ", align = true)
+                       sep = "  ", align = true, rows = nothing, cols = nothing)
   t = typeof(A)
   if t == "range" or t == "int" or t == "real" or t == "bool" or t == "complex"
     A = [A]
@@ -120,6 +124,20 @@ export function matrix(A; decimals = nothing, digits = 6, sci = false, header = 
     end
     cells = append(cells, row)
   end
+  rnames = names_of(rows, m, "rows")
+  cnames = names_of(cols, n, "cols")
+  if typeof(cnames) != "nothing"
+    for j in 1:n
+      widths[j] = max(widths[j], length(cnames[j]))
+    end
+  end
+  # The row names, as wide as the longest (when aligned).
+  rw = 0
+  if typeof(rnames) != "nothing"
+    for name in rnames
+      rw = max(rw, length(name))
+    end
+  end
   lines = {}
   if header
     if is_vector
@@ -128,6 +146,23 @@ export function matrix(A; decimals = nothing, digits = 6, sci = false, header = 
       lines = append(lines, string(m) + "\u{D7}" + string(n) + " matrix{" + eltype(A) + "}")
     end
   end
+  if typeof(cnames) != "nothing"
+    row = {}
+    for j in 1:n
+      if align
+        row = append(row, repeat(" ", int(widths[j]) - length(cnames[j])) + cnames[j])
+      else
+        row = append(row, cnames[j])
+      end
+    end
+    line = join(row, sep)
+    if typeof(rnames) != "nothing" and align
+      line = repeat(" ", rw) + sep + line
+    elseif typeof(rnames) != "nothing"
+      line = sep + line          # unaligned, as for CSV: an empty first field
+    end
+    lines = append(lines, line)
+  end
   for i in 1:m
     row = cells[i]
     if align
@@ -135,7 +170,36 @@ export function matrix(A; decimals = nothing, digits = 6, sci = false, header = 
         row[j] = repeat(" ", int(widths[j]) - length(row[j])) + row[j]
       end
     end
-    lines = append(lines, join(row, sep))
+    line = join(row, sep)
+    if typeof(rnames) != "nothing"
+      name = rnames[i]
+      if align
+        name = name + repeat(" ", rw - length(name))
+      end
+      line = name + sep + line
+    end
+    lines = append(lines, line)
   end
   return join(lines, "\n")
+end
+
+# Row or column names for matrix: nothing, or a list of count strings.
+function names_of(v, count, what)
+  if typeof(v) == "nothing"
+    return nothing
+  end
+  if typeof(v) != "list"
+    error("TypeError", "fmt.matrix: " + what + " must be a list of strings, got " + typeof(v))
+  end
+  if length(v) != count
+    error("DimensionError", "fmt.matrix: " + what + " needs " + string(count) + " names, got " +
+      string(length(v)))
+  end
+  for name in v
+    if typeof(name) != "string"
+      error("TypeError", "fmt.matrix: " + what + " must be a list of strings, got one " +
+        typeof(name))
+    end
+  end
+  return v
 end

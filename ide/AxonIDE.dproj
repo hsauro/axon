@@ -1895,6 +1895,22 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
+                <DeployFile LocalName="..\examples\30_control.sci" Configuration="Debug" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <RemoteName>30_control.sci</RemoteName>
+                        <Operation>0</Operation>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="..\examples\30_control.sci" Configuration="Release" Class="File">
+                    <Platform Name="OSXARM64">
+                        <RemoteDir>Contents\MacOS\examples\</RemoteDir>
+                        <RemoteName>30_control.sci</RemoteName>
+                        <Operation>0</Operation>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployFile LocalName="..\help\getting-started.md" Configuration="Debug" Class="File">
                     <Platform Name="OSXARM64">
                         <RemoteDir>Contents\MacOS\help\</RemoteDir>

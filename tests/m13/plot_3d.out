@@ -21,3 +21,12 @@ ArgumentError plot.bar3: width must be above 0 and at most 1
 ArgumentError
 TypeError plot.bar3: Z must be a real matrix, got string
 ArgumentError a figure cannot mix 3D plots (surface, bar3, line3, scatter3) with 2D ones
+{"J0", "J1", "J2"} {"S1", "S2"} 3.0 2.0 -3.0 3.0
+true
+1.0
+ArgumentError plot.bar3: clim must be [lo, hi] with lo < hi, both finite
+ArgumentError plot.bar3: clim must be [lo, hi] with lo < hi, both finite
+ArgumentError plot.bar3: clim must be [lo, hi] with lo < hi, both finite
+TypeError plot.bar3: clim must be a real vector, got string
+TypeError plot.bar3: x: categories must be strings, got int
+DimensionError plot.bar3: Z is 2×3 but needs length(y) × length(x) = 2×2

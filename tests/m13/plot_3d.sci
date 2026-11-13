@@ -108,3 +108,31 @@ try
 catch err
   println(err.kind, err.message)
 end
+
+# Named axes (reactions, species) and a fixed colour range.
+plot.figure()
+plot.bar3({"J0", "J1", "J2"}, {"S1", "S2"}, B, colormap = "coolwarm", clim = [-3, 3])
+s = plot.gcf().series[1]
+println(s.xnames, s.ynames, s.x[3], s.y[2], s.clim[1], s.clim[2])
+plot.save("_tmp_3d.svg")
+println(io.delete_file("_tmp_3d.svg"))
+plot.figure()
+plot.surface(g, g, Z, clim = [-1, 1])
+println(plot.gcf().series[1].clim[2])
+for bad in {[1.0, 1.0], [2.0, 1.0], [1.0, 2.0, 3.0], "x"}
+  try
+    plot.bar3(B, clim = bad)
+  catch err
+    println(err.kind, err.message)
+  end
+end
+try
+  plot.bar3({"a", 2, "c"}, {"S1", "S2"}, B)
+catch err
+  println(err.kind, err.message)
+end
+try
+  plot.bar3({"a", "b"}, {"S1", "S2"}, B)
+catch err
+  println(err.kind, err.message)
+end

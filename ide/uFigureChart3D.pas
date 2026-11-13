@@ -9,7 +9,8 @@ unit uFigureChart3D;
    series of these types: "surface" (x, y, the matrix z over the grid
    (x[j], y[i]), colormap by name, c from color_by, edges), "bar3" (the same,
    a bar from 0 to z[i][j] at each grid point, width a fraction of the grid
-   spacing, color for bars in one colour), "line3" (x, y, z, with
+   spacing, color for bars in one colour, xnames and ynames for named
+   axes), "line3" (x, y, z, with
    null for a gap, color, width, marker, marker_size) and "scatter3" (x, y,
    z, color, size, marker); each may have a label. The figure's title,
    xlabel, ylabel, zlabel, xlim, ylim, legend, azim and elev (degrees, the
@@ -71,6 +72,36 @@ begin
   else Result := False;
 end;
 
+// Names along axis Axis at 1, 2, ..., when J is a list of strings.
+procedure NamedTicks(Plot: TRho3DPlot; Axis: Integer; J: TJSONValue);
+var
+  Pos: TArray<Double>;
+  Names: TArray<string>;
+  K: Integer;
+begin
+  if not (J is TJSONArray) then
+    Exit;
+  SetLength(Pos, TJSONArray(J).Count);
+  SetLength(Names, TJSONArray(J).Count);
+  for K := 0 to High(Pos) do
+  begin
+    Pos[K] := K + 1;
+    Names[K] := Str(TJSONArray(J).Items[K]);
+  end;
+  Plot.SetTickLabels(Axis, Pos, Names);
+end;
+
+// The colour range, when J is clim, [lo, hi]: the chart has one for all
+// its series.
+procedure ColorLimits(Plot: TRho3DPlot; J: TJSONValue);
+begin
+  if (J is TJSONArray) and (TJSONArray(J).Count = 2) then
+  begin
+    Plot.ColorMin := Num(TJSONArray(J).Items[0], NaN);
+    Plot.ColorMax := Num(TJSONArray(J).Items[1], NaN);
+  end;
+end;
+
 procedure Label_(Series: TRho3DSeries; S: TJSONObject);
 begin
   Series.Title := Str(S.GetValue('label'));
@@ -99,6 +130,12 @@ begin
     Series.ColorMap := ColorMapFromName(Str(S.GetValue('colormap')), cmViridis);
     if S.GetValue('c') is TJSONArray then
       Series.SetValues(Matrix(S.GetValue('c')));
+    ColorLimits(Plot, S.GetValue('clim'));
+    if Kind = 'bar3' then
+    begin
+      NamedTicks(Plot, 0, S.GetValue('xnames'));
+      NamedTicks(Plot, 1, S.GetValue('ynames'));
+    end;
     // Bars in one colour (bar3's color) instead of the colour map.
     if (Kind = 'bar3') and ((S.GetValue('color') is TJSONString) or
        (S.GetValue('color') is TJSONArray)) then
@@ -182,6 +219,11 @@ begin
 
     Plot.Clear;
     Plot.UseGradient := False;          // series take their own colours
+    // No named ticks or fixed colour range unless a series sets them.
+    for K := 0 to 2 do
+      Plot.SetTickLabels(K, [], []);
+    Plot.ColorMin := NaN;
+    Plot.ColorMax := NaN;
     HasColorBar := False;
     for K := 0 to Series.Count - 1 do
       if Series.Items[K] is TJSONObject then

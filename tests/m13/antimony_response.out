@@ -1,0 +1,6 @@
+{"k1", "km1", "k2", "X0", "X1"} {"S1"} {"_J0", "_J1"} true
+true true
+false true true true
+{"V0", "K0", "Ki", "k1", "Vm2", "Km2", "k3", "k4", "k5", "X0", "X1", "X2"}
+true true
+DimensionError antimony.response: y has 2 values but the model has 1 floating species

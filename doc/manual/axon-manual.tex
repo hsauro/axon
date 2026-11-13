@@ -3275,6 +3275,14 @@ assignment gives its initial concentration. Every other assigned name is a
 \emph{parameter}. Statements end at a semicolon or at the end of a line, and
 \code{//} or \code{#} starts a comment.
 
+A species written with \code{$} in front, as in \code{$X0 -> S1; k1*X0}, is
+a \emph{boundary} species: a source or sink held at a fixed concentration.
+It keeps its name in the rate laws, has no row in the stoichiometry matrix,
+and never changes in a simulation; the others are the \emph{floating}
+species. One \code{$} marks the name everywhere in the model. Its value is
+assigned like a parameter's, and the module passes it to the rate laws with
+the parameters.
+
 \section{Running a simulation}\label{sec:sim}
 
 The whole program is short:
@@ -3833,6 +3841,82 @@ $c$ zeros.
   bounds the number of steady states.
 \end{enumerate}
 
+\section{Metabolic control analysis}\label{sec:mca}
+
+A steady state raises the question of which steps set it. Metabolic control
+analysis answers it in terms of small relative changes. The \emph{elasticity}
+of a step to a species is a local property of the step alone: how its rate
+responds to the species' concentration, everything else held fixed,
+$\varepsilon^{v_i}_{s_j} = (\partial v_i / \partial s_j)(s_j / v_i)$. A
+\emph{control coefficient} is a property of the whole system: how a
+steady-state flux $J$ or concentration $s$ responds when the rate of one step
+is changed, for example through the amount of its enzyme,
+$C^{J}_{v_j} = (dJ/J) / (dv_j/v_j)$, and likewise $C^{s}_{v_j}$. Each flux's
+control coefficients sum to 1 and each concentration's to 0 (the summation
+theorems), and $\sum_j C^{J}_{v_j}\varepsilon^{v_j}_{s} = 0$ (a connectivity
+theorem): control is shared out, and it is the elasticities that decide how.
+
+The control coefficients follow from the elasticities and the structure of
+the network (reference \ref{ref:reder}). With the unscaled elasticities
+$\varepsilon = \partial v / \partial s$ and the reduced stoichiometry $N_R$
+and link matrix $L$ of the last section,
+\[
+C^{S} = -L\,(N_R\,\varepsilon\,L)^{-1} N_R, \qquad C^{J} = I + \varepsilon\,C^{S},
+\]
+which holds with branches, cycles and conserved moieties alike; scaling by
+the fluxes and concentrations gives the coefficients above.
+\code{antimony.control(model)} finds the steady state and returns a record
+with the species, the reactions, the steady state \code{y}, the fluxes
+\code{J}, the scaled elasticities, \code{flux_control} (row $i$: the flux
+through reaction $i$; column $j$: the step changed) and
+\code{concentration_control} (row $i$: species $i$); \code{scaled = false}
+gives the unscaled ones. The elasticities are computed, as libRoadRunner
+computes them, by five-point differences of the rate laws, which are exact
+for rate laws up to fourth degree and otherwise accurate to about $10^{-12}$
+relative; the module's tests compare the results with Tellurium's.
+\code{antimony.response(model)} gives the \emph{response coefficients} to
+every parameter, $R^{J}_{p} = \sum_j C^{J}_{v_j}\varepsilon^{v_j}_{p}$, and
+\code{fmt.matrix} with \code{rows} and \code{cols} prints a matrix as a
+table with names:
+
+\ex{mca.sci}
+\begin{axonout}
+Scaled elasticities
+       S1     S2      S3
+J0  0.000  0.000  -2.961
+J1  0.783  0.000   0.000
+J2  0.000  0.827   0.000
+J3  0.000  0.000   1.000
+Flux control coefficients, the same for each flux
+      J0     J1     J2     J3
+J  0.252  0.000  0.000  0.748
+Concentration control coefficients
+       J0      J1      J2      J3
+S1  0.322  -1.276   0.000   0.954
+S2  0.305   0.000  -1.210   0.904
+S3  0.252   0.000   0.000  -0.252
+Response of the flux to each parameter
+      v0     Ki       h    Vm1    Km1    Vm2    Km2     k3
+J  0.252  0.748  -0.196  0.000  0.000  0.000  0.000  0.748
+\end{axonout}
+
+The feedback hands control of the flux to the two ends of the pathway. The
+supply \code{J0} does not depend on \code{S1} or \code{S2}, so whatever the
+middle steps do, the flux is what \code{J0} delivers, and \code{J1} and
+\code{J2} have no control over it. The supply and the demand \code{J3} share
+it in the ratio of their elasticities to \code{S3}:
+$C^J_{J0} = 1/(1 + 2.961) = 0.252$ and $C^J_{J3} = 2.961/(1 + 2.961) = 0.748$,
+so the step after the inhibitor, not the one it inhibits, has most of the
+control. The middle steps still set their own substrates' concentrations,
+which the bars of negative control show (Figure~\ref{fig:mca.pdf}).
+\code{plot.bar3} takes the names of the reactions and species for its axes,
+and \code{clim = [-1, 1]} fixes the colour range so that the grey middle of
+\code{"coolwarm"} falls at 0. The Welcome tab's example 30 does the same for a
+branched pathway with a conserved moiety (ATP and ADP).
+
+\fig{mca.pdf}{0.65}{The concentration control coefficients of the
+feedback-inhibited pathway, from \texttt{mca.sci}.}
+
 \section{What the case study shows}
 
 \begin{itemize}
@@ -3853,12 +3937,12 @@ $c$ zeros.
   module ships in the standard library.
 \end{itemize}
 
-The module reads only part of Antimony. It does not read boundary species
-(\code{$X}), compartments, events, function definitions or assignments of
-expressions. Each could be added in the same way. A boundary species, for
-example, would keep its name in the rate laws but get a zero row in $N$. The
-Language Reference's section ``The antimony module'' lists exactly what is
-read.
+The module reads only part of Antimony. It does not read compartments,
+events, function definitions or assignments of expressions. Each could be
+added in the same way as boundary species were: a boundary species keeps its
+name in the rate laws, gets no row in $N$, and takes its value from the
+parameter vector. The Language Reference's section ``The antimony module''
+lists exactly what is read.
 
 % ===================================================================
 \chapter{Performance}\label{ch:perf}
@@ -4427,5 +4511,6 @@ opens as your own copy to change and run.
 \shipped{27_oscillator.sci}
 \shipped{28_colormaps.sci}
 \shipped{29_bars3d.sci}
+\shipped{30_control.sci}
 
 \end{document}
