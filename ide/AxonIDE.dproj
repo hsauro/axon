@@ -97,6 +97,7 @@
         <DCCReference Include="uProcessRunner.pas"/>
         <DCCReference Include="uAxonHighlighter.pas"/>
         <DCCReference Include="uRunReport.pas"/>
+        <DCCReference Include="uOutputPane.pas"/>
         <DCCReference Include="uAxonMarkdown.pas"/>
         <DCCReference Include="uPreferences.pas"/>
         <DCCReference Include="uRefSections.pas"/>

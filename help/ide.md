@@ -12,9 +12,12 @@
 | REPL | An interactive session that keeps its variables. |
 | Help | Help on the word under the caret (<kbd>F1</kbd>). |
 
-To copy from the Output or REPL pane, click a line (Shift- or Ctrl-click for
-more) and press <kbd>Ctrl+C</kbd> (<kbd>Cmd+C</kbd> on a Mac), or right-click for
-**Copy** and **Copy All**; with no line selected, Copy takes the whole pane.
+The Output and REPL panes hold text as an editor does, read-only: select any
+part of it with the mouse or with <kbd>Shift</kbd> and the arrow keys, copy it
+with <kbd>Ctrl+C</kbd> (<kbd>Cmd+C</kbd> on a Mac) or the right-click menu,
+select all of it with <kbd>Ctrl+A</kbd>, and search it with <kbd>Ctrl+F</kbd>.
+Each keeps its last 10,000 lines. While a pane shows its last line it follows
+new output; scroll up to read, and it stays where you are.
 
 The panes can be resized by dragging their edges. The IDE remembers the window
 and pane sizes, and the recent files, between sessions.
@@ -30,7 +33,8 @@ a syntax error gets a wavy red underline, and hovering it shows the message.
 
 When a program stops with an error, the error's line is underlined in the
 editor and the caret moves there. In the Output pane, each trace line
-(`at file:line:col`) is a link to that place.
+(`at file:line:col`) is a link to that place: it is underlined, and a
+click on it goes there.
 
 When a program asks for input (`name = input("Your name: ")`), a box appears
 under its prompt in the Output pane. Type the answer and press <kbd>Enter</kbd>:

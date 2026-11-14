@@ -359,10 +359,10 @@ middle-click, or \key{Ctrl+W}. The examples on the Welcome tab open as your own
 copies, in a folder \texttt{Axon Examples} in your documents, so the originals
 stay unchanged.
 
-\paragraph{Copying output.} To copy from the Output or REPL pane, click a line
-(Shift- or Ctrl-click for more) and press \key{Ctrl+C}, or right-click for
-\menu{Copy} and \menu{Copy All}. With no line selected, Copy takes the whole
-pane.
+\paragraph{Copying output.} The Output and REPL panes are read-only editors:
+select any part of them with the mouse or the keyboard, copy it (\key{Ctrl+C}
+or the right-click menu) and search them (\key{Ctrl+F}). Each keeps its last
+10{,}000 lines, and follows new output only while it shows the last line.
 
 \section{Writing and running programs}
 
@@ -374,7 +374,8 @@ program that runs too long.
 While you type, the IDE checks the syntax: about half a second after you stop, a
 syntax error gets a wavy red underline, and hovering over it shows the message.
 When a program stops with an error, the error's line is underlined and the caret
-moves there; in the Output pane each trace line is a link to its place. When a
+moves there; in the Output pane each trace line is a link to its place,
+underlined, which a click follows. When a
 program asks for input (\code{input("Your name: ")}), a box appears under its
 prompt in the Output pane; type the answer and press \key{Enter}, and it is
 added to the prompt's line.

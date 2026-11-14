@@ -18,6 +18,7 @@ uses
   uProcessRunner in 'uProcessRunner.pas',
   uAxonHighlighter in 'uAxonHighlighter.pas',
   uRunReport in 'uRunReport.pas',
+  uOutputPane in 'uOutputPane.pas',
   uAxonMarkdown in 'uAxonMarkdown.pas',
   uPreferences in 'uPreferences.pas',
   uRefSections in 'uRefSections.pas',

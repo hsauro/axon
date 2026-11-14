@@ -57,7 +57,7 @@ uses
   uSkiaCodeEditor, uCodeEditorTypes, uFindBar, uProcessRunner, uRunReport,
   uRhoMarkdownViewer, uPreferences, uRefSections, Axon.Version, SkPlotPaintBox,
   uFigureChart, Rho3DPlot, uFigureChart3D, uFigureGrid, uFigureExport,
-  System.Skia, FMX.Skia, Axon.Scene;
+  System.Skia, FMX.Skia, Axon.Scene, uOutputPane;
 
 type
   { A figure in the history: a scene from the display channel (with the
@@ -95,11 +95,11 @@ type
   private
     FDocs: TObjectList<TDocument>;
     FTabs: TTabControl;
-    FOutput: TListBox;
+    FOutput: TOutputPane;
     // input(): the box under the Output pane where the answer is typed, and
     // the line holding the prompt, which the answer is added to.
     FRunInput: TEdit;
-    FInputItem: TListBoxItem;
+    FInputLine: Integer;     // FOutput.Added after input()'s prompt, or 0
     FReplAwaitInput: Boolean;      // the REPL's program waits in input()
     FPlotImage: TImage;
     FPlotChart: TSkPlotPaintBox;   // 2-D figures, interactive
@@ -134,7 +134,7 @@ type
     // REPL
     FBottomTabs: TTabControl;
     FOutputTab, FReplTab: TTabItem;
-    FReplList: TListBox;
+    FReplOutput: TOutputPane;      // the REPL transcript
     FReplEdit: TEdit;
     FReplPrompt: TLabel;
     FReplDirLabel: TLabel;
@@ -207,21 +207,15 @@ type
     function EnsureRepl: Boolean;
     procedure ReplOutput(Kind: TOutputKind; const Text: string);
     procedure ReplExit(ExitCode: Integer);
-    procedure ReplAddLine(const Text: string; Color: TAlphaColor; Italic: Boolean = False);
+    procedure ReplAddLine(const Text: string; Role: TOutputRole);
     procedure ReplSend(const Lines: TArray<string>);
     procedure RunInputKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
       Shift: TShiftState);
-    procedure ShowRunInput(Item: TListBoxItem);
+    procedure ShowRunInput(AAdded: Integer);
     procedure HideRunInput;
     procedure ReplEditKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
       Shift: TShiftState);
     procedure ShowNewestPlotIn(const Dir: string; Since: TDateTime);
-    procedure MakeCopyable(List: TListBox);
-    procedure CopyPaneLines(List: TListBox; All: Boolean);
-    procedure PaneKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
-      Shift: TShiftState);
-    procedure PaneCopyClick(Sender: TObject);
-    procedure PaneCopyAllClick(Sender: TObject);
     procedure AddFigure(const Path: string);
     procedure DisplayFigure(Index: Integer);
     procedure UpdateFigureBar;
@@ -232,7 +226,6 @@ type
     procedure FigureCopyClick(Sender: TObject);
     function FigureViewBitmap: FMX.Graphics.TBitmap;
     function FigureView: TControl;
-    procedure ScrollToEnd(List: TListBox);
     function WordAtCaret(Doc: TDocument): string;
     function LocalHelp(Doc: TDocument; const Name: string; out Text: string): Boolean;
     procedure ShowHelp(const Text: string);
@@ -272,7 +265,6 @@ type
     procedure EditorGotoLine(Sender: TObject);
     procedure ApplyTheme(Dark: Boolean);
     procedure ApplyEditorTheme(Editor: TSkiaCodeEditor);
-    procedure RecolorList(List: TListBox; const Old: TPanePalette);
     procedure CmdDarkTheme(Sender: TObject);
     procedure CmdToggleJit(Sender: TObject);
     procedure ApplyJit(On: Boolean);
@@ -280,7 +272,6 @@ type
     procedure ReportJit;
     procedure CmdPreferences(Sender: TObject);
     procedure ApplyPreferences;
-    procedure SizePaneItem(Item: TListBoxItem);
     function IsFullScreen: Boolean;
     procedure LoadLayout(Ini: TCustomIniFile);
     procedure SaveLayout(Ini: TCustomIniFile);
@@ -326,7 +317,8 @@ type
     procedure RunExit(ExitCode: Integer);
     procedure AddOutputLine(Kind: TOutputKind; const Line: string);
     procedure AddNote(const Text: string; Color: TAlphaColor);
-    procedure OutputClick(const Sender: TCustomListBox; const Item: TListBoxItem);
+    procedure OutputLink(Sender: TObject; ATag: Integer);
+    procedure ThemePane(Pane: TOutputPane);
     procedure GoToFrame(const Frame: TFrame);
     function ResolveRunPath(const FileName: string): string;
     procedure MarkError;
@@ -389,7 +381,7 @@ uses
 var
   // Set first thing in FormDestroy. Work deferred with TThread.ForceQueue(nil,
   // ...) is not removed when the form goes, and may run after it is freed
-  // (the REPL list's ScrollToEnd did, on quit), so each such job checks this
+  // (the REPL list's scrolling once did, on quit), so each such job checks this
   // first; it is a unit variable because the form may no longer exist.
   GClosing: Boolean = False;
 
@@ -609,6 +601,8 @@ begin
   FJitCompiled.Free;
   FJitRejected.Free;
   FJitWhere.Free;
+  FOutput.Free;
+  FReplOutput.Free;
   // The figures of this session are temporary.
   if (FShowDir <> '') and TDirectory.Exists(FShowDir) then
     try
@@ -840,12 +834,10 @@ begin
   FRunInput.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
   FRunInput.Margins.Rect := TRectF.Create(2, 3, 2, 3);
   FRunInput.Visible := False;
-  FOutput := TListBox.Create(Self);
-  FOutput.Parent := FOutputTab;
-  FOutput.Align := TAlignLayout.Client;
-  FOutput.ItemHeight := 18;
-  FOutput.OnItemClick := OutputClick;
-  MakeCopyable(FOutput);
+  // A read-only editor: any span can be selected, copied and searched.
+  FOutput := TOutputPane.Create(Self, FOutputTab);
+  FOutput.MaxLines := MaxOutputLines;
+  FOutput.OnLink := OutputLink;
   BuildReplPane(FReplTab);
   FBottomTabs.ActiveTab := FOutputTab;
   Split := TSplitter.Create(Self);
@@ -1618,7 +1610,6 @@ begin
     FOutput.EndUpdate;
   end;
   FPartial[Kind] := S;
-  ScrollToEnd(FOutput);
 end;
 
 procedure TfrmMain.RunExit(ExitCode: Integer);
@@ -1655,7 +1646,6 @@ begin
       FStatus.Text := Format('Exited with code %d', [ExitCode]);
     MarkError;
   end;
-  ScrollToEnd(FOutput);
   // A figure shown with plot.show() takes precedence over saved files.
   if not FFigureShown then
     ShowNewestPlotIn(FRunDir, FRunStart);
@@ -1663,30 +1653,20 @@ end;
 
 procedure TfrmMain.AddOutputLine(Kind: TOutputKind; const Line: string);
 var
-  Item: TListBoxItem;
   Frame: TFrame;
-  Head, Msg: string;
+  Head, Msg, Text: string;
   Asks: Boolean;
 begin
   if (Kind = okStdErr) and (TryShowFrame(Line) or TryShowFigure(Line) or TryJitReport(Line)) then
     Exit;
   // A line ending in U+0005 is input()'s prompt: the program waits.
   Asks := (Kind = okStdOut) and Line.EndsWith(#5);
-  while FOutput.Count >= MaxOutputLines do
-    FOutput.ListItems[0].Free;
-  Item := TListBoxItem.Create(FOutput);
-  Item.Parent := FOutput;
   if Asks then
-    Item.Text := Line.Substring(0, Line.Length - 1)
+    Text := Line.Substring(0, Line.Length - 1)
   else
-    Item.Text := Line;
-  Item.StyledSettings := Item.StyledSettings - [TStyledSetting.FontColor, TStyledSetting.Family];
-  Item.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
-  SizePaneItem(Item);
-  Item.TextSettings.FontColor := FPal.Text;
+    Text := Line;
   if Kind = okStdErr then
   begin
-    Item.TextSettings.FontColor := FPal.Error;
     if FFirstStdErr and ParseErrorHead(Line, Head, Msg) then
     begin
       FErrorKind := Head;
@@ -1697,31 +1677,35 @@ begin
     begin
       FFrames.Add(Frame);
       // A link: the frame's index into FFrames.
-      Item.Tag := FFrames.Count;
-      Item.TextSettings.FontColor := FPal.Link;
-      Item.Hint := 'Click to go to ' + Frame.FileName + ' line ' + IntToStr(Frame.Line);
-      Item.ShowHint := True;
-    end;
+      FOutput.Add(Text, orLink, FFrames.Count,
+        'Click to go to ' + Frame.FileName + ' line ' + IntToStr(Frame.Line));
+    end
+    else
+      FOutput.Add(Text, orError);
+  end
+  else
+  begin
+    FOutput.Add(Text, orText);
+    if Asks then
+      ShowRunInput(FOutput.Added);
   end;
-  if Asks then
-    ShowRunInput(Item);
 end;
 
 { input(): the box for the answer, under the prompt's line. }
-procedure TfrmMain.ShowRunInput(Item: TListBoxItem);
+procedure TfrmMain.ShowRunInput(AAdded: Integer);
 begin
-  FInputItem := Item;
+  FInputLine := AAdded;
   FRunInput.Text := '';
   FRunInput.Visible := True;
   FBottomTabs.ActiveTab := FOutputTab;
-  ScrollToEnd(FOutput);
+  FOutput.ScrollToEnd;
   FRunInput.SetFocus;
   FStatus.Text := 'Waiting for input';
 end;
 
 procedure TfrmMain.HideRunInput;
 begin
-  FInputItem := nil;
+  FInputLine := 0;
   if FRunInput <> nil then
     FRunInput.Visible := False;
 end;
@@ -1736,8 +1720,12 @@ begin
     Exit;
   Key := 0;
   S := FRunInput.Text;
-  if FInputItem <> nil then
-    FInputItem.Text := FInputItem.Text + S;
+  // The answer goes after the prompt, or on a line of its own if more
+  // output came after the prompt.
+  if (FInputLine > 0) and (FInputLine = FOutput.Added) then
+    FOutput.AppendToLast(S)
+  else if FInputLine > 0 then
+    FOutput.Add(S, orText);
   HideRunInput;
   if (FRunDoc <> nil) and FDocs.Contains(FRunDoc) then
     FStatus.Text := 'Running ' + FRunDoc.DisplayName + '...';
@@ -1746,16 +1734,11 @@ begin
 end;
 
 procedure TfrmMain.AddNote(const Text: string; Color: TAlphaColor);
-var
-  Item: TListBoxItem;
 begin
-  Item := TListBoxItem.Create(FOutput);
-  Item.Parent := FOutput;
-  Item.Text := Text;
-  Item.StyledSettings := Item.StyledSettings - [TStyledSetting.FontColor, TStyledSetting.Style];
-  SizePaneItem(Item);
-  Item.TextSettings.FontColor := Color;
-  Item.TextSettings.Font.Style := [TFontStyle.fsItalic];
+  if Color = FPal.Error then
+    FOutput.Add(Text, orError)
+  else
+    FOutput.Add(Text, orNote);
 end;
 
 function TfrmMain.ResolveRunPath(const FileName: string): string;
@@ -1783,13 +1766,13 @@ begin
   Doc.Editor.SetFocus;
 end;
 
-procedure TfrmMain.OutputClick(const Sender: TCustomListBox; const Item: TListBoxItem);
+procedure TfrmMain.OutputLink(Sender: TObject; ATag: Integer);
 begin
-  if (Item <> nil) and (Item.Tag > 0) and (Item.Tag <= FFrames.Count) then
-    GoToFrame(FFrames[Item.Tag - 1])
+  if (ATag > 0) and (ATag <= FFrames.Count) then
+    GoToFrame(FFrames[ATag - 1])
   // A JIT note: minus one more than its index into FJitWhere.
-  else if (Item <> nil) and (Item.Tag < 0) and (-Item.Tag <= FJitWhere.Count) then
-    GoToFrame(FJitWhere[-Item.Tag - 1]);
+  else if (ATag < 0) and (-ATag <= FJitWhere.Count) then
+    GoToFrame(FJitWhere[-ATag - 1]);
 end;
 
 { Underlines the error where it happened: the innermost frame in a file that
@@ -2231,20 +2214,6 @@ begin
   FPlotCaption.Text := 'Figures from plot.show, and PNGs a run saves, appear here.';
 end;
 
-{ Scrolls a list to its last item once FMX has laid out new items (scrolling
-  straight away, or inside BeginUpdate, stops short). }
-procedure TfrmMain.ScrollToEnd(List: TListBox);
-begin
-  TThread.ForceQueue(nil,
-    procedure
-    begin
-      if GClosing then
-        Exit;
-      if List.Count > 0 then
-        List.ScrollToItem(List.ListItems[List.Count - 1]);
-    end);
-end;
-
 { ---------------- REPL ---------------- }
 
 procedure TfrmMain.BuildReplPane(Parent: TFmxObject);
@@ -2287,82 +2256,9 @@ begin
   FReplEdit.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
   FReplEdit.OnKeyDown := ReplEditKeyDown;
 
-  FReplList := TListBox.Create(Self);
-  FReplList.Parent := Parent;
-  FReplList.Align := TAlignLayout.Client;
-  FReplList.ItemHeight := 18;
-  MakeCopyable(FReplList);
-end;
-
-{ The Output and REPL panes are lists of lines: a click selects one, Shift-
-  and Ctrl-click select more, and Ctrl+C (Cmd+C) or the right-click menu
-  copies them; with nothing selected, Copy takes every line. }
-procedure TfrmMain.MakeCopyable(List: TListBox);
-var
-  Menu: TPopupMenu;
-  Item: TMenuItem;
-begin
-  List.MultiSelectStyle := TMultiSelectStyle.Extended;
-  List.OnKeyDown := PaneKeyDown;
-  Menu := TPopupMenu.Create(Self);
-  Menu.Parent := Self;
-  Item := TMenuItem.Create(Self);
-  Item.Text := 'Copy';
-  Item.TagObject := List;
-  Item.OnClick := PaneCopyClick;
-  Menu.AddObject(Item);
-  Item := TMenuItem.Create(Self);
-  Item.Text := 'Copy All';
-  Item.TagObject := List;
-  Item.OnClick := PaneCopyAllClick;
-  Menu.AddObject(Item);
-  List.PopupMenu := Menu;
-end;
-
-procedure TfrmMain.CopyPaneLines(List: TListBox; All: Boolean);
-var
-  Lines: TStringList;
-  K: Integer;
-  Any: Boolean;
-  Svc: IFMXClipboardService;
-begin
-  Any := False;
-  if not All then
-    for K := 0 to List.Count - 1 do
-      if List.ListItems[K].IsSelected then
-        Any := True;
-  Lines := TStringList.Create;
-  try
-    for K := 0 to List.Count - 1 do
-      if not Any or List.ListItems[K].IsSelected then
-        Lines.Add(List.ListItems[K].Text);
-    if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Svc) then
-      Svc.SetClipboard(Lines.Text.TrimRight);
-  finally
-    Lines.Free;
-  end;
-end;
-
-procedure TfrmMain.PaneKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
-  Shift: TShiftState);
-begin
-  if ((Key = vkC) or (KeyChar = 'c') or (KeyChar = 'C')) and
-    ((ssCtrl in Shift) or (ssCommand in Shift)) then
-  begin
-    CopyPaneLines(Sender as TListBox, False);
-    Key := 0;
-    KeyChar := #0;
-  end;
-end;
-
-procedure TfrmMain.PaneCopyClick(Sender: TObject);
-begin
-  CopyPaneLines((Sender as TMenuItem).TagObject as TListBox, False);
-end;
-
-procedure TfrmMain.PaneCopyAllClick(Sender: TObject);
-begin
-  CopyPaneLines((Sender as TMenuItem).TagObject as TListBox, True);
+  // The transcript: read-only text, as the Output pane.
+  FReplOutput := TOutputPane.Create(Self, Parent);
+  FReplOutput.MaxLines := MaxOutputLines;
 end;
 
 function TfrmMain.ReplWorkDir: string;
@@ -2386,7 +2282,7 @@ begin
   Exe := AxonExecutable;
   if Exe = '' then
   begin
-    ReplAddLine('Cannot find the axon interpreter next to the IDE.', FPal.Error, True);
+    ReplAddLine('Cannot find the axon interpreter next to the IDE.', orError);
     Exit;
   end;
   FReplDir := ReplWorkDir;
@@ -2398,33 +2294,23 @@ begin
   except
     on E: Exception do
     begin
-      ReplAddLine('Cannot start the REPL: ' + E.Message, FPal.Error, True);
+      ReplAddLine('Cannot start the REPL: ' + E.Message, orError);
       Exit;
     end;
   end;
   FReplDirLabel.Text := 'Session in ' + FReplDir;
-  ReplAddLine('New session in ' + FReplDir, FPal.Note, True);
+  ReplAddLine('New session in ' + FReplDir, orNote);
   FReplPrompt.Text := '>';
   Result := True;
 end;
 
-procedure TfrmMain.ReplAddLine(const Text: string; Color: TAlphaColor; Italic: Boolean);
-var
-  Item: TListBoxItem;
+procedure TfrmMain.ReplAddLine(const Text: string; Role: TOutputRole);
 begin
-  while FReplList.Count >= MaxOutputLines do
-    FReplList.ListItems[0].Free;
-  Item := TListBoxItem.Create(FReplList);
-  Item.Parent := FReplList;
-  Item.Text := Text;
-  Item.StyledSettings := Item.StyledSettings -
-    [TStyledSetting.FontColor, TStyledSetting.Family, TStyledSetting.Style];
-  Item.TextSettings.Font.Family := {$IFDEF MSWINDOWS}'Consolas'{$ELSE}'Menlo'{$ENDIF};
-  SizePaneItem(Item);
-  Item.TextSettings.FontColor := Color;
-  if Italic then
-    Item.TextSettings.Font.Style := [TFontStyle.fsItalic];
-  ScrollToEnd(FReplList);
+  FReplOutput.Add(Text, Role);
+  // What the user typed brings the view to the end, to show the answer;
+  // otherwise it follows only while it shows the last line.
+  if Role = orInput then
+    FReplOutput.ScrollToEnd;
 end;
 
 { Protocol lines: #1 then ">" or "." is the REPL asking for input; #2 starts
@@ -2436,7 +2322,7 @@ var
 begin
   S := FReplPartial[Kind] + Text.Replace(#13#10, #10).Replace(#13, #10);
   P := S.IndexOf(#10);
-  FReplList.BeginUpdate;
+  FReplOutput.BeginUpdate;
   try
     while P >= 0 do
     begin
@@ -2455,14 +2341,15 @@ begin
         end;
       end
       else if L.StartsWith(#2) then
-        ReplAddLine(L.Substring(1), FPal.Error)
+        ReplAddLine(L.Substring(1), orError)
       else if (Kind = okStdOut) and L.EndsWith(#5) then
       begin
         // input(): the next line typed is the answer, not a statement.
-        ReplAddLine(L.Substring(0, L.Length - 1), FPal.Text);
+        ReplAddLine(L.Substring(0, L.Length - 1), orText);
         FReplAwaitInput := True;
         FReplPrompt.Text := '?';
         FBottomTabs.ActiveTab := FReplTab;
+        FReplOutput.ScrollToEnd;
         FReplEdit.SetFocus;
       end
       else if TryShowFrame(L) or TryShowFigure(L) then
@@ -2470,14 +2357,13 @@ begin
       else if L.StartsWith(#3'jit ') then
         // a JIT report line: not shown in the REPL
       else if Kind = okStdErr then
-        ReplAddLine(L, FPal.Error)
+        ReplAddLine(L, orError)
       else
-        ReplAddLine(L, FPal.Text);
+        ReplAddLine(L, orText);
     end;
   finally
-    FReplList.EndUpdate;
+    FReplOutput.EndUpdate;
   end;
-  ScrollToEnd(FReplList);
   FReplPartial[Kind] := S;
 end;
 
@@ -2487,15 +2373,15 @@ begin
   if FReplRestart then
   begin
     FReplRestart := False;
-    ReplAddLine('Session ended.', FPal.Note, True);
+    ReplAddLine('Session ended.', orNote);
     EnsureRepl;
     Exit;
   end;
   if FRepl.Killed then
-    ReplAddLine('Session stopped.', FPal.Note, True)
+    ReplAddLine('Session stopped.', orNote)
   else
     ReplAddLine(Format('Session ended (exit code %d). Enter a line to start a new one.',
-      [ExitCode]), FPal.Note, True);
+      [ExitCode]), orNote);
   FReplDirLabel.Text := 'No session';
   FReplPrompt.Text := '>';
 end;
@@ -2517,20 +2403,20 @@ begin
     begin
       // The answer to input(), sent as it is.
       FReplAwaitInput := False;
-      ReplAddLine('  ' + L, FPal.Link);
+      ReplAddLine('  ' + L, orInput);
       FReplPrompt.Text := '>';
       Shown := '>';
       if not FRepl.WriteInput(L + #10) then
-        ReplAddLine('The REPL is not accepting input.', FPal.Error, True);
+        ReplAddLine('The REPL is not accepting input.', orError);
       Continue;
     end;
     // The echo uses the prompt the REPL last showed; later lines continue it.
-    ReplAddLine(Shown + ' ' + L, FPal.Link);
+    ReplAddLine(Shown + ' ' + L, orInput);
     if Shown = '>' then
       Shown := '...';
     if not FRepl.WriteInput(L + #10) then
     begin
-      ReplAddLine('The REPL is not accepting input.', FPal.Error, True);
+      ReplAddLine('The REPL is not accepting input.', orError);
       Exit;
     end;
   end;
@@ -2627,7 +2513,7 @@ end;
 
 procedure TfrmMain.CmdReplClear(Sender: TObject);
 begin
-  FReplList.Clear;
+  FReplOutput.Clear;
 end;
 
 { ---------------- help on the word under the caret ---------------- }
@@ -3928,29 +3814,14 @@ end;
 
 { ---------------- preferences ---------------- }
 
-{ A line in the Output or REPL pane at the output font size. }
-procedure TfrmMain.SizePaneItem(Item: TListBoxItem);
-begin
-  Item.StyledSettings := Item.StyledSettings - [TStyledSetting.Size];
-  Item.TextSettings.Font.Size := FPrefs.OutputFontSize;
-end;
-
 procedure TfrmMain.ApplyPreferences;
 var
   Doc: TDocument;
-  K: Integer;
-  RowHeight: Single;
 begin
   for Doc in FDocs do
     Doc.Editor.FontSize := FPrefs.EditorFontSize;
-  // Rows tall enough for the font, with a little space.
-  RowHeight := Round(FPrefs.OutputFontSize * 1.5) + 2;
-  FOutput.ItemHeight := RowHeight;
-  for K := 0 to FOutput.Count - 1 do
-    SizePaneItem(FOutput.ListItems[K]);
-  FReplList.ItemHeight := RowHeight;
-  for K := 0 to FReplList.Count - 1 do
-    SizePaneItem(FReplList.ListItems[K]);
+  FOutput.Editor.FontSize := FPrefs.OutputFontSize;
+  FReplOutput.Editor.FontSize := FPrefs.OutputFontSize;
   FReplEdit.StyledSettings := FReplEdit.StyledSettings - [TStyledSetting.Size];
   FReplEdit.TextSettings.Font.Size := FPrefs.OutputFontSize;
   // input()'s answer box: a size larger than the output, easy to see.
@@ -4012,7 +3883,7 @@ begin
     AddNote('JIT compiler off: the next run is interpreted.', FPal.Note);
   if FRepl.Running then
     AddNote('Restart the REPL (Run > Restart REPL) for it to use this too.', FPal.Note);
-  ScrollToEnd(FOutput);
+  FOutput.ScrollToEnd;
 end;
 
 { A line #3"jit compiled name", or #3"jit rejected name: reason (line:col)"
@@ -4079,7 +3950,6 @@ var
   Lib, Path, Text: string;
   Where: TFrame;
   Doc: TDocument;
-  Item: TListBoxItem;
 begin
   if not FJit or not FPrefs.ShowJitReport or
     ((FJitCompiled.Count = 0) and (FJitRejected.Count = 0)) then
@@ -4119,15 +3989,11 @@ begin
       Continue;
     if Shown = 1 then
       AddNote('Interpreted (click a line to see where):', FPal.Note);
-    AddNote('  ' + FJitRejected[K], FPal.Note);
     if (Path <> '') and (Where.Line > 0) then
-    begin
-      Item := FOutput.ListItems[FOutput.Count - 1];
-      Item.Tag := -(K + 1);
-      Item.TextSettings.FontColor := FPal.Link;
-      Item.Hint := Format('Click to go to %s line %d', [ExtractFileName(Path), Where.Line]);
-      Item.ShowHint := True;
-    end;
+      FOutput.Add('  ' + FJitRejected[K], orLink, -(K + 1),
+        Format('Click to go to %s line %d', [ExtractFileName(Path), Where.Line]))
+    else
+      AddNote('  ' + FJitRejected[K], FPal.Note);
   end;
   if Shown > MaxShown then
     AddNote(Format('  ... and %d more', [Shown - MaxShown]), FPal.Note);
@@ -4187,29 +4053,40 @@ begin
   end;
 end;
 
-{ Lines already in a pane take the new theme's colours, by role. }
-procedure TfrmMain.RecolorList(List: TListBox; const Old: TPanePalette);
+{ The Output and REPL panes: the editor's surfaces as the code editors have
+  them, and the lines' colours by role from the pane palette. }
+procedure TfrmMain.ThemePane(Pane: TOutputPane);
 var
-  K: Integer;
-  Item: TListBoxItem;
-  C: TAlphaColor;
+  E: TSkiaCodeEditor;
 begin
-  for K := 0 to List.Count - 1 do
+  E := Pane.Editor;
+  if FDark then
   begin
-    Item := List.ListItems[K];
-    if TStyledSetting.FontColor in Item.StyledSettings then
-      Continue;
-    C := Item.TextSettings.FontColor;
-    if C = Old.Text then Item.TextSettings.FontColor := FPal.Text
-    else if C = Old.Error then Item.TextSettings.FontColor := FPal.Error
-    else if C = Old.Note then Item.TextSettings.FontColor := FPal.Note
-    else if C = Old.Link then Item.TextSettings.FontColor := FPal.Link;
+    E.BackgroundColor := $FF1E1E1E;
+    E.CaretColor := $FFAEAFAD;
+    E.SelectionColor := $80264F78;
+    E.FindMatchColor := $A0B16A00;
+    E.FindHighlightColor := $40B16A00;
+    E.TooltipColor := $FF252526;
+    E.TooltipTextColor := $FFD4D4D4;
+    E.TooltipBorderColor := $FF454545;
+  end
+  else
+  begin
+    E.BackgroundColor := TAlphaColors.White;
+    E.CaretColor := TAlphaColors.Black;
+    E.SelectionColor := $400078D7;
+    E.FindMatchColor := $A0FF9800;
+    E.FindHighlightColor := $40FFC107;
+    E.TooltipColor := $FFFFFFE1;
+    E.TooltipTextColor := TAlphaColors.Black;
+    E.TooltipBorderColor := $FFA0A0A0;
   end;
+  Pane.SetColors(FPal.Text, FPal.Error, FPal.Note, FPal.Link);
 end;
 
 procedure TfrmMain.ApplyTheme(Dark: Boolean);
 var
-  Old: TPanePalette;
   Doc: TDocument;
 begin
   if Dark then
@@ -4219,7 +4096,6 @@ begin
   end
   else
     TStyleManager.SetStyle(nil);  // the platform's own style
-  Old := FPal;
   FDark := Dark;
   FPal := PanePalette(Dark);
   for Doc in FDocs do
@@ -4230,8 +4106,8 @@ begin
     ThemeDocsFindBar;
   end;
   if Dark then FHelpViewer.ApplyTheme(rtDark) else FHelpViewer.ApplyTheme(rtLight);
-  RecolorList(FOutput, Old);
-  RecolorList(FReplList, Old);
+  ThemePane(FOutput);
+  ThemePane(FReplOutput);
   FDarkItem.IsChecked := Dark;
 end;
 
@@ -4324,6 +4200,10 @@ begin
   // From a viewer, the text as shown (not its markdown).
   if FocusedViewer <> nil then
     FocusedViewer.CopySelection(True)
+  else if FOutput.Editor.IsFocused then
+    FOutput.Editor.CopySelection
+  else if FReplOutput.Editor.IsFocused then
+    FReplOutput.Editor.CopySelection
   else if CurrentDoc <> nil then
     CurrentDoc.Editor.CopySelection;
 end;
@@ -4337,6 +4217,10 @@ procedure TfrmMain.CmdSelectAll(Sender: TObject);
 begin
   if FocusedViewer <> nil then
     FocusedViewer.SelectAll
+  else if FOutput.Editor.IsFocused then
+    FOutput.Editor.SelectAll
+  else if FReplOutput.Editor.IsFocused then
+    FReplOutput.Editor.SelectAll
   else if CurrentDoc <> nil then
     CurrentDoc.Editor.SelectAll;
 end;
@@ -4345,6 +4229,10 @@ procedure TfrmMain.CmdFind(Sender: TObject);
 begin
   if (FDocsTab <> nil) and (FTabs.ActiveTab = FDocsTab) then
     FDocsFindBar.Activate('')
+  else if FOutput.Editor.IsFocused then
+    FOutput.Editor.ShowBuiltInFindBar
+  else if FReplOutput.Editor.IsFocused then
+    FReplOutput.Editor.ShowBuiltInFindBar
   else if CurrentDoc <> nil then
     CurrentDoc.Editor.ShowBuiltInFindBar;
 end;
