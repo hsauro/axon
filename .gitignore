@@ -53,6 +53,7 @@ doc/manual/*.synctex.gz
 # The tutorial: lessons written by tools/gen_tutorial.py from help/tutorial*.md,
 # the PDF and LaTeX by-products.
 doc/tutorial/lessons/
+doc/tutorial/figures/
 doc/tutorial/*.pdf
 doc/tutorial/*.aux
 doc/tutorial/*.log

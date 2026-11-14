@@ -31,6 +31,10 @@ lines under it are Axon's answer.
 5
 ```
 
+The REPL sessions in a lesson follow on from each other, as your REPL does:
+a variable made in one box is used in later ones. If you restart the REPL
+part way through a lesson, type the earlier lines again.
+
 A program is a file you type in the editor and run with <kbd>F9</kbd>:
 
 ```axon
@@ -53,3 +57,12 @@ Hello
 3. [Writing your own functions](tutorial-03-functions.md): parameters and
    `return`, documentation comments, variables inside functions, optional
    and keyword arguments, returning two values, and `error`.
+4. [Vectors and matrices](tutorial-04-vectors.md): making vectors,
+   picking out elements, calculating element by element, tables of data
+   in matrices, and solving equations with `\`.
+5. [Plotting](tutorial-05-plotting.md): line plots, measured data with a
+   model, bar charts, histograms, plots side by side, saving figures, and
+   the Plot pane.
+6. [Text and files](tutorial-06-text-files.md): strings, splitting text
+   and reading numbers from it, writing and reading text files, a report in
+   columns, and tables of numbers in CSV files.

@@ -10,11 +10,22 @@ lesson, in the order of NN). This script
      exactly that (standard output, then standard error), and may stop with
      an error. A first line "# name.sci" saves it under that name, which
      error reports show;
-   - every ```repl block is a REPL session: `axon --transcript` must
-     reproduce it, from its "> " and "... " lines;
+   - the ```repl blocks of a page are one REPL session, continued from
+     block to block as the reader's REPL is (a block can use a variable
+     an earlier one made): `axon --transcript` must reproduce them, from
+     their "> " and "... " lines. A `run "name.sci"` in a block runs
+     the program of that name as the page has it at that point;
 2. writes doc/tutorial/lessons/*.tex, one file per page, and
    doc/tutorial/lessons/all.tex, which inputs them in order;
-   doc/tutorial/axon-tutorial.tex inputs all.tex.
+   doc/tutorial/axon-tutorial.tex inputs all.tex. A program that imports
+   plot (and shows at most one figure) is run with lines added at its end
+   that save its figure, at
+   FIGURE_SIZE (a figure with subplots at its own size), as
+   doc/tutorial/figures/<page>-<n>.pdf; the LaTeX shows
+   it after the program (and its output), where the reader sees the
+   figure in the IDE's Plot pane. Lines the IDE reads from a program's
+   standard error (starting with U+0003, such as #3show) are not part
+   of its output.
 
     python tools/gen_tutorial.py           check, then write the LaTeX
     python tools/gen_tutorial.py --check   check only
@@ -43,6 +54,28 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HELP = os.path.join(ROOT, 'help')
 OUT = os.path.join(ROOT, 'doc', 'tutorial', 'lessons')
+FIGURES = os.path.join(ROOT, 'doc', 'tutorial', 'figures')
+FIGURE_SIZE = (520, 340)     # points: the figures' size in the PDF
+FIGURE_WIDTH = 0.75          # of the text width
+
+# Figures saved while checking: (page, block index) -> file name.
+saved_figures = {}
+
+# Added to a program that imports plot, to save its figure for the PDF.
+SAVE_FIGURE = '''
+_tutorial_figure = plot.gcf()
+if _tutorial_figure != nothing
+  _tutorial_figure.width = %d
+  _tutorial_figure.height = %d
+  plot.save("%s", figure = _tutorial_figure)
+end
+'''
+
+# The same for a figure divided with plot.subplot, whose cells keep the
+# size they were laid out at: it is saved at its own size.
+SAVE_GRID = '''
+plot.save("%s")
+'''
 
 
 # ------------------------------------------------------------------ pages
@@ -144,13 +177,16 @@ def normal(text):
     return lines
 
 
-def check_page(name, blocks, exe, work):
-    """The problems found in one page's code, as a list of messages."""
+def check_page(name, blocks, exe, work, figures):
+    """The problems found in one page's code, as a list of messages.
+    Figures of programs that plot are saved in the folder figures."""
     problems = []
     env = dict(os.environ)
     env['AXON_SHOW_DIR'] = os.path.join(work, 'show')   # no image viewer
     os.makedirs(env['AXON_SHOW_DIR'], exist_ok=True)
     count = 0
+    session = []            # the lines of the page's REPL blocks so far
+    session_ok = True
     for k, (kind, data) in enumerate(blocks):
         if kind != 'code':
             continue
@@ -160,13 +196,29 @@ def check_page(name, blocks, exe, work):
             # A first line "# name.sci" names the file (error reports show it).
             m = re.match(r'#\s*(\w+\.sci)\b', body[0]) if body else None
             path = os.path.join(work, m.group(1) if m else 'block%d.sci' % count)
+            code = '\n'.join(body) + '\n'
+            figure = None
+            # One figure per program: one that shows several gets none.
+            shows = sum(1 for line in body if 'plot.show(' in line)
+            if any(re.match(r'\s*import plot\b', line) for line in body) and shows <= 1:
+                figure = '%s-%d.pdf' % (name[:-3], count)
+                target = os.path.join(figures, figure).replace('\\', '/')
+                if os.path.exists(target):
+                    os.remove(target)
+                if any('plot.subplot(' in line for line in body):
+                    code += SAVE_GRID % target
+                else:
+                    code += SAVE_FIGURE % (FIGURE_SIZE[0], FIGURE_SIZE[1], target)
             with open(path, 'w', encoding='utf-8', newline='\n') as f:
-                f.write('\n'.join(body) + '\n')
+                f.write(code)
             # Run by its name from its folder, as the IDE does, so error
             # reports name the file as the reader sees it.
             r = subprocess.run([exe, os.path.basename(path)], cwd=work, env=env,
                                capture_output=True, text=True, encoding='utf-8', timeout=120)
-            got = r.stdout + r.stderr
+            got = '\n'.join(line for line in (r.stdout + r.stderr).split('\n')
+                            if not line.startswith('\x03'))
+            if figure and os.path.exists(os.path.join(figures, figure)):
+                saved_figures[(name, k)] = figure
             expected = None
             if k + 1 < len(blocks) and blocks[k + 1][0] == 'code' and blocks[k + 1][1][0] == 'output':
                 expected = '\n'.join(blocks[k + 1][1][1])
@@ -178,14 +230,24 @@ def check_page(name, blocks, exe, work):
                 problems.append('%s printed\n%s\ninstead of\n%s' % (where, got, expected))
         elif lang == 'repl':
             count += 1
-            path = os.path.join(work, 'session%d.repl' % count)
+            if not session_ok:
+                continue        # after a failure the rest would differ too
+            # The session so far, replayed with this block added: earlier
+            # blocks were checked already, so only this one's part is new.
+            before = len(normal('\n'.join(session)))
+            session += body
+            path = os.path.join(work, 'session.repl')
             with open(path, 'w', encoding='utf-8', newline='\n') as f:
-                f.write('\n'.join(body) + '\n')
+                f.write('\n'.join(session) + '\n')
             r = subprocess.run([exe, '--transcript', path], cwd=work, env=env,
                                capture_output=True, text=True, encoding='utf-8', timeout=120)
-            if normal(r.stdout) != normal('\n'.join(body)):
-                problems.append('%s: REPL session %d gave\n%s\ninstead of\n%s'
-                                % (name, count, r.stdout, '\n'.join(body)))
+            got = normal(r.stdout)
+            if got != normal('\n'.join(session)):
+                problems.append('%s: REPL block %d (%s...) gave\n%s\ninstead of\n%s\n'
+                                '(later REPL blocks of the page were not checked)'
+                                % (name, count, body[0][:40] if body else '',
+                                   '\n'.join(got[before:]), '\n'.join(body)))
+                session_ok = False
     return problems
 
 
@@ -197,6 +259,8 @@ TEXT_CHARS = {
     '^': r'\textasciicircum{}', '"': r'\textquotedbl{}', '<': r'\textless{}',
     '>': r'\textgreater{}', '\u2026': r'\ldots{}', '\u2014': '---', '\u2013': '--',
     '\u00d7': r'\texttimes{}', '\u2192': r'$\rightarrow$', '\u2212': r'$-$',
+    '\x01': '``', '\x02': "''",    # quotes paired by mark_quotes
+    '\u25c0': r'$\triangleleft$', '\u25b6': r'$\triangleright$',   # the Plot pane's arrows
 }
 
 
@@ -204,12 +268,21 @@ def esc(text):
     return ''.join(TEXT_CHARS.get(c, c) for c in text)
 
 
-def prose(text):
-    """Plain text of a paragraph: a pair of straight quotes becomes `` ''."""
-    parts = re.split(r'"([^"]*)"', text)
+def mark_quotes(text):
+    """Straight double quotes outside `code`, paired in order across the
+    whole text, as opening (\\x01) and closing (\\x02) marks, which esc turns
+    into `` and ''. A quoted phrase may contain code."""
     out = []
-    for k, part in enumerate(parts):
-        out.append("``" + esc(part) + "''" if k % 2 else esc(part))
+    in_code = False
+    opening = True
+    for c in text:
+        if c == '`':
+            in_code = not in_code
+        if c == '"' and not in_code:
+            out.append('\x01' if opening else '\x02')
+            opening = not opening
+        else:
+            out.append(c)
     return ''.join(out)
 
 
@@ -228,10 +301,11 @@ INLINE = re.compile(r'`([^`]+)`|<kbd>(.*?)</kbd>|\*\*(.+?)\*\*|\*(.+?)\*'
 
 
 def inline(text, verbatim=True):
+    text = mark_quotes(text)
     out = []
     pos = 0
     for m in INLINE.finditer(text):
-        out.append(prose(text[pos:m.start()]))
+        out.append(esc(text[pos:m.start()]))
         code, key, bold, emph, link, target = m.groups()
         if code is not None:
             out.append(code_inline(code, verbatim))
@@ -251,7 +325,7 @@ def inline(text, verbatim=True):
             else:
                 out.append(inline(link, verbatim))
         pos = m.end()
-    out.append(prose(text[pos:]))
+    out.append(esc(text[pos:]))
     return ''.join(out)
 
 
@@ -332,6 +406,14 @@ def to_latex(name, blocks):
         elif kind == 'code':
             after = k > 0 and blocks[k - 1][0] == 'code' and blocks[k - 1][1][0] == 'axon'
             out.append(listing(data[0], data[1], after))
+            # A program's figure goes after its output, or after it.
+            owner = k - 1 if data[0] == 'output' and after else k
+            figure = saved_figures.get((name, owner))
+            output_follows = (data[0] == 'axon' and k + 1 < len(blocks) and
+                              blocks[k + 1][0] == 'code' and blocks[k + 1][1][0] == 'output')
+            if figure and not output_follows:
+                out.append('\\begin{center}\n\\includegraphics[width=%.2f\\linewidth]'
+                           '{figures/%s}\n\\end{center}\n' % (FIGURE_WIDTH, figure))
     return '\n'.join(out)
 
 
@@ -344,8 +426,10 @@ def main():
     parsed = {name: parse(read_page(name)) for name in names}
     problems = []
     with tempfile.TemporaryDirectory(prefix='axon-tutorial-') as work:
+        figures = os.path.join(work, 'figures') if check_only else FIGURES
+        os.makedirs(figures, exist_ok=True)
         for name in names:
-            problems += check_page(name, parsed[name], exe, work)
+            problems += check_page(name, parsed[name], exe, work, figures)
     for p in problems:
         print(p)
         print()

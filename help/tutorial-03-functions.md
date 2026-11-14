@@ -573,3 +573,5 @@ println(primes)
 ```output
 25
 ```
+
+Next: [Lesson 4: Vectors and matrices](tutorial-04-vectors.md)
