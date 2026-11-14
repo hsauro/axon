@@ -47,3 +47,6 @@ Hello
 
 1. [First steps](tutorial-01-first-steps.md): the REPL, arithmetic, whole
    and real numbers, mathematical functions, variables and a first program.
+2. [Decisions and repetition](tutorial-02-decisions.md): true and false,
+   `if`, `for` and `while` loops, adding up in a loop, and looking at a
+   program's variables in the REPL.

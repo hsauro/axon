@@ -330,3 +330,5 @@ println("The volume is", format(volume, 3))
 ```output
 The volume is 33.510
 ```
+
+Next: [Lesson 2: Decisions and repetition](tutorial-02-decisions.md)
