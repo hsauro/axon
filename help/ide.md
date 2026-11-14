@@ -167,6 +167,17 @@ them. Its last link opens that section in the Documentation tab.
 **Edit > Preferences** sets the text size of the Documentation tab
 (**Documentation font size**) and of the Help pane (**Output font size**).
 
+**Help > Documentation**, **Help > Tutorial** and **Help > Language Reference**
+open in the Documentation tab, next to your files. To read a page while you
+work in the editor, such as a lesson of the [tutorial](tutorial.md), click
+**Open in Window** at the right of its toolbar: the documentation moves to a
+window of its own, which you can put beside the IDE or on a second screen.
+**Show in Tab** moves it back. The page, its scroll position and **Back** go
+with it. The IDE remembers where the window was and opens the documentation
+there next time; closing the window keeps its page for when you open it
+again. On Windows the window stays in front of the IDE, so clicking into the
+editor does not hide it.
+
 ## Shortcuts
 
 | Key | Action |
@@ -179,7 +190,7 @@ them. Its last link opens that section in the Documentation tab.
 | <kbd>Ctrl+N</kbd>, <kbd>Ctrl+O</kbd>, <kbd>Ctrl+S</kbd> | New, open, save |
 | <kbd>Shift+Ctrl+S</kbd> | Save as |
 | <kbd>Ctrl+W</kbd> | Close the current tab |
-| <kbd>Ctrl+F</kbd> | Find and replace; in the Documentation tab, find in the page (Enter / Shift+Enter for next / previous, Escape to close) |
+| <kbd>Ctrl+F</kbd> | Find and replace; in the Documentation tab or window, find in the page (Enter / Shift+Enter for next / previous, Escape to close) |
 | <kbd>Ctrl+G</kbd> | Go to line |
 | <kbd>Ctrl+/</kbd> | Comment or uncomment the selected lines |
 | <kbd>Ctrl+Z</kbd>, <kbd>Ctrl+Y</kbd> | Undo, redo |

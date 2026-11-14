@@ -50,5 +50,17 @@ doc/manual/*.fls
 doc/manual/*.fdb_latexmk
 doc/manual/*.synctex.gz
 
+# The tutorial: lessons written by tools/gen_tutorial.py from help/tutorial*.md,
+# the PDF and LaTeX by-products.
+doc/tutorial/lessons/
+doc/tutorial/*.pdf
+doc/tutorial/*.aux
+doc/tutorial/*.log
+doc/tutorial/*.toc
+doc/tutorial/*.out
+doc/tutorial/*.fls
+doc/tutorial/*.fdb_latexmk
+doc/tutorial/*.synctex.gz
+
 # Python bytecode (doc/research scripts)
 __pycache__/

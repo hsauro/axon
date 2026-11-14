@@ -1,0 +1,49 @@
+# The Axon tutorial
+
+[Contents](index.md)
+
+This tutorial teaches programming with Axon to scientists who have done
+little or no programming before. It is a series of short lessons, each of
+about ten to fifteen minutes. Work through them in order: each lesson uses
+what the earlier ones taught.
+
+## How to use the lessons
+
+- In the IDE, **Help > Tutorial** opens the lessons in the Documentation
+  tab. Click **Open in Window** at the top right of that tab to move them
+  to a window of their own. Put the window beside the IDE or on a second
+  screen, so that the lesson stays in view while you work in the editor and
+  in the **REPL** tab.
+- Type the examples yourself rather than copying them. Typing is how the
+  rules of the language stick, and the small mistakes you make on the way
+  teach as much as the examples do.
+- Every example shows what Axon answers or prints, so you can check your
+  result against it.
+- Each lesson ends with exercises, followed by their answers. Try each
+  exercise before you look.
+
+The examples come in three kinds of box. A REPL session shows lines that
+start with `>`: type what follows the `>` and press <kbd>Enter</kbd>, and the
+lines under it are Axon's answer.
+
+```repl
+> 2 + 3
+5
+```
+
+A program is a file you type in the editor and run with <kbd>F9</kbd>:
+
+```axon
+println("Hello")
+```
+
+The box after a program shows what it prints in the **Output** tab:
+
+```output
+Hello
+```
+
+## The lessons
+
+1. [First steps](tutorial-01-first-steps.md): the REPL, arithmetic, whole
+   and real numbers, mathematical functions, variables and a first program.

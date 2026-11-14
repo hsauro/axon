@@ -1,0 +1,26 @@
+% The Axon Tutorial. Build with tools\build_tutorial.cmd, which runs
+% tools/gen_tutorial.py (it checks the lessons' code and writes lessons\*.tex
+% from the IDE's help pages help\tutorial*.md), then latexmk. Edit the help
+% pages, not lessons\; this file holds only the title page and the layout.
+\documentclass[11pt,a4paper,openany]{report}
+
+\input{../manual/axon-style}
+
+% The chapters are the lessons.
+\renewcommand{\chaptername}{Lesson}
+
+\title{\Huge\bfseries Axon\\[6pt]\LARGE Tutorial\\[18pt]
+  \large Programming for scientists, from the first line}
+\author{Herbert Sauro\\[4pt]\small developed in collaboration with Claude Code}
+\date{Version 0.1, November 2026}
+
+\begin{document}
+\pagenumbering{roman}
+\maketitle
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+\input{lessons/all}
+
+\end{document}

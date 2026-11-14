@@ -182,6 +182,11 @@ type
     FDocsFindBar: TFindBar;      // RhoEditor's find bar, find-only (Ctrl+F)
     FDocsPage: string;           // full path of the page shown
     FDocsHistory: TStringList;   // earlier pages as "path|scroll", for Back
+    FDocsPanel: TLayout;         // the toolbar, find bar and viewer: in the tab or the window
+    FDocsWhere: TButton;         // moves the documentation to its window or back to the tab
+    FDocsWindow: TForm;          // the documentation's own window (hidden when closed), or nil
+    FDocsInWindow: Boolean;      // the documentation shows in its window (DocsInWindow=)
+    FDocsBounds: TRect;          // the window's last bounds (empty before it was first placed)
     // Theme
     FDark: Boolean;
     FPal: TPanePalette;
@@ -248,6 +253,16 @@ type
     procedure OpenExampleCopy(const Source: string);
     function HelpDir: string;
     procedure ShowDocs(const Target: string);
+    procedure BuildDocsPanel;
+    procedure PlaceDocs;
+    procedure ForgetDocsPanel;
+    procedure EnsureDocsWindow;
+    function DefaultDocsBounds: TRect;
+    procedure RecordDocsBounds;
+    procedure CmdDocsWhere(Sender: TObject);
+    procedure DocsWindowClose(Sender: TObject; var Action: TCloseAction);
+    procedure DocsWindowKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+      Shift: TShiftState);
     procedure NavigateDocs(const Path, Anchor: string; AddToHistory: Boolean;
       ScrollTo: Single = -1);
     procedure DocsLinkClick(Sender: TObject; const AUrl: string);
@@ -255,6 +270,7 @@ type
     procedure ShowHelpFor(const RefName, Text: string);
     procedure OpenExternal(const Target: string);
     procedure CmdDocs(Sender: TObject);
+    procedure CmdTutorial(Sender: TObject);
     procedure CmdBuiltins(Sender: TObject);
     procedure CmdReference(Sender: TObject);
     procedure CmdDocsBack(Sender: TObject);
@@ -937,6 +953,7 @@ begin
 
   M := AddMenuItem(Menu, '&Help', '', nil);
   AddMenuItem(M, '&Documentation', 'Ctrl+F1', CmdDocs);
+  AddMenuItem(M, '&Tutorial', '', CmdTutorial);
   AddMenuItem(M, '&Language Reference', '', CmdReference);
   AddMenuItem(M, '&Built-in Functions', '', CmdBuiltins);
   AddMenuItem(M, '&Welcome', '', CmdWelcome);
@@ -1177,7 +1194,7 @@ begin
     Exit;
   if Tab = FDocsTab then
   begin
-    FDocsViewer := nil;
+    ForgetDocsPanel;   // freed with the tab
     FreeEditorTab(FDocsTab);
     FDocsTab := nil;
     if FDocs.Count = 0 then
@@ -1423,6 +1440,13 @@ begin
   K := Ini.ReadInteger('Window', 'BottomTab', 0);
   if (K >= 0) and (K < FBottomTabs.TabCount) then
     FBottomTabs.TabIndex := K;
+  // The documentation's own window: whether it is used, and where it was.
+  FDocsInWindow := Ini.ReadBool('Window', 'DocsInWindow', False);
+  R.Left := Ini.ReadInteger('Window', 'DocsLeft', 0);
+  R.Top := Ini.ReadInteger('Window', 'DocsTop', 0);
+  W := Ini.ReadInteger('Window', 'DocsWidth', 0);
+  H := Ini.ReadInteger('Window', 'DocsHeight', 0);
+  FDocsBounds := TRect.Create(R.Left, R.Top, R.Left + W, R.Top + H);
 end;
 
 procedure TfrmMain.SaveLayout(Ini: TCustomIniFile);
@@ -1443,6 +1467,15 @@ begin
   Ini.WriteInteger('Window', 'PlotWidth', Round(FPlotPane.Width));
   Ini.WriteInteger('Window', 'BottomHeight', Round(FBottomTabs.Height));
   Ini.WriteInteger('Window', 'BottomTab', FBottomTabs.TabIndex);
+  RecordDocsBounds;
+  Ini.WriteBool('Window', 'DocsInWindow', FDocsInWindow);
+  if FDocsBounds.Width > 0 then
+  begin
+    Ini.WriteInteger('Window', 'DocsLeft', FDocsBounds.Left);
+    Ini.WriteInteger('Window', 'DocsTop', FDocsBounds.Top);
+    Ini.WriteInteger('Window', 'DocsWidth', FDocsBounds.Width);
+    Ini.WriteInteger('Window', 'DocsHeight', FDocsBounds.Height);
+  end;
   if FDark then
     Ini.WriteString('Window', 'Theme', 'dark')
   else
@@ -3571,82 +3604,269 @@ end;
 
 { Shows a help page, given as "page.md" or "page.md#anchor" in the help
   folder, in the Documentation tab (made on first use). }
-procedure TfrmMain.ShowDocs(const Target: string);
+{ The documentation view: a toolbar (Back, Contents, the page's name, and a
+  button that moves the view between the Documentation tab and a window of
+  its own), the find bar and the viewer, all in one panel, which PlaceDocs
+  puts in the tab or in the window. The panel moves whole, so the page, the
+  scroll position, Back and the search go with it. }
+procedure TfrmMain.BuildDocsPanel;
 var
   Bar: TLayout;
   B: TButton;
+begin
+  FDocsPanel := TLayout.Create(Self);
+  FDocsPanel.Align := TAlignLayout.Client;
+  Bar := TLayout.Create(Self);
+  Bar.Parent := FDocsPanel;
+  Bar.Align := TAlignLayout.Top;
+  Bar.Height := 34;
+  Bar.Padding.Rect := TRectF.Create(4, 4, 4, 4);
+  FDocsBack := TButton.Create(Self);
+  FDocsBack.Parent := Bar;
+  FDocsBack.Align := TAlignLayout.Left;
+  FDocsBack.Width := 70;
+  FDocsBack.Text := #$2190' Back';
+  FDocsBack.OnClick := CmdDocsBack;
+  B := TButton.Create(Self);
+  B.Parent := Bar;
+  B.Position.X := 1000;
+  B.Align := TAlignLayout.Left;
+  B.Width := 80;
+  B.Margins.Left := 6;
+  B.Text := 'Contents';
+  B.OnClick := CmdDocsHome;
+  FDocsWhere := TButton.Create(Self);
+  FDocsWhere.Parent := Bar;
+  FDocsWhere.Align := TAlignLayout.Right;
+  FDocsWhere.Width := 120;
+  FDocsWhere.ShowHint := True;
+  FDocsWhere.OnClick := CmdDocsWhere;
+  FDocsTitle := TLabel.Create(Self);
+  FDocsTitle.Parent := Bar;
+  FDocsTitle.Align := TAlignLayout.Client;
+  FDocsTitle.Margins.Left := 12;
+  FDocsViewer := TRhoMarkdownViewer.Create(Self);
+  FDocsViewer.Parent := FDocsPanel;
+  FDocsViewer.Align := TAlignLayout.Client;
+  FDocsViewer.OnLinkClick := DocsLinkClick;
+  FDocsViewer.OnSearchChange := DocsSearchChange;
+  FDocsViewer.FontSize := FPrefs.DocsFontSize;
+  // Find (Ctrl+F): the editor's find bar without its replace row, below the
+  // toolbar. Typing highlights; Enter / Shift+Enter or Next / Prev move
+  // (F3 / Shift+F3 in the page too); Escape or Close clears.
+  FDocsFindBar := TFindBar.Create(Self);
+  FDocsFindBar.Parent := FDocsPanel;
+  FDocsFindBar.ShowReplace := False;
+  FDocsFindBar.Position.Y := Bar.Height + 1;
+  FDocsFindBar.Align := TAlignLayout.Top;
+  FDocsFindBar.OnSearchChanged :=
+    procedure(const S: string; O: TFindOptions)
+    begin
+      DocsSearch(S, O);
+    end;
+  FDocsFindBar.OnFindNext :=
+    function(const S: string; O: TFindOptions): Boolean
+    begin
+      DocsSearch(S, O);
+      Result := FDocsViewer.FindNext;
+    end;
+  FDocsFindBar.OnFindPrev :=
+    function(const S: string; O: TFindOptions): Boolean
+    begin
+      DocsSearch(S, O);
+      Result := FDocsViewer.FindPrevious;
+    end;
+  FDocsFindBar.OnClosed :=
+    procedure
+    begin
+      FDocsViewer.ClearSearch;
+      FDocsViewer.SetFocus;
+    end;
+  if FDark then
+    FDocsViewer.ApplyTheme(rtDark);
+  ThemeDocsFindBar;
+end;
+
+{ Puts the documentation where FDocsInWindow says, in its window or in the
+  Documentation tab (made as needed), and brings it into view. }
+procedure TfrmMain.PlaceDocs;
+begin
+  if FDocsInWindow then
+  begin
+    EnsureDocsWindow;
+    FDocsPanel.Parent := FDocsWindow;
+    if FDocsTab <> nil then
+    begin
+      // The panel has left the tab, so freeing the tab leaves it alone.
+      FreeEditorTab(FDocsTab);
+      FDocsTab := nil;
+      if FTabs.TabCount = 0 then
+        ShowWelcome;
+    end;
+    FDocsWhere.Text := 'Show in Tab';
+    FDocsWhere.Hint := 'Show the documentation in a tab next to the files again';
+    if FDocsWindow.WindowState = TWindowState.wsMinimized then
+      FDocsWindow.WindowState := TWindowState.wsNormal;
+    FDocsWindow.Show;
+    FDocsWindow.Activate;
+  end
+  else
+  begin
+    if FDocsTab = nil then
+    begin
+      FDocsTab := FTabs.Add;
+      SetTabTitle(FDocsTab, 'Documentation');
+    end;
+    FDocsPanel.Parent := FDocsTab;
+    if (FDocsWindow <> nil) and FDocsWindow.Visible then
+    begin
+      RecordDocsBounds;
+      FDocsWindow.Hide;
+    end;
+    FDocsWhere.Text := 'Open in Window';
+    FDocsWhere.Hint := 'Show the documentation in a window of its own, beside the editor ' +
+      'or on another screen';
+    FTabs.ActiveTab := FDocsTab;
+  end;
+  UpdateTitle;
+end;
+
+{ The documentation's controls were freed with the Documentation tab: forget
+  them, and the page, so that ShowDocs builds and loads them afresh. }
+procedure TfrmMain.ForgetDocsPanel;
+begin
+  FDocsPanel := nil;
+  FDocsViewer := nil;
+  FDocsFindBar := nil;
+  FDocsTitle := nil;
+  FDocsBack := nil;
+  FDocsWhere := nil;
+  FDocsPage := '';
+  FDocsHistory.Clear;
+end;
+
+{ The documentation's window, made the first time it is needed, where it was
+  last (if that is on a display now) or where DefaultDocsBounds puts it. On
+  Windows it belongs to the IDE's window, so it stays in front of the IDE,
+  though not of other applications: a lesson beside the editor on one screen
+  is not hidden by clicking into the editor. (On macOS a form with a parent
+  form floats above every application's windows, so there it is an ordinary
+  window.) Closing it hides it, keeping its page for the next time. }
+procedure TfrmMain.EnsureDocsWindow;
+var
+  R: TRect;
+  K: Integer;
+  Area: TRectF;
+  Seen: Boolean;
+begin
+  if FDocsWindow <> nil then
+    Exit;
+  FDocsWindow := TForm.CreateNew(Self);
+  FDocsWindow.Caption := 'Axon Documentation';
+  FDocsWindow.OnClose := DocsWindowClose;
+  FDocsWindow.OnKeyDown := DocsWindowKeyDown;
+{$IFDEF MSWINDOWS}
+  FDocsWindow.Parent := Self;
+{$ENDIF}
+  R := FDocsBounds;
+  Seen := False;
+  if (R.Width >= 200) and (R.Height >= 150) then
+    for K := 0 to Screen.DisplayCount - 1 do
+    begin
+      Area := Screen.Displays[K].Workarea;
+      if (R.Top >= Area.Top) and (R.Top < Area.Bottom - 20) and
+        (R.Left < Area.Right - 50) and (R.Right > Area.Left + 50) then
+        Seen := True;
+    end;
+  if not Seen then
+    R := DefaultDocsBounds;
+  FDocsWindow.Position := TFormPosition.Designed;
+  FDocsWindow.SetBounds(R.Left, R.Top, R.Width, R.Height);
+end;
+
+{ Where the documentation's window first goes: with a second display, most of
+  that display; with one, a column at its right, beside the editor. }
+function TfrmMain.DefaultDocsBounds: TRect;
+var
+  K, Main: Integer;
+  Area: TRectF;
+  Centre: TPointF;
+  W: Single;
+begin
+  Centre := TPointF.Create(Left + Width / 2, Top + Height / 2);
+  Main := 0;
+  for K := 0 to Screen.DisplayCount - 1 do
+    if Screen.Displays[K].Workarea.Contains(Centre) then
+      Main := K;
+  if Screen.DisplayCount > 1 then
+  begin
+    Area := Screen.Displays[IfThen(Main = 0, 1, 0)].Workarea;
+    W := Min(900, Area.Width - 80);
+    Result := TRect.Create(Round(Area.Left + (Area.Width - W) / 2), Round(Area.Top + 40),
+      Round(Area.Left + (Area.Width + W) / 2), Round(Area.Bottom - 40));
+  end
+  else
+  begin
+    Area := Screen.Displays[Main].Workarea;
+    W := Min(720, Area.Width * 0.4);
+    Result := TRect.Create(Round(Area.Right - W - 10), Round(Area.Top + 10),
+      Round(Area.Right - 10), Round(Area.Bottom - 10));
+  end;
+end;
+
+{ Keeps the documentation window's bounds while it is shown and not
+  maximized: what SaveLayout saves and the window returns to. }
+procedure TfrmMain.RecordDocsBounds;
+begin
+  if (FDocsWindow <> nil) and FDocsWindow.Visible and
+    (FDocsWindow.WindowState = TWindowState.wsNormal) then
+    FDocsBounds := TRect.Create(FDocsWindow.Left, FDocsWindow.Top,
+      FDocsWindow.Left + FDocsWindow.Width, FDocsWindow.Top + FDocsWindow.Height);
+end;
+
+{ The toolbar's Open in Window / Show in Tab. After the click returns: the
+  button moves to another form, and the tab it was in may be freed. }
+procedure TfrmMain.CmdDocsWhere(Sender: TObject);
+begin
+  TThread.ForceQueue(nil,
+    procedure
+    begin
+      if GClosing or (FDocsPanel = nil) then
+        Exit;
+      RecordDocsBounds;
+      FDocsInWindow := not FDocsInWindow;
+      PlaceDocs;
+    end);
+end;
+
+procedure TfrmMain.DocsWindowClose(Sender: TObject; var Action: TCloseAction);
+begin
+  RecordDocsBounds;
+  Action := TCloseAction.caHide;
+end;
+
+{ The window has no menu, so its shortcuts are here: Ctrl+F (Cmd+F) finds.
+  The viewer handles copying, selecting all and F3 itself. }
+procedure TfrmMain.DocsWindowKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
+  Shift: TShiftState);
+begin
+  if ((ssCtrl in Shift) or (ssCommand in Shift)) and
+    ((Key = vkF) or (KeyChar = 'f') or (KeyChar = 'F')) and (FDocsFindBar <> nil) then
+  begin
+    FDocsFindBar.Activate('');
+    Key := 0;
+    KeyChar := #0;
+  end;
+end;
+
+procedure TfrmMain.ShowDocs(const Target: string);
+var
   P: Integer;
   Page, Anchor: string;
 begin
-  if FDocsTab = nil then
-  begin
-    FDocsTab := FTabs.Add;
-    SetTabTitle(FDocsTab, 'Documentation');
-    Bar := TLayout.Create(Self);
-    Bar.Parent := FDocsTab;
-    Bar.Align := TAlignLayout.Top;
-    Bar.Height := 34;
-    Bar.Padding.Rect := TRectF.Create(4, 4, 4, 4);
-    FDocsBack := TButton.Create(Self);
-    FDocsBack.Parent := Bar;
-    FDocsBack.Align := TAlignLayout.Left;
-    FDocsBack.Width := 70;
-    FDocsBack.Text := #$2190' Back';
-    FDocsBack.OnClick := CmdDocsBack;
-    B := TButton.Create(Self);
-    B.Parent := Bar;
-    B.Position.X := 1000;
-    B.Align := TAlignLayout.Left;
-    B.Width := 80;
-    B.Margins.Left := 6;
-    B.Text := 'Contents';
-    B.OnClick := CmdDocsHome;
-    FDocsTitle := TLabel.Create(Self);
-    FDocsTitle.Parent := Bar;
-    FDocsTitle.Align := TAlignLayout.Client;
-    FDocsTitle.Margins.Left := 12;
-    FDocsViewer := TRhoMarkdownViewer.Create(Self);
-    FDocsViewer.Parent := FDocsTab;
-    FDocsViewer.Align := TAlignLayout.Client;
-    FDocsViewer.OnLinkClick := DocsLinkClick;
-    FDocsViewer.OnSearchChange := DocsSearchChange;
-    FDocsViewer.FontSize := FPrefs.DocsFontSize;
-    // Find (Ctrl+F): the editor's find bar without its replace row, below the
-    // toolbar. Typing highlights; Enter / Shift+Enter or Next / Prev move
-    // (F3 / Shift+F3 in the page too); Escape or Close clears.
-    FDocsFindBar := TFindBar.Create(Self);
-    FDocsFindBar.Parent := FDocsTab;
-    FDocsFindBar.ShowReplace := False;
-    FDocsFindBar.Position.Y := Bar.Height + 1;
-    FDocsFindBar.Align := TAlignLayout.Top;
-    FDocsFindBar.OnSearchChanged :=
-      procedure(const S: string; O: TFindOptions)
-      begin
-        DocsSearch(S, O);
-      end;
-    FDocsFindBar.OnFindNext :=
-      function(const S: string; O: TFindOptions): Boolean
-      begin
-        DocsSearch(S, O);
-        Result := FDocsViewer.FindNext;
-      end;
-    FDocsFindBar.OnFindPrev :=
-      function(const S: string; O: TFindOptions): Boolean
-      begin
-        DocsSearch(S, O);
-        Result := FDocsViewer.FindPrevious;
-      end;
-    FDocsFindBar.OnClosed :=
-      procedure
-      begin
-        FDocsViewer.ClearSearch;
-        FDocsViewer.SetFocus;
-      end;
-    if FDark then
-      FDocsViewer.ApplyTheme(rtDark);
-    ThemeDocsFindBar;
-  end;
-  FTabs.ActiveTab := FDocsTab;
+  if FDocsPanel = nil then
+    BuildDocsPanel;
+  PlaceDocs;
   P := Target.IndexOf('#');
   if P >= 0 then
   begin
@@ -3687,6 +3907,8 @@ begin
     FDocsPage := Full;
   end;
   FDocsTitle.Text := ChangeFileExt(ExtractFileName(Full), '');
+  if FDocsWindow <> nil then
+    FDocsWindow.Caption := FDocsTitle.Text + ' - Axon Documentation';
   FDocsBack.Enabled := FDocsHistory.Count > 0;
   // After the page is laid out: an anchor, a remembered position, or the top.
   TThread.ForceQueue(nil,
@@ -3743,6 +3965,9 @@ begin
       OpenExampleCopy(Path)
     else
       OpenFile(Path);
+    // From the documentation's window: show the editor it opened in.
+    if (FDocsWindow <> nil) and FDocsWindow.Active then
+      Activate;
   end
   else if TFile.Exists(Path) then
     OpenExternal(Path)
@@ -3761,11 +3986,17 @@ end;
 
 procedure TfrmMain.CmdDocs(Sender: TObject);
 begin
-  if (FDocsTab <> nil) and (FDocsPage <> '') then
-    FTabs.ActiveTab := FDocsTab
+  if (FDocsPanel <> nil) and (FDocsPage <> '') then
+    PlaceDocs
   else
     ShowDocs('index.md');
   UpdateTitle;
+end;
+
+{ The tutorial's first page: its introduction and list of lessons. }
+procedure TfrmMain.CmdTutorial(Sender: TObject);
+begin
+  ShowDocs('tutorial.md');
 end;
 
 procedure TfrmMain.CmdReference(Sender: TObject);
@@ -4227,7 +4458,8 @@ end;
 
 procedure TfrmMain.CmdFind(Sender: TObject);
 begin
-  if (FDocsTab <> nil) and (FTabs.ActiveTab = FDocsTab) then
+  if ((FDocsTab <> nil) and (FTabs.ActiveTab = FDocsTab)) or
+    ((FDocsWindow <> nil) and FDocsWindow.Active and (FDocsFindBar <> nil)) then
     FDocsFindBar.Activate('')
   else if FOutput.Editor.IsFocused then
     FOutput.Editor.ShowBuiltInFindBar

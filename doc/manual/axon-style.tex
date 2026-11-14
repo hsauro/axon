@@ -1,0 +1,116 @@
+% The look shared by the Axon User Manual (axon-manual.tex) and the Axon
+% Tutorial (../tutorial/axon-tutorial.tex): packages, page layout, the
+% colours of the IDE's light theme, the Axon listings language and the
+% environments and commands for code. Each document \input's it after its
+% \documentclass.
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[scaled=0.88]{beramono}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage[shortlabels]{enumitem}
+\usepackage{caption}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black,
+            citecolor=blue!50!black]{hyperref}
+
+\setlist{itemsep=2pt,topsep=4pt}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{3em}
+\captionsetup{font=small,labelfont=bf}
+
+% Colours of the Axon IDE's light theme.
+\definecolor{axkeyword}{HTML}{0033B3}
+\definecolor{axbuiltin}{HTML}{00796B}
+\definecolor{axstring}{HTML}{A31515}
+\definecolor{axnumber}{HTML}{098658}
+\definecolor{axcomment}{HTML}{6A737D}
+\definecolor{axdoc}{HTML}{8A5A00}
+\definecolor{axback}{HTML}{F6F8FA}
+\definecolor{axframe}{HTML}{D0D7DE}
+\definecolor{outback}{HTML}{FFFFFF}
+
+\lstdefinelanguage{Axon}{
+  morekeywords={function,end,return,if,elseif,else,for,in,while,break,
+    continue,local,global,try,catch,import,from,as,export,extern,record,
+    true,false,nothing,and,or,not},
+  morekeywords=[2]{zeros,ones,eye,rand,linspace,size,sum,prod,mean,all,any,
+    dot,adjoint,isequal,keep,eltype,reshape,sparse,speye,nnz,full,splu,
+    append,get,keys,haskey,dict,print,println,error,string,length,typeof,
+    sqrt,exp,log,log10,log2,sin,cos,tan,asin,acos,atan,atan2,deg2rad,rad2deg,
+    sinh,cosh,tanh,asinh,acosh,atanh,
+    abs,int,floor,ceil,round,real,imag,conj,arg,complex,div,mod,min,max,
+    factorial,format,pi,sort,sortperm,atexit,range,isa,tr,trace,split,join,
+    trim,ltrim,rtrim,upper,lower,contains,startswith,endswith,find,replace,
+    repeat,parse_function,isapprox,input,vector},
+  sensitive=true,
+  morecomment=[l]{\#},
+  morestring=[b]",
+}
+
+\lstdefinestyle{axonstyle}{
+  language=Axon,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{axkeyword}\bfseries,
+  keywordstyle=[2]\color{axbuiltin},
+  stringstyle=\color{axstring},
+  commentstyle=\color{axcomment}\itshape,
+  backgroundcolor=\color{axback},
+  frame=single, rulecolor=\color{axframe}, framesep=4pt,
+  xleftmargin=6pt, xrightmargin=6pt,
+  columns=fullflexible, keepspaces=true,
+  showstringspaces=false, upquote=true,
+  aboveskip=8pt, belowskip=6pt,
+  breaklines=true, breakatwhitespace=true,
+  tabsize=2,
+  literate={*}{{\char42}}1 {-}{{\char45}}1,
+}
+\lstdefinestyle{outstyle}{
+  language={}, keywordstyle={}, stringstyle={}, commentstyle={},
+  literate={*}{{\char42}}1 {-}{{\char45}}1,
+  basicstyle=\ttfamily\small\color{black!75},
+  backgroundcolor=\color{outback},
+  frame=leftline, rulecolor=\color{axframe}, framerule=2pt,
+  xleftmargin=10pt, framesep=6pt,
+  columns=fullflexible, keepspaces=true, upquote=true,
+  aboveskip=0pt, belowskip=8pt,
+  escapeinside={(*@}{@*)},
+}
+\lstdefinestyle{shellstyle}{
+  language={}, keywordstyle={}, stringstyle={}, commentstyle={},
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{axback},
+  frame=single, rulecolor=\color{axframe}, framesep=4pt,
+  xleftmargin=6pt, xrightmargin=6pt,
+  columns=fullflexible, keepspaces=true, upquote=true,
+}
+% axon: a complete program (checked by running it). axonout: what it prints.
+% axonerr: a program that stops with an error; the following axonout is the
+% error report. shell: a command line.
+\lstnewenvironment{axon}{\lstset{style=axonstyle}}{}
+\lstnewenvironment{axonerr}{\lstset{style=axonstyle}}{}
+\lstnewenvironment{axonout}{\lstset{style=outstyle}}{}
+\lstnewenvironment{shell}{\lstset{style=shellstyle}}{}
+% axonrepl: a REPL session, checked with axon --transcript.
+\lstnewenvironment{axonrepl}{\lstset{style=outstyle,aboveskip=8pt}}{}
+\lstset{style=axonstyle}
+\newcommand{\ex}[1]{\lstinputlisting[style=axonstyle,
+  title={\small\ttfamily\detokenize{#1}}]{examples/#1}}
+% Inline code, read verbatim: \code{x + 1}, or \code|{a, b}| with braces inside.
+\newcommand{\code}{\lstinline[basicstyle=\ttfamily,keywordstyle=,
+  keywordstyle={[2]},stringstyle=,commentstyle=,
+  literate={*}{{\char42}}1 {-}{{\char45}}1]}
+\newcommand{\menu}[1]{\textsf{#1}}
+\newcommand{\key}[1]{\fbox{\footnotesize\sffamily #1}}
+\newcommand{\fig}[3]{\begin{figure}[htbp]\centering
+  \includegraphics[width=#2\linewidth]{figures/#1}\caption{#3}\label{fig:#1}
+  \end{figure}}

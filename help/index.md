@@ -6,6 +6,7 @@ solvers and plots, with a small core and readable code.
 ## Start here
 
 - [Getting started](getting-started.md): run your first program, use the REPL, find help.
+- [Tutorial](tutorial.md): learn to program with Axon from the beginning, one short lesson at a time.
 - [Using the IDE](ide.md): running, the output and REPL panes, plots, help and shortcuts.
 - [A tour of Axon](tour.md): the language in one page, with examples you can run.
 - [Built-in functions](Axon-Language-Reference.md#built-in-functions): every function you can use without an `import`, and the constants `pi` and `e`.
