@@ -3334,6 +3334,8 @@ constant \code{Ki}.}
 The rest of the chapter shows how the module gets from the text to those
 curves, in four steps: reading the statements, sorting names into species
 and parameters, building the equations, and turning the rate laws into code.
+Section~\ref{sec:antimony-functions}, near the end of the chapter, lists all
+of the module's functions and the records they return.
 
 \section{Reading the text}
 
@@ -3965,6 +3967,146 @@ branched pathway with a conserved moiety (ATP and ADP).
 
 \fig{mca.pdf}{0.65}{The concentration control coefficients of the
 feedback-inhibited pathway, from \texttt{mca.sci}.}
+
+\section{The module's functions}\label{sec:antimony-functions}
+
+Table~\ref{tab:antimony-functions} lists the functions of \code{antimony}
+and Table~\ref{tab:antimony-records} the records they return. Throughout,
+\code{y} is a vector of the floating species' values, in the order of
+\code{species_names(model)}, and \code{p} a vector of the parameters', then
+the boundary species', then the compartments' values, in the order of
+\code{parameter_names(model)}. In the REPL, \code{help antimony.f} shows a
+function's description, and the Language Reference's section ``The
+antimony module'' gives every detail.
+
+\begin{longtable}{@{}lp{0.52\linewidth}@{}}
+\caption{The functions of \texttt{antimony}.}\label{tab:antimony-functions}\\
+\toprule
+Function & Result \\
+\midrule
+\endfirsthead
+\toprule
+Function & Result \\
+\midrule
+\endhead
+\multicolumn{2}{@{}l}{\emph{Reading a model}} \\*
+\code{load(source)} & The model written in the text \code{source}: a
+  \code{Model} record \\
+\code{read(path)} & The model in the file at \code{path} \\
+\addlinespace
+\multicolumn{2}{@{}l}{\emph{The model's parts}} \\*
+\code{species_names(model)} & The floating species: the rows of $N$ and the
+  components of \code{y} \\
+\code{boundary_names(model)} & The boundary species (\code{$X}), held
+  fixed \\
+\code{reaction_names(model)} & The reactions: the columns of $N$ \\
+\code{parameter_names(model)} & The parameters, then the boundary species,
+  then the compartments: the components of \code{p} \\
+\code{stoichiometry(model)} & The stoichiometry matrix $N$, one row per
+  species and one column per reaction \\
+\code{volumes(model)} & The size of each species' compartment (1 for none),
+  in the order of \code{y} \\
+\code{initial(model)} & The species' initial values \\
+\code{parameter_values(model)} & The vector \code{p} of the model's values \\
+\addlinespace
+\multicolumn{2}{@{}l}{\emph{The equations as functions}} \\*
+\code{rhs(model)} & The right-hand side \code{f(t, y, p)} of
+  $dy/dt = N v(y)$, for \code{ode.solve} with \code{params = p}; compiled by
+  the JIT \\
+\code{rates(model)} & The reaction rates as a function \code{v(y, p)} \\
+\code{rhs_text(model)} & The text of the function \code{rhs} makes \\
+\code{rates_text(model)} & The text of the function \code{rates} makes \\
+\code{fluxes(model, y)} & The reaction rates at \code{y}: the fluxes, when
+  \code{y} is a steady state \\
+\addlinespace
+\multicolumn{2}{@{}l}{\emph{Simulation} (Section~\ref{sec:sim})} \\*
+\code{simulate(model, t_end)} & \code{ode.solve}'s solution from
+  \code{t_start} (0) to \code{t_end} at \code{points} (101) times, with the
+  species' names; keywords \code{t_start}, \code{points}, \code{method}
+  (\code{"rk45"} or \code{"bdf"}), \code{rtol}, \code{atol} \\
+\code{simulator(model)} & A simulation to advance in steps: a record with
+  \code{t}, \code{y}, \code{p}, \code{species}, \code{parameters} and
+  \code{solver}; keywords \code{t_start}, \code{method}, \code{rtol},
+  \code{atol} \\
+\code{step(sim, h)} & \code{sim} advanced by \code{h} in time \\
+\code{set(sim, name, value)} & \code{sim} with a species, parameter or
+  boundary species changed, from the next step on \\
+\code{value(sim, name)} & The current value of a species, parameter or
+  boundary species \\
+\addlinespace
+\multicolumn{2}{@{}l}{\emph{Steady states and structure}
+  (Sections~\ref{sec:steady} and \ref{sec:conservation})} \\*
+\code{steady_state(model)} & The species' values with $N v(y) = 0$ and the
+  conserved totals of \code{initial(model)}: a record with \code{y},
+  \code{species}, \code{status}, \code{fnorm}, \code{nfev} and
+  \code{niters}; keywords \code{guess}, \code{method} (\code{"reduced"} or
+  \code{"augmented"}), \code{ftol}, \code{max_iters} \\
+\code{conservation(model)} & The conservation laws and the link matrix: a
+  \code{Conservation} record; also takes a stoichiometry matrix \\
+\code{kernel(model)} & The independent fluxes and the kernel matrix: a
+  \code{Kernel} record; also takes a stoichiometry matrix \\
+\code{jacobian(model, y)} & $\partial (N v) / \partial y$ at \code{y},
+  one row and column per species \\
+\code{reduced_jacobian(model, y)} & $N_R\, (\partial v / \partial y)\, L$
+  at \code{y}, whose eigenvalues decide stability \\
+\addlinespace
+\multicolumn{2}{@{}l}{\emph{Metabolic control analysis}
+  (Section~\ref{sec:mca})} \\*
+\code{elasticities(model, y)} & $\partial v / \partial y$, one row per
+  reaction and one column per species; \code{scaled = true} for the scaled
+  ones \\
+\code{parameter_elasticities(model, y)} & $\partial v / \partial p$, one
+  column per parameter and boundary species; \code{scaled} as above \\
+\code{control(model)} & The flux and concentration control coefficients at
+  the steady state (or at \code{y}): a \code{Control} record; scaled unless
+  \code{scaled = false} \\
+\code{response(model)} & The response coefficients to every parameter and
+  boundary species: a \code{Response} record; keywords as \code{control} \\
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{@{}lp{0.72\linewidth}@{}}
+\caption{The records of \texttt{antimony}.}\label{tab:antimony-records}\\
+\toprule
+Record & Fields \\
+\midrule
+\endfirsthead
+\toprule
+Record & Fields \\
+\midrule
+\endhead
+\code{Model} & \code{reactions} (a list of \code{Reaction}s, in order),
+  \code{species} (floating species' names to initial values, \code{nothing} when not
+  assigned),
+  \code{parameters} (names to values), \code{boundary} (boundary species'
+  names to values), \code{compartments} (names to sizes),
+  \code{species_in} (species' names to their compartments' names) and
+  \code{rules} (assignment rules: names to expressions, as text) \\
+\code{Reaction} & \code{name}, \code{reactants} and \code{products}
+  (species' names to stoichiometric coefficients) and \code{rate} (the rate
+  law, as text) \\
+\addlinespace
+\code{Conservation} & \code{independent} and \code{dependent} (species'
+  names), \code{ind} and \code{dep} (their positions in \code{y}),
+  \code{Nr} (the reduced stoichiometry matrix), \code{L0} (with
+  $N_{\mathrm{dep}} = L_0 N_R$), \code{link} (the link matrix $L$, with
+  $N = L N_R$) and \code{gamma} (the conservation laws, $\Gamma N = 0$) \\
+\code{Kernel} & \code{independent} and \code{dependent} (reactions' names),
+  \code{ind} and \code{dep} (their positions), \code{K0} (with
+  $J_{\mathrm{dep}} = K_0 J_{\mathrm{ind}}$) and \code{K} (the kernel matrix,
+  $N K = 0$) \\
+\addlinespace
+\code{Control} & \code{species} and \code{reactions} (names), \code{y} (the
+  steady state), \code{J} (its fluxes), \code{elasticities},
+  \code{flux_control} (entry $(i, j)$: of the flux through reaction $i$ by
+  reaction $j$), \code{concentration_control} (of species $i$ by reaction
+  $j$) and \code{scaled} \\
+\code{Response} & \code{parameters}, \code{species} and \code{reactions}
+  (names), \code{y}, \code{J}, \code{flux} (entry $(i, k)$: the response of
+  the flux through reaction $i$ to parameter $k$), \code{concentration} (of
+  species $i$) and \code{scaled} \\
+\bottomrule
+\end{longtable}
 
 \section{What the case study shows}
 
