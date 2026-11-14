@@ -414,3 +414,5 @@ plot.xlabel("day")
 plot.ylabel("temperature (C)")
 plot.show()
 ```
+
+Next: [Lesson 7: Lists, records and dictionaries](tutorial-07-collections.md)

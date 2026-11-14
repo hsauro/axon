@@ -66,3 +66,12 @@ Hello
 6. [Text and files](tutorial-06-text-files.md): strings, splitting text
    and reading numbers from it, writing and reading text files, a report in
    columns, and tables of numbers in CSV files.
+7. [Lists, records and dictionaries](tutorial-07-collections.md): lists
+   of any values, records with named fields, record types, lists of
+   records, dictionaries and counting with them.
+8. [Solving equations](tutorial-08-equations.md): fitting a line by least
+   squares, finding roots by bisection, passing functions to functions,
+   and the `nonlin` solver for one equation or several.
+9. [Differential equations](tutorial-09-differential-equations.md):
+   Euler's method by hand, the `ode` solver, predators and prey, events,
+   and stiff equations.

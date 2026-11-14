@@ -359,12 +359,16 @@ def table(rows):
         spec = '@{}l' + ('p{%.2f\\linewidth}' % width) * (ncols - 1) + '@{}'
     else:
         spec = '@{}' + 'l' * ncols + '@{}'
-    out = ['\\begin{longtable}{%s}' % spec, '\\toprule',
-           ' & '.join(inline(c) for c in cells[0]) + ' \\\\',
-           '\\midrule']
-    for r in cells[1:]:
-        out.append(' & '.join(inline(c) for c in r) + ' \\\\')
-    out += ['\\bottomrule', '\\end{longtable}', '']
+    head = ['\\toprule', ' & '.join(inline(c) for c in cells[0]) + ' \\\\', '\\midrule']
+    body = [' & '.join(inline(c) for c in r) + ' \\\\' for r in cells[1:]]
+    if len(cells) <= 16:
+        # A short table cannot break, so its header never ends a page alone.
+        out = ['\\begin{center}', '\\begin{tabular}{%s}' % spec] + head + body + \
+              ['\\bottomrule', '\\end{tabular}', '\\end{center}', '']
+    else:
+        # A long one may, with its header repeated on each page.
+        out = ['\\begin{longtable}{%s}' % spec] + head + ['\\endhead'] + body + \
+              ['\\bottomrule', '\\end{longtable}', '']
     return '\n'.join(out)
 
 
