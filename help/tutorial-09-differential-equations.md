@@ -362,3 +362,5 @@ plot.xlabel("rabbits")
 plot.ylabel("foxes")
 plot.show()
 ```
+
+Next: [Lesson 10: Reaction models](tutorial-10-reaction-models.md)
