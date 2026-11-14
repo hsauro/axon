@@ -480,3 +480,5 @@ end
 42
 49
 ```
+
+Next: [Lesson 3: Writing your own functions](tutorial-03-functions.md)

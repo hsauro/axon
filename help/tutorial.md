@@ -50,3 +50,6 @@ Hello
 2. [Decisions and repetition](tutorial-02-decisions.md): true and false,
    `if`, `for` and `while` loops, adding up in a loop, and looking at a
    program's variables in the REPL.
+3. [Writing your own functions](tutorial-03-functions.md): parameters and
+   `return`, documentation comments, variables inside functions, optional
+   and keyword arguments, returning two values, and `error`.
