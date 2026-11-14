@@ -3776,10 +3776,42 @@ reduced: 0.8333  0.7500  0.2500  2.0000   iterations: 2
 augmented: 0.8333  0.7500  0.2500  2.0000   iterations: 2
 J:  -7.3504  -0.8163  -0.5000  0.0000
 Jr: -7.3504  -0.8163  -0.5000
+independent fluxes: {"J2", "J4"}  dependent: {"J0", "J1", "J3"}
+J0: 0.0  1.0
+J1: 1.0  1.0
+J3: 0.0  1.0
 \end{axonout}
 
 $L_0 = [\,0 \;\; {-1} \;\; 0\,]$ says that $E = -ES + T$: the conservation
 law is \code{E + ES}, with total 1.
+
+\paragraph{The kernel matrix.} The same analysis of the columns of $N$
+describes the fluxes. A steady state has $N J = 0$, so its fluxes $J$ lie
+in the null space, or kernel, of $N$, of dimension $n - r$ for $n$
+reactions. \code{antimony.kernel(model)} splits the reactions in two
+\ref{ref:reder}: QR factorisation of $N$ with column pivoting,
+$N P = Q R$, takes the reactions' columns largest first, and the first $r$
+pivoted are the \emph{dependent} reactions; the fluxes of the other $n - r$,
+the \emph{independent} ones, can be chosen freely. With the dependent
+reactions first, $N = [\,N_D \;\; N_I\,] = Q_1 [\,R_{11} \;\; R_{12}\,]$,
+so $N J = Q_1 (R_{11} J_D + R_{12} J_I) = 0$ gives
+\[
+  J_D = K_0\, J_I , \qquad K_0 = -R_{11}^{-1} R_{12} ,
+  \qquad
+  J = \begin{bmatrix} K_0 \\ I \end{bmatrix} J_I = K J_I ,
+\]
+where $K$, with $N K = 0$, is the \emph{kernel matrix}. (It is not the
+$K$ of the augmented system below, a basis of the null space of $N^T$.)
+The record lists both sets of reactions in the model's order, with
+\code{K} indexed by reaction in that order, as \code{link} is by species.
+The last lines of the example print $K_0$ for the enzyme: with $J_2$
+(the release of $S$ from $ES$) and $J_4$ (the outflow of $P$) as the
+independent fluxes, $J_0 = J_3 = J_4$ and $J_1 = J_2 + J_4$, so the
+binding step carries the throughput plus whatever cycles back.
+
+Both \code{conservation} and \code{kernel} also take a stoichiometry matrix
+itself, \code{antimony.kernel(N)} for a matrix \code{N}, and name its rows
+\code{S1}, \code{S2}, \ldots{} and its columns \code{J1}, \code{J2}, \ldots
 
 \paragraph{Without choosing species: the augmented system.}
 \code{method = "augmented"} solves for every species instead. Let the

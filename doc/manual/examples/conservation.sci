@@ -38,3 +38,10 @@ end
 s = antimony.steady_state(model)
 println("J: ", row(sort(linalg.eig(antimony.jacobian(model, s.y))), 4))
 println("Jr:", row(sort(linalg.eig(antimony.reduced_jacobian(model, s.y))), 4))
+
+# The fluxes: two are independent, and K0 gives the others from them.
+k = antimony.kernel(model)
+println("independent fluxes:", k.independent, " dependent:", k.dependent)
+for i in 1:length(k.dependent)
+  println(k.dependent[i] + ":", row(k.K0[i, :], 1))
+end

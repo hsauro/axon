@@ -19,9 +19,10 @@
 ## changes by its share of N v divided by its compartment's size.
 ## simulate solves a whole time span; simulator, step and set advance a
 ## simulation in steps, changing values between them; steady_state finds
-## where the species stop changing; control and response give the control
-## and response coefficients. See the Language Reference, "The antimony
-## module".
+## where the species stop changing; conservation and kernel find the
+## conservation laws and how the steady-state fluxes depend on each other;
+## control and response give the control and response coefficients. See the
+## Language Reference, "The antimony module".
 
 import io
 import linalg
@@ -837,6 +838,8 @@ end
 ## matrix, one row per species in species_names order: N = link * Nr) and
 ## gamma (the conservation matrix: one row per conserved total, one column
 ## per species, gamma * N = 0, so gamma * y stays at gamma * y0).
+## conservation(N) analyses a stoichiometry matrix N itself, whose species
+## are then named S1, S2, ... in the order of its rows.
 export record Conservation
   independent: list
   dependent: list
@@ -849,6 +852,60 @@ export record Conservation
 end
 
 EPS = 2.220446049250313e-16
+
+# The stoichiometry matrix that conservation and kernel analyse, the names
+# of its rows and the names of its columns: a model's (each species' row
+# divided by its compartment's size when scaled is true), or a matrix given
+# as it is (a vector is one column), its rows named S1, S2, ... and its
+# columns J1, J2, ...
+function structure_of(x, scaled, where)
+  t = typeof(x)
+  if t == "Model"
+    if scaled
+      N = scaled_stoichiometry(x)
+    else
+      N = stoichiometry(x)
+    end
+    return N, species_names(x), reaction_names(x)
+  end
+  if t == "matrix"
+    N = x + 0.0
+  elseif t == "vector"
+    N = reshape(x + 0.0, length(x), 1)
+  else
+    error("ArgumentError", where + ": expected a model or a stoichiometry matrix, got " + t)
+  end
+  return N, numbered("S", size(N, 1)), numbered("J", size(N, 2))
+end
+
+# The list of names prefix + "1" to prefix + string(n).
+function numbered(prefix, n)
+  names = {}
+  for i in 1:n
+    names = append(names, prefix + string(i))
+  end
+  return names
+end
+
+# The columns of A in the order QR factorisation with column pivoting takes
+# them (linalg.qrp: A[:, p] = Q * R, largest first), A's rank (the number of
+# R's diagonal entries larger than max(size(A)) eps |R[1, 1]|) and R. The
+# columns p[1:rank] are linearly independent and the others combinations of
+# them.
+function pivot_columns(A)
+  [m, n] = size(A)
+  if m == 0 or n == 0
+    return int(1:n), 0, zeros(0, n)
+  end
+  [Q, R, p] = linalg.qrp(A)
+  k = min(m, n)
+  tol = max(m, n) * EPS * abs(R[1, 1])
+  rank = 0
+  while rank < k and abs(R[rank + 1, rank + 1]) > tol
+    rank = rank + 1
+  end
+  return p, rank, R
+end
 
 # x, with entries within 1e-10 of a whole number made that number: L0 is
 # computed in floating point, but its entries are usually small integers.
@@ -867,23 +924,11 @@ end
 ## independent species are chosen by QR factorisation of N' with column
 ## pivoting (linalg.qrp): the species whose rows of N are taken first, largest
 ## first, up to the rank of N. Both lists are in the order of species_names.
+## model may also be a stoichiometry matrix (species by reactions).
 export function conservation(model)
-  names = species_names(model)
-  N = scaled_stoichiometry(model)
-  [m, r] = size(N)
-  rank = 0
-  if r > 0
-    [Q, R, p] = linalg.qrp(N')
-    k = min(r, m)
-    big = 0.0
-    if k > 0 big = abs(R[1, 1]) end
-    tol = max(m, r) * EPS * big
-    while rank < k and abs(R[rank + 1, rank + 1]) > tol
-      rank = rank + 1
-    end
-  else
-    p = 1:m
-  end
+  [N, names, reactions] = structure_of(model, true, "antimony.conservation")
+  m = size(N, 1)
+  [p, rank, R] = pivot_columns(N')
   ind = p[1:rank]
   dep = p[(rank + 1):m]
   c = m - rank
@@ -921,6 +966,71 @@ export function conservation(model)
   end
   return Conservation(independent, dependent, int(ind), int(dep), N[ind, :], L0, link,
                       gamma)
+end
+
+## The kernel analysis of a model's stoichiometry matrix N (Reder 1988): the
+## flux vectors J with N J = 0, the fluxes a steady state can have, written
+## in terms of independent fluxes. The fields: independent and dependent
+## (the reactions' names), ind and dep (their positions in
+## reaction_names(model)), K0 (the dependent fluxes in terms of the
+## independent ones: J[dep] = K0 * J[ind]) and K (the kernel matrix, one row
+## per reaction in reaction_names order and one column per independent
+## flux: N * K = 0, K[ind, :] the identity and K[dep, :] = K0, so
+## J = K * J[ind]).
+export record Kernel
+  independent: list
+  dependent: list
+  ind: vector
+  dep: vector
+  K0: matrix
+  K: matrix
+end
+
+## The model's kernel analysis, as a Kernel record. The dependent reactions
+## are chosen by QR factorisation of N with column pivoting (linalg.qrp):
+## the reactions whose columns of N are taken first, largest first, up to
+## the rank of N; the fluxes of the others are independent. Both lists are
+## in the order of reaction_names. Compartment sizes do not change the
+## kernel, so N is stoichiometry(model). model may also be a stoichiometry
+## matrix, whose reactions are then named J1, J2, ... in the order of its
+## columns.
+export function kernel(model)
+  [N, species, names] = structure_of(model, false, "antimony.kernel")
+  n = size(N, 2)
+  [p, rank, R] = pivot_columns(N)
+  dep = p[1:rank]
+  ind = p[(rank + 1):n]
+  f = n - rank
+  # With N P = Q R: N[:, dep] = Q1 R11 and N[:, ind] = Q1 R12, so
+  # N J = Q1 (R11 J[dep] + R12 J[ind]) = 0 when J[dep] = -(R11 \ R12) J[ind].
+  if rank > 0 and f > 0
+    K0 = clean(0.0 - (R[1:rank, 1:rank] \ R[1:rank, (rank + 1):n]))
+  else
+    K0 = zeros(rank, f)
+  end
+  # The same reactions, listed in the model's order (K0's rows and columns follow).
+  if f > 0
+    order = sortperm(ind)
+    ind = ind[order]
+    K0 = K0[:, order]
+  end
+  if rank > 0
+    order = sortperm(dep)
+    dep = dep[order]
+    K0 = K0[order, :]
+  end
+  K = zeros(n, f)
+  K[ind, :] = eye(f)
+  K[dep, :] = K0
+  independent = {}
+  for j in ind
+    independent = append(independent, names[j])
+  end
+  dependent = {}
+  for j in dep
+    dependent = append(dependent, names[j])
+  end
+  return Kernel(independent, dependent, int(ind), int(dep), K0, K)
 end
 
 
