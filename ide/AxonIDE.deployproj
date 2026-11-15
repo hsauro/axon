@@ -48,6 +48,15 @@
         </DeployFile>
     </ItemGroup>
     <ItemGroup Condition="'$(Platform)'=='OSXARM64'">
+        <DeployFile Include="..\help\tutorial-06-text-files.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-06-text-files.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
         <DeployFile Include="..\stdlib\linalg.sci" Condition="'$(Config)'=='Release'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
             <RemoteName>linalg.sci</RemoteName>
@@ -75,38 +84,11 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\OSXARM64\Release\axon" Condition="'$(Config)'=='Release'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
-            <RemoteName>axon</RemoteName>
-            <DeployClass>File</DeployClass>
-            <Operation>1</Operation>
-            <LocalCommand/>
-            <RemoteCommand/>
-            <Overwrite>True</Overwrite>
-        </DeployFile>
         <DeployFile Include="..\OSXARM64\Debug\AxonIDE.dSYM" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\..\$(PROJECTNAME).app.dSYM\Contents\Resources\DWARF\</RemoteDir>
             <RemoteName>AxonIDE</RemoteName>
             <DeployClass>ProjectOSXDebug</DeployClass>
             <Operation>1</Operation>
-            <LocalCommand/>
-            <RemoteCommand/>
-            <Overwrite>True</Overwrite>
-        </DeployFile>
-        <DeployFile Include="..\lib\macos\libmir.dylib" Condition="'$(Config)'=='Debug'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
-            <RemoteName>libmir.dylib</RemoteName>
-            <DeployClass>File</DeployClass>
-            <Operation>0</Operation>
-            <LocalCommand/>
-            <RemoteCommand/>
-            <Overwrite>True</Overwrite>
-        </DeployFile>
-        <DeployFile Include="..\lib\macos\libmir.dylib" Condition="'$(Config)'=='Release'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
-            <RemoteName>libmir.dylib</RemoteName>
-            <DeployClass>File</DeployClass>
-            <Operation>0</Operation>
             <LocalCommand/>
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
@@ -147,6 +129,24 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
+        <DeployFile Include="..\help\tutorial-04-vectors.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-04-vectors.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-04-vectors.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-04-vectors.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
         <DeployFile Include="..\stdlib\plot.sci" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
             <RemoteName>plot.sci</RemoteName>
@@ -159,6 +159,24 @@
         <DeployFile Include="..\stdlib\plot.sci" Condition="'$(Config)'=='Release'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
             <RemoteName>plot.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\23_mandelbrot.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>23_mandelbrot.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\23_mandelbrot.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>23_mandelbrot.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
@@ -192,6 +210,15 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
+        <DeployFile Include="..\examples\19_antimony.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>19_antimony.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
         <DeployFile Include="..\OSXARM64\Debug\AxonIDE" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
             <RemoteName>AxonIDE</RemoteName>
@@ -201,6 +228,33 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
             <Required>True</Required>
+        </DeployFile>
+        <DeployFile Include="..\examples\19_antimony.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>19_antimony.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-02-decisions.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-02-decisions.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-02-decisions.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-02-decisions.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
         </DeployFile>
         <DeployFile Include="..\examples\09_jit.sci" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
@@ -256,18 +310,18 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\examples\08_timing.sci" Condition="'$(Config)'=='Debug'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
-            <RemoteName>08_timing.sci</RemoteName>
+        <DeployFile Include="..\stdlib\nonlin.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>nonlin.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\examples\08_timing.sci" Condition="'$(Config)'=='Release'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
-            <RemoteName>08_timing.sci</RemoteName>
+        <DeployFile Include="..\stdlib\nonlin.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>nonlin.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
@@ -301,24 +355,6 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\examples\03_linear_algebra.sci" Condition="'$(Config)'=='Debug'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
-            <RemoteName>03_linear_algebra.sci</RemoteName>
-            <DeployClass>File</DeployClass>
-            <Operation>0</Operation>
-            <LocalCommand/>
-            <RemoteCommand/>
-            <Overwrite>True</Overwrite>
-        </DeployFile>
-        <DeployFile Include="..\examples\03_linear_algebra.sci" Condition="'$(Config)'=='Release'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
-            <RemoteName>03_linear_algebra.sci</RemoteName>
-            <DeployClass>File</DeployClass>
-            <Operation>0</Operation>
-            <LocalCommand/>
-            <RemoteCommand/>
-            <Overwrite>True</Overwrite>
-        </DeployFile>
         <DeployFile Include="..\examples\06_sparse.sci" Condition="'$(Config)'=='Release'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
             <RemoteName>06_sparse.sci</RemoteName>
@@ -340,6 +376,474 @@
         <DeployFile Include="..\doc\Axon-Language-Reference.md" Condition="'$(Config)'=='Release'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
             <RemoteName>Axon-Language-Reference.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\25_pendulum.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>25_pendulum.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\25_pendulum.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>25_pendulum.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\02_collections.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>02_collections.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="$(BDS)\bin\delphi_PROJECTICNS.icns" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\Resources\</RemoteDir>
+            <RemoteName>AxonIDE.icns</RemoteName>
+            <DeployClass>ProjectOSXResource</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\02_collections.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>02_collections.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\20_antimony_steps.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>20_antimony_steps.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\20_antimony_steps.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>20_antimony_steps.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\doc\Axon-White-Paper.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>Axon-White-Paper.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\doc\Axon-White-Paper.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>Axon-White-Paper.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-08-equations.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-08-equations.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-08-equations.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-08-equations.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libsundials_cvode.dylib" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libsundials_cvode.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libsundials_cvode.dylib" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libsundials_cvode.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-11-speed.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-11-speed.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-11-speed.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-11-speed.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\index.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>index.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\index.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>index.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\17_formatting_types_files.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>17_formatting_types_files.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\17_formatting_types_files.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>17_formatting_types_files.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\15_subplots.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>15_subplots.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\15_subplots.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>15_subplots.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tour.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tour.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tour.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tour.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\30_control.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>30_control.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\30_control.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>30_control.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-09-differential-equations.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-09-differential-equations.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-09-differential-equations.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-09-differential-equations.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\14_lorenz.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>14_lorenz.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\14_lorenz.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>14_lorenz.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\OSXARM64\Release\axon" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>axon</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libmir.dylib" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libmir.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libmir.dylib" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libmir.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libsundials_kinsol.dylib" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libsundials_kinsol.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\lib\macos\libsundials_kinsol.dylib" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>libsundials_kinsol.dylib</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-03-functions.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-03-functions.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-03-functions.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-03-functions.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\21_antimony_steady_state.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>21_antimony_steady_state.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\21_antimony_steady_state.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>21_antimony_steady_state.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\26_life.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>26_life.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\26_life.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>26_life.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\08_timing.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>08_timing.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\08_timing.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>08_timing.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-01-first-steps.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-01-first-steps.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-01-first-steps.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-01-first-steps.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\03_linear_algebra.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>03_linear_algebra.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\03_linear_algebra.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>03_linear_algebra.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\18_scatter3d.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>18_scatter3d.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\stdlib\antimony.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>antimony.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\stdlib\antimony.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>antimony.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\18_scatter3d.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>18_scatter3d.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\24_lsystems.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>24_lsystems.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\24_lsystems.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>24_lsystems.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
@@ -391,29 +895,20 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\examples\02_collections.sci" Condition="'$(Config)'=='Debug'">
+        <DeployFile Include="..\examples\22_fractals.sci" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
-            <RemoteName>02_collections.sci</RemoteName>
+            <RemoteName>22_fractals.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\examples\02_collections.sci" Condition="'$(Config)'=='Release'">
+        <DeployFile Include="..\examples\22_fractals.sci" Condition="'$(Config)'=='Release'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
-            <RemoteName>02_collections.sci</RemoteName>
+            <RemoteName>22_fractals.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
-            <LocalCommand/>
-            <RemoteCommand/>
-            <Overwrite>True</Overwrite>
-        </DeployFile>
-        <DeployFile Include="$(BDS)\bin\delphi_PROJECTICNS.icns" Condition="'$(Config)'=='Debug'">
-            <RemoteDir>AxonIDE.app\Contents\Resources\</RemoteDir>
-            <RemoteName>AxonIDE.icns</RemoteName>
-            <DeployClass>ProjectOSXResource</DeployClass>
-            <Operation>1</Operation>
             <LocalCommand/>
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
@@ -454,18 +949,36 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\doc\Axon-White-Paper.md" Condition="'$(Config)'=='Debug'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
-            <RemoteName>Axon-White-Paper.md</RemoteName>
+        <DeployFile Include="..\examples\29_bars3d.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>29_bars3d.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\doc\Axon-White-Paper.md" Condition="'$(Config)'=='Release'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
-            <RemoteName>Axon-White-Paper.md</RemoteName>
+        <DeployFile Include="..\examples\29_bars3d.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>29_bars3d.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\stdlib\fmt.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>fmt.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\stdlib\fmt.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>fmt.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
@@ -490,6 +1003,42 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
+        <DeployFile Include="..\stdlib\draw.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>draw.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\stdlib\draw.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>draw.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\27_oscillator.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>27_oscillator.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\examples\27_oscillator.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>27_oscillator.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
         <DeployFile Include="..\lib\macos\libsundials_core.dylib" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
             <RemoteName>libsundials_core.dylib</RemoteName>
@@ -508,18 +1057,18 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\lib\macos\libsundials_cvode.dylib" Condition="'$(Config)'=='Debug'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
-            <RemoteName>libsundials_cvode.dylib</RemoteName>
+        <DeployFile Include="..\examples\28_colormaps.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>28_colormaps.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\lib\macos\libsundials_cvode.dylib" Condition="'$(Config)'=='Release'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\</RemoteDir>
-            <RemoteName>libsundials_cvode.dylib</RemoteName>
+        <DeployFile Include="..\examples\28_colormaps.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>28_colormaps.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
@@ -544,18 +1093,45 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\help\index.md" Condition="'$(Config)'=='Debug'">
-            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
-            <RemoteName>index.md</RemoteName>
+        <DeployFile Include="..\examples\16_four_views.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>16_four_views.sci</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\help\index.md" Condition="'$(Config)'=='Release'">
+        <DeployFile Include="..\examples\16_four_views.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\examples\</RemoteDir>
+            <RemoteName>16_four_views.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-10-reaction-models.md" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
-            <RemoteName>index.md</RemoteName>
+            <RemoteName>tutorial-10-reaction-models.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-10-reaction-models.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-10-reaction-models.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-07-collections.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-07-collections.md</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
@@ -571,18 +1147,72 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\help\tour.md" Condition="'$(Config)'=='Debug'">
+        <DeployFile Include="..\help\tutorial-07-collections.md" Condition="'$(Config)'=='Release'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
-            <RemoteName>tour.md</RemoteName>
+            <RemoteName>tutorial-07-collections.md</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="..\help\tour.md" Condition="'$(Config)'=='Release'">
+        <DeployFile Include="..\help\tutorial.md" Condition="'$(Config)'=='Debug'">
             <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
-            <RemoteName>tour.md</RemoteName>
+            <RemoteName>tutorial.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-05-plotting.md" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-05-plotting.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\stdlib\colors.sci" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>colors.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\stdlib\colors.sci" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\stdlib\</RemoteDir>
+            <RemoteName>colors.sci</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-05-plotting.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-05-plotting.md</RemoteName>
+            <DeployClass>File</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="..\help\tutorial-06-text-files.md" Condition="'$(Config)'=='Release'">
+            <RemoteDir>AxonIDE.app\Contents\MacOS\help\</RemoteDir>
+            <RemoteName>tutorial-06-text-files.md</RemoteName>
             <DeployClass>File</DeployClass>
             <Operation>0</Operation>
             <LocalCommand/>

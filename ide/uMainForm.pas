@@ -252,6 +252,9 @@ type
     function ExamplesDir: string;
     procedure CmdWelcome(Sender: TObject);
     procedure OpenExampleCopy(const Source: string);
+    function UserExamplesDir: string;
+    function SyncUserExamples: string;
+    procedure CmdOpenUserExample(Sender: TObject);
     function HelpDir: string;
     procedure ShowDocs(const Target: string);
     procedure BuildDocsPanel;
@@ -918,6 +921,7 @@ begin
   AddMenuItem(M, '&New', 'Ctrl+N', CmdNew);
   AddMenuItem(M, '&Open...', 'Ctrl+O', CmdOpen);
   FRecentMenu := AddMenuItem(M, 'Open &Recent', '', nil);
+  AddMenuItem(M, 'Open &User Example...', '', CmdOpenUserExample);
   AddMenuItem(M, '-', '', nil);
   AddMenuItem(M, '&Save', 'Ctrl+S', CmdSave);
   AddMenuItem(M, 'Save &As...', 'Shift+Ctrl+S', CmdSaveAs);
@@ -4444,6 +4448,92 @@ begin
     Doc := CurrentDoc;
     if (Doc <> nil) and (Doc.FilePath <> '') then
       Dlg.InitialDir := ExtractFileDir(Doc.FilePath);
+    if Dlg.Execute then
+      for F in Dlg.Files do
+        OpenFile(F);
+  finally
+    Dlg.Free;
+  end;
+end;
+
+{ The installed user examples: a UserExamples folder next to the IDE. }
+function TfrmMain.UserExamplesDir: string;
+begin
+  Result := TPath.Combine(ExtractFilePath(ParamStr(0)), 'UserExamples');
+end;
+
+{ Copies the user examples to Documents/Axon User Examples and returns that
+  folder. A record there (user-examples.ini) keeps a hash of each file as it
+  was copied: a missing file is copied, a copy still as it was copied is
+  replaced when the installed file has changed, and a copy the user has
+  edited is left alone. }
+function TfrmMain.SyncUserExamples: string;
+var
+  Source, Name, Copy_, SourceHash, CopyHash: string;
+  Record_: TMemIniFile;
+
+  function HashOf(const Path: string): string;
+  begin
+    Result := THashMD5.GetHashString(TEncoding.UTF8.GetString(TFile.ReadAllBytes(Path)));
+  end;
+
+begin
+  Result := TPath.Combine(TPath.GetDocumentsPath, 'Axon User Examples');
+  ForceDirectories(Result);
+  if not TDirectory.Exists(UserExamplesDir) then
+    Exit;
+  Record_ := TMemIniFile.Create(TPath.Combine(Result, 'user-examples.ini'), TEncoding.UTF8);
+  try
+    for Source in TDirectory.GetFiles(UserExamplesDir) do
+    begin
+      Name := ExtractFileName(Source);
+      Copy_ := TPath.Combine(Result, Name);
+      SourceHash := HashOf(Source);
+      if TFile.Exists(Copy_) then
+      begin
+        CopyHash := HashOf(Copy_);
+        if CopyHash = SourceHash then
+          Record_.WriteString('Copied', Name, SourceHash)
+        else if CopyHash = Record_.ReadString('Copied', Name, '') then
+        begin
+          TFile.Copy(Source, Copy_, True);   // untouched since it was copied
+          Record_.WriteString('Copied', Name, SourceHash);
+        end;
+      end
+      else
+      begin
+        TFile.Copy(Source, Copy_);
+        Record_.WriteString('Copied', Name, SourceHash);
+      end;
+    end;
+    Record_.UpdateFile;
+  finally
+    Record_.Free;
+  end;
+end;
+
+{ File > Open User Example: an open dialog in the user's copies of the
+  user examples, so they can be edited and run where they are. }
+procedure TfrmMain.CmdOpenUserExample(Sender: TObject);
+var
+  Dlg: TOpenDialog;
+  Dir, F: string;
+begin
+  try
+    Dir := SyncUserExamples;
+  except
+    on E: Exception do
+    begin
+      TDialogServiceSync.MessageDialog(Format('Cannot copy the user examples to Documents:'#10'%s',
+        [E.Message]), TMsgDlgType.mtError, [TMsgDlgBtn.mbOK], TMsgDlgBtn.mbOK, 0);
+      Exit;
+    end;
+  end;
+  Dlg := TOpenDialog.Create(nil);
+  try
+    Dlg.Filter := FileFilter;
+    Dlg.Options := Dlg.Options + [TOpenOption.ofAllowMultiSelect, TOpenOption.ofFileMustExist];
+    Dlg.InitialDir := Dir;
     if Dlg.Execute then
       for F in Dlg.Files do
         OpenFile(F);

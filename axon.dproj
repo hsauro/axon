@@ -5,11 +5,10 @@
         <FrameworkType>None</FrameworkType>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
-        <Platform Condition="'$(Platform)'==''">Win64</Platform>
+        <Platform Condition="'$(Platform)'==''">OSXARM64</Platform>
         <TargetedPlatforms>131074</TargetedPlatforms>
         <AppType>Console</AppType>
         <MainSource>axon.dpr</MainSource>
-        <ProjectName Condition="'$(ProjectName)'==''">axon</ProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
         <Base>true</Base>
@@ -74,7 +73,8 @@ xcopy /y /d /q /i "$(MSBuildProjectDirectory)\stdlib\*.toml" "$(MSBuildProjectDi
 xcopy /y /d /q /i "$(MSBuildProjectDirectory)\examples\*.sci" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\examples\"
 xcopy /y /d /q /i "$(MSBuildProjectDirectory)\help\*.md" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\"
 xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-Language-Reference.md" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\"
-xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\"]]></PostBuildEvent>
+xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\"
+xcopy /y /d /q /i "$(MSBuildProjectDirectory)\UserExamples\*.*" "$(MSBuildProjectDirectory)\$(Platform)\$(Config)\UserExamples\"]]></PostBuildEvent>
         <Manifest_File>(None)</Manifest_File>
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
@@ -187,7 +187,7 @@ xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md" "$(MSBuil
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>xcopy /y /d /q &quot;$(MSBuildProjectDirectory)\lib\win64\*.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\stdlib\*.sci&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\stdlib\*.toml&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\examples\*.sci&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\examples\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\help\*.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\doc\Axon-Language-Reference.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;</PostBuildEvent>
+        <PostBuildEvent>xcopy /y /d /q &quot;$(MSBuildProjectDirectory)\lib\win64\*.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\stdlib\*.sci&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\stdlib\*.toml&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\examples\*.sci&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\examples\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\help\*.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\doc\Axon-Language-Reference.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\UserExamples\*.*&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\UserExamples\&quot;</PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win64'">
@@ -195,7 +195,7 @@ xcopy /y /d /q /i "$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md" "$(MSBuil
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
-        <PostBuildEvent>xcopy /y /d /q &quot;$(MSBuildProjectDirectory)\lib\win64\*.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\stdlib\*.sci&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\stdlib\*.toml&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\examples\*.sci&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\examples\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\help\*.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\doc\Axon-Language-Reference.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;</PostBuildEvent>
+        <PostBuildEvent>xcopy /y /d /q &quot;$(MSBuildProjectDirectory)\lib\win64\*.dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\stdlib\*.sci&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\stdlib\*.toml&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\stdlib\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\examples\*.sci&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\examples\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\help\*.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\doc\Axon-Language-Reference.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\doc\Axon-White-Paper.md&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\help\&quot;&amp;&amp;xcopy /y /d /q /i &quot;$(MSBuildProjectDirectory)\UserExamples\*.*&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\UserExamples\&quot;</PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
     </PropertyGroup>
 </Project>
