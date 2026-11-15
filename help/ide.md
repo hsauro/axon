@@ -28,6 +28,15 @@ and pane sizes, and the recent files, between sessions.
 folder, so `import` finds modules next to it and files the program writes land
 there. **Stop** (<kbd>Ctrl+F2</kbd>) ends a program that runs too long.
 
+A new file that has never been saved runs without asking for a name: the
+IDE writes it, under the name on its tab (such as `untitled1.sci`), to the
+folder `Documents/Axon Scratch`, and runs it there. It stays unsaved; save
+it whenever you want to keep it. Errors and the JIT report name it by its
+tab's name, and their links lead to the tab. Files such a program writes
+under a bare name, such as `"results.csv"`, go to `Documents/Axon Scratch`,
+and a REPL started from an unsaved file works in that folder too. To
+`import` modules of your own, save the program next to them.
+
 While you type, the IDE checks the syntax: about half a second after you stop,
 a syntax error gets a wavy red underline, and hovering it shows the message.
 

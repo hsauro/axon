@@ -12,10 +12,10 @@ It also shows how the editor and the REPL work together.
 ## Working in the editor
 
 From now on most examples are programs of several lines. Type them in the
-editor (**File > New**, <kbd>Ctrl+N</kbd>), save them under the name in
-their first line, and run them with <kbd>F9</kbd>. A program can be changed
-and run again as often as you like, which is much easier than retyping
-lines in the REPL.
+editor (**File > New**, <kbd>Ctrl+N</kbd>) and run them with <kbd>F9</kbd>;
+to keep one, save it under the name in its first line. A program can be
+changed and run again as often as you like, which is much easier than
+retyping lines in the REPL.
 
 The REPL is still useful for trying a single line, and for looking at a
 program's variables after it has run: this lesson shows how.
@@ -163,7 +163,8 @@ the REPL, where its variables stay. You can then ask about them:
 ```
 
 <kbd>Shift+F9</kbd> types the `run` line for you, with the file's full
-name. This is a good way to work: write the program in the editor, run it
+name (for a program you have not saved, the name on its tab, such as
+`untitled1.sci`). This is a good way to work: write the program in the editor, run it
 in the REPL, and look at what it computed. <kbd>Ctrl+Enter</kbd> in the
 editor sends just the current line (or the selected lines) to the REPL, to
 try one part of a program.

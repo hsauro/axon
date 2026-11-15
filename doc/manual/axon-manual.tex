@@ -117,8 +117,8 @@ repositories; the \texttt{README} in the source tree lists them.
 \section{Your first program}
 
 In the IDE, choose \menu{File > New} (\key{Ctrl+N}), type a program and press
-\key{F9} to run it. The IDE asks you to save it first; Axon files end in
-\texttt{.sci}.
+\key{F9} to run it. It runs without being saved; to keep it, save it with
+\menu{File > Save} (\key{Ctrl+S}). Axon files end in \texttt{.sci}.
 
 \begin{axon}
 println("Hello, world")
@@ -261,7 +261,11 @@ or the right-click menu) and search them (\key{Ctrl+F}). Each keeps its last
 \key{F9} (\menu{Run > Run}) saves the current file and runs it with
 \texttt{axon}, in the file's own folder, so \code{import} finds modules next to
 it and files the program writes land there. \textbf{Stop} (\key{Ctrl+F2}) ends a
-program that runs too long.
+program that runs too long. A new file that has never been saved runs without
+asking for a name: the IDE writes it, under the name on its tab (such as
+\texttt{untitled1.sci}), to the folder \texttt{Documents/Axon Scratch} and runs it
+there, so files it writes land there too. It stays unsaved, and errors and
+their links refer to its tab.
 
 While you type, the IDE checks the syntax: about half a second after you stop, a
 syntax error gets a wavy red underline, and hovering over it shows the message.

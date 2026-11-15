@@ -5,8 +5,8 @@
 ## Your first program
 
 In the IDE, choose **File > New** (<kbd>Ctrl+N</kbd>), type a program and press
-<kbd>F9</kbd> to run it. The IDE asks you to save the file first; Axon files end
-in `.sci`.
+<kbd>F9</kbd> to run it. It runs without being saved; to keep it, save it with
+**File > Save** (<kbd>Ctrl+S</kbd>). Axon files end in `.sci`.
 
 ```axon
 println("Hello, world")

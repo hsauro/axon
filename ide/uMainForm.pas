@@ -122,6 +122,7 @@ type
     FRecent: TStringList;
     FRunner: TProcessRunner;
     FRunDoc: TDocument;
+    FRunScratch: string;     // the scratch file an unsaved FRunDoc ran from, or ''
     FRunDir: string;
     FRunStart: TDateTime;
     FRunTicks: UInt64;
@@ -310,6 +311,9 @@ type
     function CurrentDoc: TDocument;
     function NewDocument(const Path, Text: string): TDocument;
     function FindDocument(const Path: string): TDocument;
+    function ScratchDir: string;
+    function RunFileFor(Doc: TDocument): string;
+    function DocForRunPath(const Path: string): TDocument;
     function OpenFile(const Path: string): TDocument;
     function SaveDoc(Doc: TDocument; SaveAs: Boolean): Boolean;
     function ConfirmClose(Doc: TDocument): Boolean;
@@ -1015,6 +1019,53 @@ begin
   Result := nil;
 end;
 
+{ The folder unsaved documents run in, Documents/Axon Scratch, beside the
+  examples' Documents/Axon Examples. Files such a program writes under a bare
+  name land here. }
+function TfrmMain.ScratchDir: string;
+begin
+  Result := TPath.Combine(TPath.GetDocumentsPath, 'Axon Scratch');
+end;
+
+{ The file Run and Run in REPL run for Doc. A saved document runs as itself,
+  saved first if it has changed. An unsaved one is written, under its tab's
+  name (untitled1.sci), to the scratch folder, so that it runs without the
+  user giving it a name; it stays unsaved. '' when nothing can run (the
+  save was cancelled, or the scratch file could not be written). }
+function TfrmMain.RunFileFor(Doc: TDocument): string;
+begin
+  Result := '';
+  if Doc.FilePath <> '' then
+  begin
+    if Doc.Editor.Modified and not SaveDoc(Doc, False) then
+      Exit;
+    Exit(Doc.FilePath);
+  end;
+  Result := TPath.Combine(ScratchDir, Doc.DisplayName);
+  try
+    ForceDirectories(ScratchDir);
+    TFile.WriteAllBytes(Result, TEncoding.UTF8.GetBytes(Doc.Editor.GetText));
+  except
+    on E: Exception do
+    begin
+      TDialogServiceSync.MessageDialog(Format('Cannot write %s:'#10'%s', [Result, E.Message]),
+        TMsgDlgType.mtError, [TMsgDlgBtn.mbOK], TMsgDlgBtn.mbOK, 0);
+      Result := '';
+    end;
+  end;
+end;
+
+{ The open document a file named in a run's report stands for: the document
+  of that file, or the unsaved document the run's scratch file was written
+  from (which the report names as untitled1.sci and so on). }
+function TfrmMain.DocForRunPath(const Path: string): TDocument;
+begin
+  Result := FindDocument(Path);
+  if (Result = nil) and (FRunScratch <> '') and SameFileName(Path, FRunScratch) and
+    (FRunDoc <> nil) and FDocs.Contains(FRunDoc) then
+    Result := FRunDoc;
+end;
+
 function TfrmMain.OpenFile(const Path: string): TDocument;
 var
   Doc: TDocument;
@@ -1559,20 +1610,31 @@ begin
   FStopItem.Enabled := Value;
 end;
 
+{ How the Running note names what runs: a saved file by its path, an
+  unsaved document by its name and the folder it runs in. }
+function RunNoteName(Doc: TDocument; const RunFile: string): string;
+begin
+  if Doc.FilePath <> '' then
+    Result := Doc.FilePath
+  else
+    Result := Format('%s, not saved, in %s', [Doc.DisplayName, ExtractFileDir(RunFile)]);
+end;
+
 procedure TfrmMain.CmdRun(Sender: TObject);
 var
   Doc: TDocument;
   Exe: string;
   D: TDocument;
+  RunFile: string;
 begin
   if FRunner.Running then
     Exit;
   Doc := CurrentDoc;
   if Doc = nil then
     Exit;
-  if (Doc.FilePath = '') or Doc.Editor.Modified then
-    if not SaveDoc(Doc, False) then
-      Exit;
+  RunFile := RunFileFor(Doc);
+  if RunFile = '' then
+    Exit;
   Exe := AxonExecutable;
   FOutput.Clear;
   if Exe = '' then
@@ -1584,7 +1646,11 @@ begin
   for D in FDocs do
     D.Editor.ClearMarkers;
   FRunDoc := Doc;
-  FRunDir := ExtractFileDir(Doc.FilePath);
+  FRunDir := ExtractFileDir(RunFile);
+  if Doc.FilePath = '' then
+    FRunScratch := RunFile
+  else
+    FRunScratch := '';
   FRunStart := Now;
   FRunTicks := TThread.GetTickCount64;
   FPartial[okStdOut] := '';
@@ -1601,12 +1667,13 @@ begin
   FJitWhere.Clear;
   if FPrefs.ShowRunNotes then
     if FJit then
-      AddNote(Format('Running %s (JIT on)', [Doc.FilePath]), FPal.Note)
+      AddNote(Format('Running %s (JIT on)', [RunNoteName(Doc, RunFile)]), FPal.Note)
     else
-      AddNote(Format('Running %s (JIT off: interpreted)', [Doc.FilePath]), FPal.Note);
+      AddNote(Format('Running %s (JIT off: interpreted)', [RunNoteName(Doc, RunFile)]),
+        FPal.Note);
   try
     // Standard input too, for input().
-    FRunner.Start(Exe, [ExtractFileName(Doc.FilePath)], FRunDir, True, True);
+    FRunner.Start(Exe, [ExtractFileName(RunFile)], FRunDir, True, True);
   except
     on E: Exception do
     begin
@@ -1789,11 +1856,15 @@ var
   Doc: TDocument;
 begin
   Path := ResolveRunPath(Frame.FileName);
-  if not TFile.Exists(Path) then
-    Exit;
-  Doc := OpenFile(Path);
+  Doc := DocForRunPath(Path);
   if Doc = nil then
-    Exit;
+  begin
+    if not TFile.Exists(Path) then
+      Exit;
+    Doc := OpenFile(Path);
+    if Doc = nil then
+      Exit;
+  end;
   FTabs.ActiveTab := Doc.Tab;
   Doc.Editor.GoToLine(Frame.Line);
   Doc.Editor.SetFocus;
@@ -1824,7 +1895,7 @@ begin
   Marked := False;
   for Frame in FFrames do
   begin
-    Doc := FindDocument(ResolveRunPath(Frame.FileName));
+    Doc := DocForRunPath(ResolveRunPath(Frame.FileName));
     if Doc = nil then
       Continue;
     Doc.Editor.MarkWordAt(Frame.Line, Frame.Col, TMarkerKind.mkSquiggle, ColorError, Msg);
@@ -2302,7 +2373,12 @@ begin
   if (Doc <> nil) and (Doc.FilePath <> '') then
     Result := ExtractFileDir(Doc.FilePath)
   else
-    Result := TPath.GetDocumentsPath;
+  begin
+    // Where unsaved documents run, so that `run` finds them and the
+    // files they write.
+    Result := ScratchDir;
+    ForceDirectories(Result);
+  end;
 end;
 
 function TfrmMain.EnsureRepl: Boolean;
@@ -2520,16 +2596,17 @@ end;
 procedure TfrmMain.CmdRunInRepl(Sender: TObject);
 var
   Doc: TDocument;
+  RunFile: string;
 begin
   Doc := CurrentDoc;
   if Doc = nil then
     Exit;
-  if (Doc.FilePath = '') or Doc.Editor.Modified then
-    if not SaveDoc(Doc, False) then
-      Exit;
+  RunFile := RunFileFor(Doc);
+  if RunFile = '' then
+    Exit;
   for var D in FDocs do
     D.Editor.ClearMarkers;
-  ReplSend(['run "' + Doc.FilePath + '"']);
+  ReplSend(['run "' + RunFile + '"']);
 end;
 
 procedure TfrmMain.CmdReplRestart(Sender: TObject);
@@ -4205,7 +4282,7 @@ begin
     if (Path <> '') and (Where.Line > 0) then
     begin
       // The whole line, from its first character, so it is hard to miss.
-      Doc := FindDocument(Path);
+      Doc := DocForRunPath(Path);
       if Doc <> nil then
       begin
         Text := Doc.Editor.LineText(Where.Line);

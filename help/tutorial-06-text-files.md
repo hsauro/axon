@@ -9,8 +9,10 @@ build it, look inside it and turn it into numbers. Then it writes and reads
 files: plain text, and tables of numbers in the CSV format that
 spreadsheets and instruments use.
 
-Save the programs of this lesson in one folder: some of them read files
-that earlier ones wrote.
+Some of this lesson's programs read files that earlier ones wrote, so keep
+them in one folder. Programs you have not saved all run in the folder
+`Documents/Axon Scratch`, so they find each other's files; saved programs
+run in the folder they are saved in.
 
 ## Text
 
@@ -163,7 +165,8 @@ THIRD LINE
 ```
 
 A file name on its own, such as `"notes.txt"`, means a file in the folder
-of the program that is running. Open `notes.txt` with **File > Open** to see
+of the program that is running: for a program you have not saved,
+`Documents/Axon Scratch`. Open `notes.txt` with **File > Open** to see
 it. `for line in lines` runs the loop once for each line of the list, as
 `for k in 1:3` runs it once for each number.
 

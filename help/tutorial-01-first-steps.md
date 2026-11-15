@@ -219,15 +219,18 @@ area = pi * r^2
 println("The area is", area)
 ```
 
-Press <kbd>F9</kbd> to run it. The IDE asks you to save the file first: call
-it `circle.sci` (Axon programs end in `.sci`). What the program prints
-appears in the **Output** tab:
+Press <kbd>F9</kbd> to run it. What the program prints appears in the
+**Output** tab:
 
 ```output
 The area is 19.6349540849362
 ```
 
-The first line is a *comment*: Axon skips everything from a `#` to the end
+The program runs without being saved. To keep it, save it with
+**File > Save** (<kbd>Ctrl+S</kbd>): call it `circle.sci`, the name in its
+first line (Axon programs end in `.sci`).
+
+That first line is a *comment*: Axon skips everything from a `#` to the end
 of the line, so you can write notes for yourself and for other readers.
 
 A program does not show values as the REPL does; `println` prints them. It
