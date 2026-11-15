@@ -1,0 +1,15 @@
+1 E1 (time > 10) dict("k1" => "5")
+success true
+true
+7 true true
+_E0 true
+true true
+0 true
+true true
+{"S1", "A", "B"} true
+true true
+true
+true
+{"_E0 at 2.000", "_E0 at 4.000"} true
+1 0.5 true
+20.0 true

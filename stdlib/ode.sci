@@ -160,12 +160,12 @@ function rk45(f, t0, t1, y0, o)
   n = length(y0)
   s = 1.0
   if t1 < t0 s = -1.0 end
-  [ot, oy, status, te_list, ye_list, nfev, nsteps, T0, H, R1, R2, R3, R4, R5] = odecore.rk45(
-    f, t0, t1, y0, o)
+  [ot, oy, status, te_list, ye_list, nfev, nsteps, T0, H, R1, R2, R3, R4, R5, tend] =
+    odecore.rk45(f, t0, t1, y0, o)
   out = {t: ot, y: oy, count: length(ot)}
   steps = length(T0)
   at = function(tq)
-    return dense_at(tq, n, s, T0, H, steps, function(j, th)
+    return dense_at(tq, n, s, T0, H, steps, tend, function(j, th)
       th1 = 1 - th
       return R1[:, j] + th * (R2[:, j] + th1 * (R3[:, j] + th * (R4[:, j] + th1 * R5[:, j])))
     end)
@@ -175,12 +175,14 @@ end
 
 # y at time tq (or at each time of a vector tq) from per-step interpolants:
 # step j starts at T0[j] and has length H[j]; poly(j, theta) evaluates it.
-function dense_at(tq, n, s, T0, H, steps, poly)
+# The solution ends at tend, or, when that is nothing, at the end of the
+# last step (RK45 gives tend: a terminal event ends it inside its last step).
+function dense_at(tq, n, s, T0, H, steps, tend, poly)
   if typeof(tq) == "vector" or typeof(tq) == "matrix" or typeof(tq) == "range"
     tv = real_vector(tq)
     Y = zeros(n, length(tv))
     for k in 1:length(tv)
-      Y[:, k] = dense_at(tv[k], n, s, T0, H, steps, poly)
+      Y[:, k] = dense_at(tv[k], n, s, T0, H, steps, tend, poly)
     end
     return Y
   end
@@ -190,7 +192,9 @@ function dense_at(tq, n, s, T0, H, steps, poly)
   if steps == 0
     fail("DomainError", "sol.at: the solution has no steps")
   end
-  tend = T0[steps] + H[steps]
+  if tend == nothing
+    tend = T0[steps] + H[steps]
+  end
   if s * (tq - T0[1]) < 0 or s * (tq - tend) > 0
     error("DomainError", "sol.at: t = " + string(tq) + " is outside the solution's range [" +
       string(T0[1]) + ", " + string(tend) + "]")
@@ -224,7 +228,7 @@ function bdf(f, t0, t1, y0, o)
   out = {t: ot, y: oy, count: length(ot)}
   steps = length(T0)
   at = function(tq)
-    return dense_at(tq, n, s, T0, H, steps, function(j, th)
+    return dense_at(tq, n, s, T0, H, steps, nothing, function(j, th)
       # Cubic Hermite on step j.
       h = H[j]
       h00 = (1 + 2 * th) * (1 - th) ^ 2

@@ -3924,11 +3924,12 @@ Function & Result \\
 \code{simulate(model, t_end)} & \code{ode.solve}'s solution from
   \code{t_start} (0) to \code{t_end} at \code{points} (101) times, with the
   species' names; keywords \code{t_start}, \code{points}, \code{method}
-  (\code{"rk45"} or \code{"bdf"}), \code{rtol}, \code{atol} \\
+  (\code{"rk45"} or \code{"bdf"}), \code{rtol}, \code{atol}; a model with
+  events is solved from one event to the next \\
 \code{simulator(model)} & A simulation to advance in steps: a record with
   \code{t}, \code{y}, \code{p}, \code{species}, \code{parameters} and
   \code{solver}; keywords \code{t_start}, \code{method}, \code{rtol},
-  \code{atol} \\
+  \code{atol}; with events, \code{fired} lists those of the last step \\
 \code{step(sim, h)} & \code{sim} advanced by \code{h} in time \\
 \code{set(sim, name, value)} & \code{sim} with a species, parameter or
   boundary species changed, from the next step on \\
@@ -3981,8 +3982,12 @@ Record & Fields \\
   assigned),
   \code{parameters} (names to values), \code{boundary} (boundary species'
   names to values), \code{compartments} (names to sizes),
-  \code{species_in} (species' names to their compartments' names) and
-  \code{rules} (assignment rules: names to expressions, as text) \\
+  \code{species_in} (species' names to their compartments' names),
+  \code{rules} (assignment rules: names to expressions, as text) and
+  \code{events} (a list of \code{Event}s, in order) \\
+\code{Event} & \code{name}, \code{trigger} (the condition, as text) and
+  \code{assignments} (names to the expressions of their new values, as
+  text) \\
 \code{Reaction} & \code{name}, \code{reactants} and \code{products}
   (species' names to stoichiometric coefficients) and \code{rate} (the rate
   law, as text) \\
@@ -4029,10 +4034,10 @@ Record & Fields \\
   module ships in the standard library.
 \end{itemize}
 
-The module reads only part of Antimony. It does not read rate rules,
-events, function definitions or initial assignments of expressions. Each
-could be added in the same way as boundary species, compartments and
-assignment rules were: a boundary species keeps its name in the rate laws,
+The module reads only part of Antimony. It does not read rate rules, event
+delays and options, function definitions or initial assignments of
+expressions. Each could be added in the same way as boundary species,
+compartments, assignment rules and events were: a boundary species keeps its name in the rate laws,
 gets no row in $N$, and takes its value from the parameter vector; a rule
 becomes one more line of the generated function, before the rates. The
 Language Reference's section ``The antimony module'' lists exactly what is

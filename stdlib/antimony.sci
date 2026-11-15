@@ -15,6 +15,9 @@
 ##   compartment cell, outside; cell = 1; outside = 100
 ##   species S1 in cell, $X0 in outside
 ##   MgATP := MG*ATP/(Kd + MG)    # recomputed whenever the rates are
+## and so are events, whose assignments are done when their trigger becomes
+## true:
+##   E1: at (S1 > 5): k1 = 2, S1 = 0
 ## A rate law gives an amount per unit time, so a species' concentration
 ## changes by its share of N v divided by its compartment's size.
 ## simulate solves a whole time span; simulator, step and set advance a
@@ -45,8 +48,9 @@ end
 ## assigned, its boundary species ($X: name to value, or nothing), which stay
 ## fixed, its compartments (name to size, nothing for 1), the compartment of
 ## each species declared in one (species_in: species name to compartment
-## name), and its assignment rules (rules: name to the expression, as
-## written, that gives its value).
+## name), its assignment rules (rules: name to the expression, as written,
+## that gives its value) and its events (a list of Event records, in the
+## order written).
 export record Model
   reactions: list
   species: dict
@@ -55,6 +59,17 @@ export record Model
   compartments: dict
   species_in: dict
   rules: dict
+  events: list
+end
+
+## An event: its name, its trigger (a condition, as written) and its
+## assignments (the name of a species, boundary species or parameter to the
+## expression, as written, that gives its new value). The assignments are
+## done when the trigger becomes true, with the values from just before.
+export record Event
+  name: string
+  trigger: string
+  assignments: dict
 end
 
 
@@ -165,6 +180,107 @@ function declared(item, statement)
 end
 
 
+# Whether s is a name: a letter or "_", then letters, digits and "_".
+function is_name(s)
+  if s == "" or not is_letter(s[1])
+    return false
+  end
+  for k in 2:length(s)
+    if not (is_letter(s[k]) or is_digit(s[k]))
+      return false
+    end
+  end
+  return true
+end
+
+
+# Whether s starts with the word "at", as an event does.
+function starts_at(s)
+  return startswith(s, "at ") or startswith(s, "at(")
+end
+
+
+# The statement as an event, "E1: at (S1 > 5): k1 = 2" or with no name: its
+# name (nothing when it has none) and what follows "at"; or nothing, nothing
+# when the statement is not an event.
+function event_text(statement)
+  s = statement
+  name = nothing
+  k = find(s, ":")
+  if k > 0
+    head = trim(s[1:k - 1])
+    rest = trim(s[k + 1:end])
+    if is_name(head) and starts_at(rest)
+      name = head
+      s = rest
+    end
+  end
+  if starts_at(s) and find(s, ":") > 0
+    return name, trim(s[3:end])
+  end
+  return nothing, nothing
+end
+
+
+# s cut at every sep (one character) that is outside brackets.
+function split_top(s, sep)
+  parts = {}
+  depth = 0
+  start = 1
+  for k in 1:length(s)
+    c = s[k]
+    if c == "("
+      depth = depth + 1
+    elseif c == ")"
+      depth = depth - 1
+    elseif c == sep and depth == 0
+      parts = append(parts, s[start:k - 1])
+      start = k + 1
+    end
+  end
+  return append(parts, s[start:end])
+end
+
+
+# The event called name, from what follows "at" in its statement: the trigger,
+# a colon, and assignments separated by commas.
+function parse_event(name, body, statement)
+  parts = split_top(body, ":")
+  if length(parts) != 2
+    error("Invalid event: " + statement)
+  end
+  trigger = trim(parts[1])
+  for word in names_in(trigger)
+    if word == "after"
+      error("Event delays (at ... after ...) are not read: " + statement)
+    end
+  end
+  if length(split_top(trigger, ",")) > 1
+    error("Event options (t0, priority, persistent, fromTrigger) are not read: " + statement)
+  end
+  if trigger == ""
+    error("Invalid event: " + statement)
+  end
+  assignments = dict()
+  for item in split_top(parts[2], ",")
+    k = find(item, "=")
+    if k == 0
+      error("Invalid event assignment '" + trim(item) + "' in: " + statement)
+    end
+    target = trim(item[1:k - 1])
+    if startswith(target, "$")
+      target = trim(target[2:end])
+    end
+    expr = trim(item[k + 1:end])
+    if not is_name(target) or expr == "" or startswith(expr, "=")
+      error("Invalid event assignment '" + trim(item) + "' in: " + statement)
+    end
+    assignments[target] = expr
+  end
+  return Event(name, trigger, assignments)
+end
+
+
 ## The model in the text source.
 export function load(source)
   statements = statements_of(source)
@@ -175,6 +291,7 @@ export function load(source)
   compartments = dict()  # name to size (nothing: 1)
   species_in = dict()    # species to compartment
   rules = dict()         # name to expression
+  events = {}            # Event records, in order
   values = dict()        # every assignment; sorted out at the end
   unnamed = 0            # reactions given no name so far
 
@@ -183,8 +300,15 @@ export function load(source)
     statement = statements[i]
     arrow = arrow_of(statement)
     first = split(statement)[1]
+    [event_name, event_body] = event_text(statement)
 
-    if arrow != nothing
+    if event_body != nothing
+      # An event; unnamed ones are called _E0, _E1, ... as in Antimony.
+      if event_name == nothing
+        event_name = "_E" + string(length(events))
+      end
+      events = append(events, parse_event(event_name, event_body, statement))
+    elseif arrow != nothing
       # An optional name before a colon, "J1: A -> B"; unnamed reactions
       # are called _J0, _J1, ... in order, as in Antimony.
       k = find(statement, ":")
@@ -276,6 +400,9 @@ export function load(source)
         name = trim(name[2:end])
         boundary[name] = nothing
       end
+      if not is_name(name)
+        error("Invalid assignment: " + statement)
+      end
       values[name] = read_number(trim(parts[2]))
     end
 
@@ -326,7 +453,25 @@ export function load(source)
     end
   end
 
-  return Model(reactions, floating, parameters, fixed, compartments, species_in, rules)
+  # An event may change species, boundary species and parameters.
+  for e in events
+    for target in keys(e.assignments)
+      if haskey(rules, target)
+        error("ArgumentError", "event " + e.name + " assigns " + target +
+          ", which has an assignment rule")
+      elseif haskey(compartments, target)
+        error("ArgumentError", "event " + e.name + " changes the size of compartment " +
+          target + ", which is not read")
+      elseif not (haskey(floating, target) or haskey(fixed, target) or
+                  haskey(parameters, target))
+        error("ArgumentError", "event " + e.name + " assigns " + target +
+          ", which is not a species or a parameter with a value")
+      end
+    end
+  end
+
+  return Model(reactions, floating, parameters, fixed, compartments, species_in, rules,
+               events)
 end
 
 
@@ -623,12 +768,10 @@ function ordered_rules(model)
 end
 
 
-# The first lines of the functions rhs_text and rates_text write: the header,
-# the species, parameters, boundary species and compartments as local names
-# set from _y and _p, the assignment rules (each after those it uses), and
-# the rates _v1, _v2, ... of the reactions in order.
-function rate_lines(model, header)
-  check_rates(model)
+# The first lines of every function made from the model: the header, the
+# species, parameters, boundary species and compartments as local names set
+# from _y and _p, and the assignment rules (each after those it uses).
+function value_lines(model, header)
   names = keys(model.species)
   pnames = parameter_names(model)
   lines = {header}
@@ -641,6 +784,15 @@ function rate_lines(model, header)
   for n in ordered_rules(model)
     lines = append(lines, "  " + n + " = " + translate(model.rules[n]))
   end
+  return lines
+end
+
+
+# The first lines of the functions rhs_text and rates_text write: those of
+# value_lines, and the rates _v1, _v2, ... of the reactions in order.
+function rate_lines(model, header)
+  check_rates(model)
+  lines = value_lines(model, header)
   for j in 1:length(model.reactions)
     lines = append(lines, "  _v" + string(j) + " = " + translate(model.reactions[j].rate))
   end
@@ -748,13 +900,348 @@ end
 ## Simulates the model from t_start to t_end and returns ode.solve's result,
 ## reported at `points` evenly spaced times, with the species names as its
 ## names: sol.y[i, :] is species i over time. method is "rk45" or "bdf"
-## (for stiff models).
+## (for stiff models). A model with events is solved from one event to the
+## next, the assignments done in between; each event time is reported twice,
+## with the values just before the assignments and just after them, and
+## t_events and y_events give, for each event, the times it fired and the
+## species' values then (before its assignments).
 export function simulate(model, t_end; t_start = 0.0, points = 101, method = "rk45",
                          rtol = 1e-6, atol = 1e-9)
+  grid = linspace(t_start, t_end, points)
+  if length(model.events) > 0
+    return simulate_events(model, grid, method, rtol, atol)
+  end
   return ode.solve(rhs(model), initial(model), [t_start, t_end], method = method,
                    rtol = rtol, atol = atol, params = parameter_values(model),
-                   t_eval = linspace(t_start, t_end, points),
-                   names = species_names(model))
+                   t_eval = grid, names = species_names(model))
+end
+
+
+# An event's trigger or assignment as Axon code: as translate, with
+# Antimony's time as _t, && and || as and and or, and ! as not.
+function translate_event(expr)
+  ps = pieces(translate(expr))
+  for k in 1:length(ps)
+    if ps[k] == "time"
+      ps[k] = "_t"
+    end
+  end
+  s = join(ps, "")
+  s = replace(s, "&&", " and ")
+  s = replace(s, "||", " or ")
+  s = replace(s, "!=", "~~")
+  s = replace(s, "!", " not ")
+  return replace(s, "~~", "!=")
+end
+
+
+# The one comparison at the top level of a trigger (outside brackets): its
+# position and operator ("<", "<=", ">" or ">="); 0 and "" when the trigger is
+# not a single such comparison.
+function comparison(t)
+  depth = 0
+  found = 0
+  pos = 0
+  op = ""
+  k = 1
+  while k <= length(t)
+    c = t[k]
+    if c == "("
+      depth = depth + 1
+    elseif c == ")"
+      depth = depth - 1
+    elseif depth == 0 and (c == "<" or c == ">")
+      found = found + 1
+      pos = k
+      op = c
+      if k < length(t) and t[k + 1] == "="
+        op = c + "="
+        k = k + 1
+      end
+    elseif depth == 0 and (c == "=" or c == "!")
+      return 0, ""
+    end
+    k = k + 1
+  end
+  for word in names_in(t)
+    if word == "and" or word == "or" or word == "not"
+      return 0, ""
+    end
+  end
+  if found != 1
+    return 0, ""
+  end
+  return pos, op
+end
+
+
+# Whether the brackets that open t close at its end.
+function wrapped(t)
+  if not (startswith(t, "(") and endswith(t, ")"))
+    return false
+  end
+  depth = 0
+  for k in 1:length(t) - 1
+    if t[k] == "("
+      depth = depth + 1
+    elseif t[k] == ")"
+      depth = depth - 1
+    end
+    if depth == 0
+      return false
+    end
+  end
+  return true
+end
+
+
+# The text of the function the solver watches for an event: zero where its
+# trigger turns true, rising through zero then. A trigger that is one
+# comparison gives the difference of its sides, so the time is found
+# precisely; any other gives 1 when the trigger is true and -1 when not.
+function event_rise_text(model, e)
+  lines = value_lines(model, "function(_t, _y, _p)")
+  t = trim(translate_event(e.trigger))
+  while wrapped(t)
+    t = trim(t[2:length(t) - 1])
+  end
+  [pos, op] = comparison(t)
+  if pos > 0
+    lhs = trim(t[1:pos - 1])
+    rhs_side = trim(t[pos + length(op):end])
+    if startswith(op, ">")
+      lines = append(lines, "  return 1.0 * ((" + lhs + ") - (" + rhs_side + "))")
+    else
+      lines = append(lines, "  return 1.0 * ((" + rhs_side + ") - (" + lhs + "))")
+    end
+  else
+    lines = append(lines, "  if " + t)
+    lines = append(lines, "    return 1.0")
+    lines = append(lines, "  end")
+    lines = append(lines, "  return -1.0")
+  end
+  return join(append(lines, "end"), "\n")
+end
+
+
+# The model's events as functions of (t, y, p): rise, the functions the solver
+# watches (event_rise_text), which also say whether a trigger has been
+# reached; assign, for each event the vector of the new values its
+# assignments give; and where and index, for each event, where each new value
+# goes ("y" or "p") and its position there.
+function event_functions(model)
+  check_rates(model)
+  species = species_names(model)
+  pnames = parameter_names(model)
+  rise = {}
+  assign = {}
+  where = {}
+  index = {}
+  for e in model.events
+    try
+      rise = append(rise, parse_function(event_rise_text(model, e)))
+      lines = value_lines(model, "function(_t, _y, _p)")
+      values = {}
+      w = {}
+      ix = {}
+      for target in keys(e.assignments)
+        values = append(values, "1.0 * (" + translate_event(e.assignments[target]) + ")")
+        k = position(species, target)
+        if k > 0
+          w = append(w, "y")
+        else
+          k = position(pnames, target)
+          w = append(w, "p")
+        end
+        ix = append(ix, k)
+      end
+      lines = append(lines, "  return [" + join(values, "; ") + "]")
+      assign = append(assign, parse_function(join(append(lines, "end"), "\n")))
+      where = append(where, w)
+      index = append(index, ix)
+    catch err
+      error(err.kind, "event " + e.name + ": " + err.message)
+    end
+  end
+  return {rise: rise, assign: assign, where: where, index: index}
+end
+
+
+# The times of grid after t.
+function times_after(grid, t)
+  k = 1
+  while k <= length(grid) and grid[k] <= t
+    k = k + 1
+  end
+  return grid[k:end]
+end
+
+
+# Whether each event's trigger has been reached at (t, y, p): its rise
+# function is at or above zero. This is the solver's own test (a rise from
+# below to zero is a crossing), so the two agree at the threshold itself,
+# where a trigger such as time > 1 is reached at t = 1.
+function trigger_states(ev, t, y, p)
+  result = {}
+  for g in ev.rise
+    result = append(result, g(t, y, p) >= 0)
+  end
+  return result
+end
+
+
+# The events that fire at time te, where the species are ye: the one the
+# solver stopped for (reported), and any other whose trigger has just become
+# true (it was false in state); then, while the assignments make more triggers
+# true, those too. Every event's new values come from the values before any
+# of that round's assignments. Returns the new y and p, the triggers' states
+# afterwards, and the events that fired, in order.
+function fire_events(ev, te, ye, p, state, reported)
+  y = ye
+  before = trigger_states(ev, te, y, p)
+  due = {}
+  for k in 1:length(before)
+    if k == reported or (before[k] and not state[k])
+      due = append(due, k)
+    end
+  end
+  fired = {}
+  rounds = 0
+  while length(due) > 0
+    rounds = rounds + 1
+    if rounds > 100
+      error("SolverError", "antimony.simulate: events keep firing each other at t = " +
+        string(te))
+    end
+    news = {}
+    for k in due
+      news = append(news, real_vector(ev.assign[k](te, y, p)))
+    end
+    for i in 1:length(due)
+      k = due[i]
+      for j in 1:length(ev.where[k])
+        if ev.where[k][j] == "y"
+          y[ev.index[k][j]] = news[i][j]
+        else
+          p[ev.index[k][j]] = news[i][j]
+        end
+      end
+      fired = append(fired, k)
+      before[k] = true
+    end
+    now = trigger_states(ev, te, y, p)
+    due = {}
+    for k in 1:length(now)
+      if now[k] and not before[k]
+        due = append(due, k)
+      end
+    end
+  end
+  return y, p, trigger_states(ev, te, y, p), fired
+end
+
+
+# simulate for a model with events: ode.solve from one event to the next,
+# stopping where an event function rises through zero, with the events'
+# assignments done in between.
+function simulate_events(model, grid, method, rtol, atol)
+  f = rhs(model)
+  ev = event_functions(model)
+  names = species_names(model)
+  n = length(names)
+  m = length(model.events)
+  y = initial(model)
+  p = parameter_values(model)
+  t = grid[1]
+  t_end = grid[end]
+  # An event fires when its trigger becomes true, so one that is true at the
+  # start does not fire then.
+  state = trigger_states(ev, t, y, p)
+  ts = {}
+  ys = {}
+  fired_t = {}
+  fired_y = {}
+  for k in 1:m
+    fired_t = append(fired_t, {})
+    fired_y = append(fired_y, {})
+  end
+  segments = {}
+  nfev = 0
+  nsteps = 0
+  count = 0
+  t_eval = grid
+  while true
+    sol = ode.solve(f, y, [t, t_end], method = method, rtol = rtol, atol = atol,
+                    params = p, t_eval = t_eval, events = ev.rise, terminal = true,
+                    direction = 1)
+    nfev = nfev + sol.nfev
+    nsteps = nsteps + sol.nsteps
+    for j in 1:length(sol.t)
+      ts = append(ts, sol.t[j])
+      ys = append(ys, sol.y[:, j])
+    end
+    if sol.status != "event"
+      segments = append(segments, {t0: t, at: sol.at})
+      break
+    end
+    reported = 0
+    for k in 1:m
+      if length(sol.t_events[k]) > 0
+        reported = k
+      end
+    end
+    te = sol.t_events[reported][end]
+    ye = sol.y_events[reported][:, end]
+    segments = append(segments, {t0: t, at: sol.at})
+    [y, p, state, fired] = fire_events(ev, te, ye, p, state, reported)
+    for k in fired
+      fired_t[k] = append(fired_t[k], te)
+      fired_y[k] = append(fired_y[k], ye)
+    end
+    ts = append(append(ts, te), te)
+    ys = append(append(ys, ye), y)
+    count = count + length(fired)
+    if count > 100000
+      error("SolverError", "antimony.simulate: more than 100000 events, the last at t = " +
+        string(te))
+    end
+    t = te
+    if t >= t_end
+      break
+    end
+    t_eval = times_after(grid, t)
+  end
+
+  times = zeros(length(ts))
+  Y = zeros(n, length(ts))
+  for j in 1:length(ts)
+    times[j] = ts[j]
+    Y[:, j] = ys[j]
+  end
+  t_events = {}
+  y_events = {}
+  for k in 1:m
+    tk = zeros(length(fired_t[k]))
+    yk = zeros(n, length(fired_t[k]))
+    for j in 1:length(fired_t[k])
+      tk[j] = fired_t[k][j]
+      yk[:, j] = fired_y[k][j]
+    end
+    t_events = append(t_events, tk)
+    y_events = append(y_events, yk)
+  end
+  # The solution at any time: the last segment that starts at or before it.
+  at = function(tq)
+    s = segments[1]
+    for seg in segments
+      if seg.t0 <= tq
+        s = seg
+      end
+    end
+    return s.at(tq)
+  end
+  return {t: times, y: Y, names: names, status: "success", t_events: t_events,
+          y_events: y_events, nfev: nfev, nsteps: nsteps, method: method, at: at}
 end
 
 
@@ -764,21 +1251,96 @@ end
 ## starting afresh only after a change. A record with fields t (the time,
 ## from t_start), y (the floating species' values), p (the parameters' and
 ## boundary species' values), species and parameters (their names, in the
-## order of y and p) and solver (an ode.integrator).
+## order of y and p), solver (an ode.integrator), fired (the events that
+## fired during the last step, as {name, t} records, in order) and events
+## (what step needs to do the model's events, or nothing for a model
+## without them).
 export function simulator(model; t_start = 0.0, method = "rk45", rtol = 1e-6, atol = 1e-9)
-  return {t: t_start + 0.0, y: initial(model), p: parameter_values(model),
+  f = rhs(model)
+  y = initial(model)
+  p = parameter_values(model)
+  events = nothing
+  if length(model.events) > 0
+    ev = event_functions(model)
+    names = {}
+    for e in model.events
+      names = append(names, e.name)
+    end
+    # An event fires when its trigger becomes true, so one that is true at
+    # the start does not fire then.
+    events = {f: f, ev: ev, names: names, state: trigger_states(ev, t_start + 0.0, y, p),
+              method: method, rtol: rtol, atol: atol}
+  end
+  return {t: t_start + 0.0, y: y, p: p,
           species: species_names(model), parameters: parameter_names(model),
-          solver: ode.integrator(rhs(model), method = method, rtol = rtol, atol = atol)}
+          solver: ode.integrator(f, method = method, rtol = rtol, atol = atol),
+          fired: {}, events: events}
 end
 
 
 ## sim advanced by h > 0 in time: the same record with t and y at the new
 ## time. The solver continues from the previous step unless a value was
-## changed, so many short steps cost about what one simulation does.
+## changed, so many short steps cost about what one simulation does. For a
+## model with events, each step is solved from event to event, as simulate
+## does, with the events that fired listed in sim.fired.
 export function step(sim, h)
   target = sim.t + h
+  if sim.events != nothing
+    return step_events(sim, target)
+  end
   sim.y = ode.advance(sim.solver, sim.t, sim.y, target, params = sim.p)
   sim.t = target
+  sim.fired = {}
+  return sim
+end
+
+
+# step for a model with events: ode.solve from sim.t to target, stopping at
+# each event, whose assignments are done before going on. A value changed
+# with set that has made a trigger true fires its event at the start.
+function step_events(sim, target)
+  e = sim.events
+  t = sim.t
+  y = sim.y
+  p = sim.p
+  fired = {}
+  [y, p, state, now] = fire_events(e.ev, t, y, p, e.state, 0)
+  for k in now
+    fired = append(fired, {name: e.names[k], t: t})
+  end
+  last = zeros(1) + target
+  while t < target
+    sol = ode.solve(e.f, y, [t, target], method = e.method, rtol = e.rtol, atol = e.atol,
+                    params = p, t_eval = last, events = e.ev.rise, terminal = true,
+                    direction = 1)
+    if sol.status != "event"
+      y = sol.y[:, end]
+      t = target
+      break
+    end
+    reported = 0
+    for k in 1:length(e.names)
+      if length(sol.t_events[k]) > 0
+        reported = k
+      end
+    end
+    te = sol.t_events[reported][end]
+    [y, p, state, now] = fire_events(e.ev, te, sol.y_events[reported][:, end], p, state,
+                                     reported)
+    for k in now
+      fired = append(fired, {name: e.names[k], t: te})
+    end
+    if length(fired) > 100000
+      error("SolverError", "antimony.step: more than 100000 events, the last at t = " +
+        string(te))
+    end
+    t = te
+  end
+  sim.t = target
+  sim.y = y
+  sim.p = p
+  sim.events.state = state
+  sim.fired = fired
   return sim
 end
 

@@ -211,6 +211,44 @@ species or parameter. Doubling the supply quadruples S2 here: the last step
 is close to its maximum rate, 6, and S2 must rise a long way to push 4
 through it.
 
+## Events
+
+A model can also change itself as it runs. An *event* does something when
+a condition becomes true: `E1: at (time > 10): k1 = 5` raises `k1` to 5 at
+time 10. After `at` comes the condition, called the *trigger*, in
+brackets; after the colon, one or more assignments separated by commas.
+
+```axon
+# event.sci: the supply raised at t = 10
+import antimony
+import plot
+model = antimony.load("""
+  J1: -> S1; k1
+  J2: S1 -> ; k2*S1
+  k1 = 1; k2 = 0.1; S1 = 0
+  E1: at (time > 10): k1 = 5
+""")
+sol = antimony.simulate(model, 30)
+plot.line(sol.t, sol.y[1, :])
+plot.title("Supply raised at t = 10")
+plot.xlabel("time")
+plot.ylabel("S1")
+plot.show()
+println("E1 fired at t =", sol.t_events[1][1])
+```
+
+```output
+E1 fired at t = 10.0
+```
+
+A trigger can test species too, as in `at (S1 > 2): S1 = 0`, which empties
+S1 every time it rises past 2, and conditions can be combined with `&&`
+(and) and `||` (or). An event fires when its trigger *becomes* true, and
+again only after it has been false in between. `sol.t_events` lists, for
+each event, the times at which it fired. In a simulation in steps, after
+each `antimony.step`, `sim.fired` lists the events that fired during the
+step.
+
 ## Models in files
 
 A longer model is better kept in a file of its own, such as
@@ -288,6 +326,8 @@ stays at zero when it should not, check that it was given a value.
   `antimony.fluxes(model, y)` the reaction rates there.
 - `antimony.simulator`, `step` and `set` advance a simulation in steps and
   change values between them.
+- `E1: at (trigger): name = value` is an event: the assignments are done
+  when the trigger becomes true, in `antimony.simulate`.
 - `antimony.control(model)` gives the control coefficients.
 
 ## Exercises
@@ -302,6 +342,8 @@ stays at zero when it should not, check that it was given a value.
    the ratio of B to A?
 4. In the pathway, double the last step's maximum rate, to `Vm2 = 12`. What
    are the new steady-state concentrations?
+5. In the first model, without B's removal, refill A to 10 whenever it
+   falls below 1, and plot A over 20 time units. How often is it refilled?
 
 ## Answers
 
@@ -389,6 +431,32 @@ println("S1 =", format(s.y[1], 3), " S2 =", format(s.y[2], 3))
 
 ```output
 S1 = 0.250  S2 = 0.400
+```
+
+**Exercise 5.** A falls from 10 to 1 in ln(10) / 0.5 = 4.6 time units, so it
+is refilled four times in 20:
+
+```axon
+# refill.sci: A topped up whenever it runs low
+import antimony
+import plot
+model = antimony.load("""
+  J1: A -> B; k1*A
+  k1 = 0.5
+  A = 10; B = 0
+  E1: at (A < 1): A = 10
+""")
+sol = antimony.simulate(model, 20)
+plot.line(sol.t, sol.y[1, :])
+plot.title("A, refilled")
+plot.xlabel("time")
+plot.ylabel("A")
+plot.show()
+println("Refilled", length(sol.t_events[1]), "times")
+```
+
+```output
+Refilled 4 times
 ```
 
 Next: [Lesson 11: Making programs fast](tutorial-11-speed.md)

@@ -77,7 +77,7 @@ Hello
    and stiff equations.
 10. [Reaction models](tutorial-10-reaction-models.md): models written as
     reactions in Antimony, simulation, steady states, changing parameters
-    during a simulation, and which step controls a pathway's flux.
+    during a simulation, events, and which step controls a pathway's flux.
 11. [Making programs fast](tutorial-11-speed.md): timing code, compiled
     and interpreted code, the JIT report, and the common reasons code
     stays slow.

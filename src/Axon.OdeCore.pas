@@ -8,7 +8,7 @@ unit Axon.OdeCore;
 
    odecore.rk45(f, t0, t1, y0, o) is Dormand-Prince 5(4) with Hairer's dense
    output (DOPRI5), as the Axon code before it, operation for operation, so
-   step counts and results are unchanged. It returns 14 values:
+   step counts and results are unchanged. It returns 15 values:
 
      t, Y                 the output points (a vector, and an n×k matrix)
      status               "success" or "event"
@@ -17,6 +17,9 @@ unit Axon.OdeCore;
      T0, H, R1 .. R5      per accepted step: its start, length and the five
                           dense-output coefficient columns (n×steps), from
                           which ode.sci evaluates sol.at
+     tend                 where the solution ends: t1, or the time of the
+                          terminal event, inside the last step, whose length
+                          H stays the whole step's, as its coefficients are
 
    odecore.bdf(f, t0, t1, y0, o) is the same loop around SUNDIALS CVODE
    (variable-order BDF, dense direct linear solver), one CVODE step at a
@@ -400,7 +403,7 @@ function TRk45.Run(const Args: TAxValues): TAxValues;
 var
   O, TEvalV, FirstStep, AtolV: TAxValue;
   T0, T1, T, H, H0, H1, D0, D1, D2, Hs_, TNew, Err, Facmax, Fac, Rtol, MaxStep,
-    TStop, Te, Ga: Double;
+    TStop, Te, Ga, TLast: Double;
   Y, K1, K2, K3, K4, K5, K6, K7, YNew, ErrV, Sk, Y1, F1, Tmp, YDiff, Bspl, Col, YStop, Ye: TVec;
   AtolK: TVec;   // the absolute tolerance of each component
   TEval: TVec;
@@ -675,7 +678,9 @@ begin
       AddStepOutput(TStop, YStop);
       if Status = 'event' then
       begin
-        Hs.Data[StepIdx] := TStop - T;
+        // The solution ends inside this step. Its length stays the whole
+        // step's: the dense-output coefficients are for that length.
+        TLast := TStop;
         Break;
       end;
 
@@ -700,9 +705,11 @@ begin
       ListT[K] := TeList[K].Value;
       ListY[K] := YeList[K].Value;
     end;
+    if Status <> 'event' then
+      TLast := T;
     Result := [OutT.Value, OutY.Value, StringValue(Status), ListValue(ListT), ListValue(ListY),
       IntValue(NFev), IntValue(NSteps), T0s.Value, Hs.Value, R1.Value, R2.Value, R3.Value,
-      R4.Value, R5.Value];
+      R4.Value, R5.Value, RealValue(TLast)];
   finally
     for K := 0 to Ng - 1 do
     begin
