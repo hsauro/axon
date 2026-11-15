@@ -12,7 +12,9 @@ them.
 ## Vectors
 
 A vector is written in square brackets, with its numbers separated by
-semicolons. Here are the heights of four people, in metres:
+semicolons, which stacks them in a column. (Commas instead make a row; the
+section "Rows and columns" below explains the difference.) Here are the
+heights of four people, in metres:
 
 ```repl
 > heights = [1.62; 1.75; 1.80; 1.68]
