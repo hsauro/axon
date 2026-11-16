@@ -24,7 +24,7 @@ true
 true true
 dict("c1" => 2, "c2" => 10) {"B"}
 reduced success true
-augmented success true
+full success true
 ArgumentError species A has an assignment rule but changes in a reaction; mark it $A (a boundary species)
 ArgumentError the assignment rules for x, y depend on each other in a cycle
 Invalid species declaration: species A in

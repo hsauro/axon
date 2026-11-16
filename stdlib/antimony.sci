@@ -1604,7 +1604,7 @@ end
 ## are the only reactions, keep the values they have in initial(model).
 ## method "reduced" (the default) solves for the independent species of
 ## conservation(model) only, with the dependent ones following from the
-## totals; method "augmented" solves for every species, with the residual
+## totals; method "full" solves for every species, with the residual
 ## N v(y) + W (W' y - W' y0), W = linalg.null(N') (the conservation laws as
 ## orthonormal columns; not the kernel matrix K), which is zero exactly when
 ## the rates balance and the totals keep their values. Returns a record with
@@ -1618,7 +1618,7 @@ export function steady_state(model; guess = nothing, method = "reduced", ftol = 
   if typeof(guess) == "nothing"
     guess = y0
   end
-  if method == "augmented"
+  if method == "full"
     W = linalg.null(scaled_stoichiometry(model)')   # orthonormal; W' N = 0
     totals = W' * y0
     residual = function(y, p) return f(0.0, y, p) + W * (W' * y - totals) end
@@ -1644,7 +1644,7 @@ export function steady_state(model; guess = nothing, method = "reduced", ftol = 
                      max_iters = max_iters)
     y = full(r.x)
   else
-    error("ArgumentError", "antimony.steady_state: method must be \"reduced\" or \"augmented\", got \"" +
+    error("ArgumentError", "antimony.steady_state: method must be \"reduced\" or \"full\", got \"" +
       string(method) + "\"")
   end
   return {y: y, species: species_names(model), status: r.status, fnorm: r.fnorm,

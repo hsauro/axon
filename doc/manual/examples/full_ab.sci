@@ -1,4 +1,4 @@
-## The augmented steady-state system for A <-> B, built by hand: the
+## The full steady-state system for A <-> B, built by hand: the
 ## stoichiometry matrix, the conservation basis W, F(y) solved by Newton's
 ## method, and the Jacobian's eigenvalues.
 
@@ -21,7 +21,7 @@ println(fmt.matrix(W, decimals = 4))
 println("W W':")
 println(fmt.matrix(W * W', decimals = 2))
 
-# The rates, and the augmented system: rates of change plus the part of
+# The rates, and the full system: rates of change plus the part of
 # y - y0 that no reaction could have made.
 function rates(y)
   return [k1 * y[1]; k2 * y[2]]
@@ -62,4 +62,4 @@ model = antimony.load("""
     J1: A -> B;   k1*A
     J2: B -> A;   k2*B
     k1 = 2; k2 = 1; A = 3; B = 0""")
-println("antimony:", row(antimony.steady_state(model, method = "augmented").y))
+println("antimony:", row(antimony.steady_state(model, method = "full").y))

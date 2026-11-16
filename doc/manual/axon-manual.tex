@@ -4,6 +4,7 @@
 \documentclass[11pt,a4paper,openany]{report}
 
 \input{axon-style}
+\usepackage{tikz}
 
 \title{\Huge\bfseries Axon\\[6pt]\LARGE User Manual\\[18pt]
   \large The language and the IDE}
@@ -3385,7 +3386,7 @@ record Model
 end
 \end{axon}
 
-\section{From reactions to equations}
+\section{From reactions to equations}\label{sec:equations}
 
 Write $\mathbf{y}$ for the vector of species concentrations and $\mathbf{v}(\mathbf{y})$ for the vector of
 reaction rates. (This chapter writes vectors in bold lower case, such as
@@ -3585,7 +3586,10 @@ terminal event, change the value, and continue from the event's state.
 
 \section{Steady states}\label{sec:steady}
 
-A \emph{steady state} is where the species stop changing: $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$.
+A \emph{steady state} is where the species stop changing: their rates of
+change $d\mathbf{y}/dt = \mathbf{N} \mathbf{v}(\mathbf{y})$
+(Section~\ref{sec:equations}) are all zero, $\mathbf{N}
+\mathbf{v}(\mathbf{y}) = 0$.
 Rather than simulating until nothing moves, \code{antimony.steady_state}
 solves those equations directly with \code{nonlin.solve}
 (Section~\ref{sec:nonlin}), starting from the initial values:
@@ -3615,6 +3619,20 @@ in the next section, shows whether a steady state is stable.
 
 \section{Conservation laws and the link matrix}\label{sec:conservation}
 
+Recall from Section~\ref{sec:equations} what $\mathbf{N} \mathbf{v}$ is.
+$\mathbf{N}$ is the stoichiometry matrix, one row per species and one
+column per reaction, and $\mathbf{v}(\mathbf{y})$ is the vector of reaction
+rates at the concentrations $\mathbf{y}$. Their product is the vector of the
+species' rates of change,
+\[
+  \frac{d\mathbf{y}}{dt} = \mathbf{N} \mathbf{v}(\mathbf{y}) ,
+\]
+each entry the sum, over the reactions, of what the reaction makes of that
+species minus what it uses. At a steady state nothing changes, so
+$\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$: these $m$ equations, one per
+species, are the \emph{balance equations}, and solving them is how
+Section~\ref{sec:steady} found steady states.
+
 In many models some totals never change. In \code{A -> B} and
 \code{B -> A}, every reaction turns one molecule into another, so
 \code{A + B} stays at its initial value; an enzyme that is free (\code{E})
@@ -3623,14 +3641,22 @@ total is a \emph{conservation law}, or conserved moiety. It shows in the
 stoichiometry matrix: a row vector $\boldsymbol{\gamma}$, one weight per species, with
 $\boldsymbol{\gamma} \mathbf{N} = 0$ gives
 $\frac{d}{dt}(\boldsymbol{\gamma} \mathbf{y}) = \boldsymbol{\gamma} \mathbf{N} \mathbf{v} = 0$, so $\boldsymbol{\gamma} \mathbf{y}$ keeps its initial
-value whatever the rates. For \code{E + ES}, $\boldsymbol{\gamma}$ has 1 for \code{E}
-and \code{ES} and 0 for the other species. Each conservation law is one
-such vector $\boldsymbol{\gamma}$; below, the matrix $\mathbf{\Gamma}$ holds all of
-them, one per row. A model with $c$ independent conservation laws has
+value whatever the rates. In the enzyme model used later in this section,
+whose species are the substrate \code{S}, the free enzyme \code{E}, the
+complex \code{ES} and the product \code{P}, in that order, the law
+\code{E + ES} is $\boldsymbol{\gamma} = [\,0 \;\; 1 \;\; 1 \;\; 0\,]$: a
+weight of 1 for each form of the enzyme and 0 for the substrate and the
+product, which are not part of the total. Each conservation law is one
+such vector $\boldsymbol{\gamma}$. The matrix $\mathbf{\Gamma}$, introduced
+below, holds all the conservation laws of a network, one per row. A model with $c$ independent conservation laws has
 an $\mathbf{N}$ of rank $r = m - c$ for $m$ species, and that causes two problems.
-The equations $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ do not fix the steady state, since every total
-has its own; and their Jacobian $\partial (\mathbf{N} \mathbf{v}) / \partial \mathbf{y}$ is singular,
-with $c$ zero eigenvalues, so Newton's method fails and the eigenvalues
+First, the equations $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ do not fix the
+steady state: they say nothing about the values of the totals, and each
+choice of those values has a steady state of its own, so the equations have
+a whole family of solutions, one for each set of totals. (In
+\code{A -> B} and \code{B -> A}, with rates $k_1 A$ and $k_2 B$, any $A$
+and $B$ with $k_1 A = k_2 B$ balance the rates, whatever $A + B$ is.) Second, the Jacobian matrix $\partial (\mathbf{N} \mathbf{v}) / \partial \mathbf{y}$ is singular,
+with $c$ zero eigenvalues, so Newton's methodfor finding steady states fails and the eigenvalues
 cannot be used to judge stability.
 
 \paragraph{Conservation analysis.} \code{antimony.conservation(model)}
@@ -3802,7 +3828,7 @@ independent: {"S", "ES", "P"}  dependent: {"E"}
 L0: 0.0  -1.0  0.0    gamma: 0.0  1.0  1.0  0.0
 total: 1.0
 reduced: 0.8333  0.7500  0.2500  2.0000   iterations: 2
-augmented: 0.8333  0.7500  0.2500  2.0000   iterations: 2
+full: 0.8333  0.7500  0.2500  2.0000   iterations: 2
 J:  -7.3504  -0.8163  -0.5000  0.0000
 Jr: -7.3504  -0.8163  -0.5000
 independent fluxes: {"J2", "J4"}  dependent: {"J0", "J1", "J3"}
@@ -3812,7 +3838,9 @@ J3: 0.0  1.0
 \end{axonout}
 
 $\mathbf{L}_0 = [\,0 \;\; {-1} \;\; 0\,]$ says that $E = -ES + T$: the conservation
-law is \code{E + ES}, with total 1.
+law is \code{E + ES}, with total 1. The line \code{full} comes from the
+alternative method of Section~\ref{sec:full}, which finds the same steady
+state without choosing species.
 
 \paragraph{The kernel matrix.} The same analysis of the columns of $\mathbf{N}$
 describes the fluxes, the rates $\mathbf{v}$ at a steady state (many papers
@@ -3843,19 +3871,54 @@ Both \code{conservation} and \code{kernel} also take a stoichiometry matrix
 itself, \code{antimony.kernel(N)} for a matrix \code{N}, and name its rows
 \code{S1}, \code{S2}, \ldots{} and its columns \code{J1}, \code{J2}, \ldots
 
-\paragraph{Without choosing species: the augmented system.}
-\code{method = "augmented"} solves for every species instead, without
-dividing them into independent and dependent ones.
+\paragraph{Jacobians and stability.} \code{antimony.jacobian(model, y)}
+returns $\partial (\mathbf{N} \mathbf{v}) / \partial \mathbf{y}$ at the species' values \code{y}, by
+central differences of the right-hand side, with one row and column per
+species; with conservation laws it is singular, as the zero among its
+eigenvalues shows. \code{antimony.reduced_jacobian(model, y)} returns $\mathbf{J}_R$,
+with rows and columns in the order of the independent species. A steady
+state is stable when every eigenvalue of $\mathbf{J}_R$ has a negative real part, as
+here. The eigenvalues of $\mathbf{J}_R$ are those of the full Jacobian without its
+$c$ zeros.
 
-First, a word on the name, which can mislead. \emph{Augmented} does not
-mean here that rows or columns are added to anything. The system keeps
-exactly $m$ equations in $m$ unknowns, the same size as $\mathbf{N} \mathbf{v}(\mathbf{y}) =
-0$, and its Jacobian stays $m \times m$. What is added is a \emph{term}: each
-of the $m$ equations gets an extra part that carries the conservation laws,
-and the equations are augmented in that sense only. The obvious way of
-including the laws, writing them as $c$ more equations under the $m$
-balances, would give $m + c$ equations in $m$ unknowns, which Newton's
-method cannot use as it stands.
+\paragraph{Further reading.}
+
+\begin{enumerate}[label={[\arabic*]}, leftmargin=2.2em]
+\item\label{ref:reder} C.~Reder. Metabolic control theory: a structural
+  approach. \emph{Journal of Theoretical Biology} 135(2):175--201, 1988.
+\item\label{ref:sauro} H.~M.~Sauro and B.~Ingalls. Conservation analysis in
+  biochemical networks: computational issues for software writers.
+  \emph{Biophysical Chemistry} 109(1):1--15, 2004.
+\item\label{ref:vallab} R.~R.~Vallabhajosyula, V.~Chickarmane and
+  H.~M.~Sauro. Conservation analysis of large biochemical networks.
+  \emph{Bioinformatics} 22(3):346--353, 2006.
+\end{enumerate}
+
+\section{An alternative to employing the link matrix}\label{sec:full}
+
+Section~\ref{sec:conservation} found a steady state with conservation laws
+by the standard method: choose independent species, solve for them alone,
+and recover the others through the link matrix; this is the \emph{reduced}
+method, \code{method = "reduced"}.
+\code{antimony.steady_state(model, method = "full")} takes a different
+route, the \emph{full} method: it solves for every species at once, without
+dividing them into independent and dependent ones, and needs neither the
+choice of species nor the link matrix. As far as we know, this formulation has not
+been used in systems biology; the end of this section describes the
+closest one we have found. This section explains where it comes from,
+works through the smallest example by hand, relates it to the
+conservation matrix $\mathbf{\Gamma}$, and shows why its Jacobian is not
+singular.
+
+The names say what is solved for: the reduced method solves for the $r$
+independent species, the full method for all $m$. The full system has
+exactly $m$ equations in $m$ unknowns, the same size as $\mathbf{N}
+\mathbf{v}(\mathbf{y}) = 0$, and its Jacobian is $m \times m$: no rows or
+columns are added. What is added is a \emph{term}: each of the $m$ balance
+equations gets an extra part that carries the conservation laws. The
+obvious way of including the laws, writing them as $c$ more equations under
+the $m$ balances, would give $m + c$ equations in $m$ unknowns, which
+Newton's method cannot use as it stands.
 
 The idea is easiest to see in words first.
 
@@ -3863,7 +3926,7 @@ A steady state in a model with conservation laws has to satisfy two
 conditions. The rates must balance, so that no species changes; and the
 conserved totals must keep the values they had at the start, since the
 reactions cannot change them. The first condition alone is not enough: as
-the start of this section showed, $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ has a whole family
+Section~\ref{sec:conservation} showed, $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ has a whole family
 of solutions, one for each choice of totals. The second condition picks one
 member of that family. The difficulty is that together the two conditions
 make too many equations: $m$ for the balances plus $c$ for the totals, for
@@ -3871,17 +3934,24 @@ only $m$ unknowns. The reduced method gets out of this by throwing away $c$
 of the balances, those of the dependent species, and that is what forces it
 to choose which species are dependent.
 
-The augmented system instead adds the two conditions together, so that
-there are $m$ equations again, and does it in a way that loses nothing. The
-term that expresses the totals, $\mathbf{W}(\mathbf{W}^T \mathbf{y} - \mathbf{W}^T
-\mathbf{y}_0)$, is built in three steps.
+The full system instead adds the two conditions together, so that
+there are $m$ equations again, and does it in a way that loses nothing. It
+is the system
+\[
+  \mathbf{F}(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y})
+    + \mathbf{W} (\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0) = 0 ,
+\]
+$m$ equations in the $m$ unknowns $\mathbf{y}$. Its first term is the rate of
+change of the species, as in $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$; its
+second term expresses the conservation laws, through a matrix $\mathbf{W}$
+that step~1 below defines. That second term is built in three steps.
 
 \begin{enumerate}
-\item \emph{The totals.} As at the start of this section, a conservation
+\item \emph{The totals.} As in Section~\ref{sec:conservation}, a conservation
   law is a row vector $\boldsymbol{\gamma}$ of weights, one per species, with $\boldsymbol{\gamma}
   \mathbf{N} = 0$, so that the weighted sum $\boldsymbol{\gamma} \mathbf{y}$ never changes; for
-  the enzyme, weights 1 for \code{E} and \code{ES} give the total $E +
-  ES$. The rows of $\mathbf{\Gamma}$ are $c$ such vectors. The columns of
+  the enzyme model, $\boldsymbol{\gamma} = [\,0 \;\; 1 \;\; 1 \;\; 0\,]$
+  gives the total $E + ES$. The rows of $\mathbf{\Gamma}$ are $c$ such vectors. The columns of
   $\mathbf{W}$ hold the same $c$ laws in another form: written as
   columns, combined so that they are at right angles to each other and of
   length 1. ($\mathbf{W}$ is not the kernel matrix
@@ -3915,7 +3985,78 @@ term that expresses the totals, $\mathbf{W}(\mathbf{W}^T \mathbf{y} - \mathbf{W}
 $\mathbf{F}(\mathbf{y})$ is therefore the rate of change plus the part of the change from
 $\mathbf{y}_0$ that the reactions could not have made. It is zero exactly when $\mathbf{y}$
 is a steady state \emph{and} can be reached from $\mathbf{y}_0$: one square system
-that says both things, with no species singled out.
+that says both things, with no species singled out. Figure~\ref{fig:full-plane} draws all of this for the smallest
+example, A $\rightleftharpoons$ B, which the next paragraphs work through by hand.
+
+\begin{figure}[htbp]
+\centering
+% Both panels: the plane of concentrations (A, B) for A <-> B with k1 = 2,
+% k2 = 1 and T = 3. Class line A + B = 3, balance line B = 2A, steady state
+% (1, 2). Panel (b): trial point y = (1, 3), N v = (1, -1), conservation
+% term 0.5 (1, 1), F = (1.5, -0.5).
+\begin{tikzpicture}[scale=1.2, >=stealth, font=\small]
+  \draw[->] (0,0) -- (4.3,0) node[right] {$A$};
+  \draw[->] (0,0) -- (0,4.3) node[above] {$B$};
+  \foreach \t in {1,2,3,4} {
+    \draw (\t,0) -- (\t,-0.06) node[below] {\footnotesize\t};
+    \draw (0,\t) -- (-0.06,\t) node[left] {\footnotesize\t};
+  }
+  \draw[very thick, blue!65!black] (0,3) -- (3,0);
+  \node[blue!65!black, right] at (2.7,0.62) {$A + B = T$};
+  \draw[very thick, red!70!black] (0,0) -- (2.1,4.2);
+  \node[red!70!black, rotate=63.4, above] at (1.6,3.2) {$k_1 A = k_2 B$};
+  \fill (1,2) circle (2.2pt);
+  \node[right, font=\footnotesize] at (1.1,2.0) {steady state};
+  \draw[thick] (3,0) circle (2.2pt);
+  \node[above right] at (3,0) {$\mathbf{y}_0$};
+  % The two directions at a point of the class line.
+  \draw[<->, thick, blue!65!black] (1.45,1.55) -- (2.55,0.45);
+  \node[blue!65!black, align=center, font=\footnotesize]
+    at (1.5,0.5) {reactions\\(columns of $\mathbf{N}$)};
+  \draw[->, thick] (2,1) -- (2.7,1.7) node[right] {$\mathbf{W}$};
+  \draw (1.894,1.106) -- (2,1.212) -- (2.106,1.106);
+  \node[font=\bfseries] at (2.15,-0.75) {(a)};
+\end{tikzpicture}
+\hfill
+\begin{tikzpicture}[scale=1.2, >=stealth, font=\small]
+  \draw[->] (0,0) -- (4.3,0) node[right] {$A$};
+  \draw[->] (0,0) -- (0,4.3) node[above] {$B$};
+  \foreach \t in {1,2,3,4} {
+    \draw (\t,0) -- (\t,-0.06) node[below] {\footnotesize\t};
+    \draw (0,\t) -- (-0.06,\t) node[left] {\footnotesize\t};
+  }
+  \draw[thick, blue!30] (0,3) -- (3,0);
+  \draw[thick, red!30] (0,0) -- (2.1,4.2);
+  \fill[black!40] (1,2) circle (2pt);
+  % The two terms of F at y = (1, 3), and their sum.
+  \draw[dashed, black!50] (2,2) -- (2.5,2.5) -- (1.5,3.5);
+  \draw[->, very thick, blue!65!black] (1,3) -- (2,2);
+  \node[blue!65!black, below] at (2,2) {$\mathbf{N}\mathbf{v}(\mathbf{y})$};
+  \draw[->, very thick] (1,3) -- (1.5,3.5);
+  \node[above right, inner sep=1pt] at (1.5,3.5) {$\mathbf{W}(\mathbf{W}^T\mathbf{y} - \mathbf{W}^T\mathbf{y}_0)$};
+  \draw[->, very thick, green!45!black] (1,3) -- (2.5,2.5);
+  \node[green!45!black, right] at (2.5,2.5) {$\mathbf{F}(\mathbf{y})$};
+  \draw (1.106,2.894) -- (1.212,3.0) -- (1.106,3.106);
+  \fill (1,3) circle (2.2pt);
+  \node[left] at (0.95,3) {$\mathbf{y}$};
+  \node[font=\bfseries] at (2.15,-0.75) {(b)};
+\end{tikzpicture}
+\caption{The full method for A $\rightleftharpoons$ B, with $k_1 = 2$,
+  $k_2 = 1$ and $\mathbf{y}_0 = (3, 0)$, so $T = 3$, drawn in the plane of the
+  concentrations $(A, B)$. (a)~The reactions move the concentrations only
+  along the line $A + B = T$, in the direction of the columns of
+  $\mathbf{N}$; the conserved direction $\mathbf{W}$ is at right angles to
+  it, and nothing moves along it. The rates balance on the line $k_1 A = k_2
+  B$, and the steady state is where the two lines cross, at $(1, 2)$.
+  (b)~At a trial point $\mathbf{y} = (1, 3)$, which is off the line $A + B =
+  T$, the two terms of $\mathbf{F}(\mathbf{y})$: $\mathbf{N}\mathbf{v}(\mathbf{y})
+  = (1, -1)$ along the reaction direction, and the conservation term $0.5\,(1,
+  1)$, the error in the total, along $\mathbf{W}$. Their sum is
+  $\mathbf{F}(\mathbf{y}) = (1.5, -0.5)$. Because the two terms are at right
+  angles, $\mathbf{F}$ is zero only where both are: on both lines at once,
+  at the steady state.}
+\label{fig:full-plane}
+\end{figure}
 
 The added term also mends the Jacobian. Whatever $\mathbf{y}$ is, the rates of
 change $\mathbf{N} \mathbf{v}(\mathbf{y})$ never point along a conserved direction, so their
@@ -3928,7 +4069,14 @@ precise). Newton's method then has a non-singular matrix to work with, and
 its steps correct the balances and the totals at the same time.
 
 \paragraph{A worked example: A $\rightleftharpoons$ B.} The smallest model
-with a conservation law shows every piece. Reaction \code{J1}, \code{A -> B},
+with a conservation law is small enough to work through every part of the
+full method by hand, in this order: the stoichiometry matrix $\mathbf{N}$
+and why its balances alone do not fix the steady state; the conservation
+law and the matrix $\mathbf{W}$ found from it; the conservation term
+$\mathbf{W}(\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0)$; the
+system $\mathbf{F}(\mathbf{y}) = 0$ and its solution; and the Jacobian with
+and without the added term. A program then checks every number.
+Reaction \code{J1}, \code{A -> B},
 runs at rate $v_1 = k_1 A$, and \code{J2}, \code{B -> A}, at rate $v_2 = k_2
 B$. With a row per species and a column per reaction, the stoichiometry
 matrix and the rates of change are
@@ -3938,8 +4086,12 @@ matrix and the rates of change are
   \mathbf{N} \mathbf{v} = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix} .
 \]
 Setting $\mathbf{N} \mathbf{v} = 0$ gives the same equation twice, $v_1 = v_2$, and
-any $A$ and $B$ with $k_1 A = k_2 B$ satisfy it: the balances alone leave a
-whole line of steady states. $\mathbf{N}$ has rank $r = 1$ for $m = 2$
+any $A$ and $B$ with $k_1 A = k_2 B$ satisfy it. In the plane of the
+concentrations, the points that satisfy the balance equations therefore
+form a straight line through the origin, $B = (k_1 / k_2) A$, the red line
+in Figure~\ref{fig:full-plane}(a). Every point on it is a steady state for
+some total $A + B$, so the balance equations alone cannot say which one the
+model reaches: that needs the total. $\mathbf{N}$ has rank $r = 1$ for $m = 2$
 species, so there is $c = 1$ conservation law.
 
 \emph{Finding $\mathbf{W}$.} A conservation law is a row vector $\boldsymbol{\gamma} =
@@ -3947,8 +4099,17 @@ species, so there is $c = 1$ conservation law.
 $-\gamma_A + \gamma_B = 0$, so $\gamma_A = \gamma_B$: equal weights, the law
 $A + B$. The usual conservation
 analysis writes it as $\mathbf{\Gamma} = [\,1 \;\; 1\,]$ (with \code{A}
-independent, $\mathbf{L}_0 = [\,{-1}\,]$, since $B = -A + T$). Scaled to
-length 1,
+independent, $\mathbf{L}_0 = [\,{-1}\,]$, since $B = -A + T$).
+
+$\mathbf{W}$ holds the same law in the form that step~1 of the three steps
+above described: written as a column instead of a row, and scaled to length
+1. The vector $[\,1 \;\; 1\,]$ has length $\sqrt{1^2 + 1^2} = \sqrt{2}$, so
+dividing it by $\sqrt{2}$ and turning it into a column gives $\mathbf{W}$.
+With a single law that is all there is to do; with several, step~1 also
+asks for the columns to be at right angles to each other, which takes
+combining the laws as well. \code{linalg.null(N')} does all of this at
+once, and for this $\mathbf{N}$ it returns the $\mathbf{W}$ below, as the
+program at the end of this example prints. Then
 \[
   \mathbf{W} = \frac{1}{\sqrt{2}} \begin{bmatrix} 1 \\ 1 \end{bmatrix} ,
   \qquad
@@ -4006,7 +4167,7 @@ $A = 1$ and $B = 2$, solves $\mathbf{F}(\mathbf{y}) = 0$ with \code{nonlin.solve
 again with $\mathbf{\Gamma}$ in place of $\mathbf{W}$ (see below), and
 compares the result with \code{antimony.steady_state}.
 
-\ex{augmented_ab.sci}
+\ex{full_ab.sci}
 \begin{axonout}
 N:
 -1   1
@@ -4084,13 +4245,13 @@ $\mathbf{K}$, kernel matrix & $\mathbf{N}\mathbf{K} = 0$ & the flux modes,
 
 \noindent The columns of $\mathbf{L}$ and those of $\mathbf{W}$ (or
 $\mathbf{\Gamma}^T$) are at right angles and together span every species
-direction, which is what the augmented system relies on; $\mathbf{K}$
+direction, which is what the full system relies on; $\mathbf{K}$
 belongs to the reactions, not the species, and plays no part in it.
 
-In symbols, let the columns of $\mathbf{W}$ be an orthonormal basis of the null space of $\mathbf{N}^T$
+In symbols, the columns of $\mathbf{W}$ are an orthonormal basis of the null space of $\mathbf{N}^T$
 (\code{linalg.null(N')}, from the singular value decomposition), so that
 $\mathbf{W}^T \mathbf{N} = 0$ and $\mathbf{W}^T \mathbf{W} = \mathbf{I}$; the totals are then $\mathbf{W}^T \mathbf{y}$, and the module
-solves the square system
+solves the square system given at the start of this section,
 \[
   \mathbf{F}(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{W} \,(\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0) = 0 .
 \]
@@ -4116,49 +4277,76 @@ for some matrix $\mathbf{X}$. The eigenvalues of $\mathbf{J}_F$ are therefore th
 and $c$ eigenvalues equal to 1: the term $\mathbf{W} \mathbf{W}^T$ turns the $c$ zero
 eigenvalues of $\mathbf{N} \partial \mathbf{v} / \partial \mathbf{y}$ into ones and leaves the others,
 which describe the dynamics within a conservation class, unchanged. (For
-the enzyme model above, $\mathbf{J}_F$'s eigenvalues are $-7.3504$, $-0.8163$,
+the enzyme model of Section~\ref{sec:conservation}, $\mathbf{J}_F$'s eigenvalues are $-7.3504$, $-0.8163$,
 $-0.5$ and $1$.)
+
+\paragraph{A bordered form.} Readers who know constrained optimisation may
+recognise the full system in another form. The way to add the $c$ conservation
+laws to the $m$ balances and keep a square system is to add $c$ unknowns as
+well, one per law, collected in a vector $\boldsymbol{\mu}$:
+\[
+  \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{W} \boldsymbol{\mu} = 0 ,
+  \qquad
+  \mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0 - \boldsymbol{\mu} = 0 .
+\]
+These are $m + c$ equations in the $m + c$ unknowns $\mathbf{y}$ and
+$\boldsymbol{\mu}$, and their Jacobian is the matrix of the balances bordered
+by $c$ extra rows and $c$ extra columns,
+\[
+  \begin{bmatrix}
+    \mathbf{N}\, \partial \mathbf{v} / \partial \mathbf{y} & \mathbf{W} \\
+    \mathbf{W}^T & -\mathbf{I}
+  \end{bmatrix} ,
+\]
+a \emph{bordered} system, as continuation methods call it; in
+optimisation it is the saddle-point form of a constrained problem, and the
+unknowns $\boldsymbol{\mu}$ are Lagrange multipliers, one per
+constraint. At a solution they are all zero: multiplying the first equation
+by $\mathbf{W}^T$, and using $\mathbf{W}^T \mathbf{N} = 0$ and
+$\mathbf{W}^T \mathbf{W} = \mathbf{I}$, gives $\boldsymbol{\mu} = 0$, and
+then the two equations say $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ and
+$\mathbf{W}^T \mathbf{y} = \mathbf{W}^T \mathbf{y}_0$. The second equation
+gives $\boldsymbol{\mu}$ directly, $\boldsymbol{\mu} = \mathbf{W}^T
+\mathbf{y} - \mathbf{W}^T \mathbf{y}_0$, and putting that into the first
+gives
+\[
+  \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{W} (\mathbf{W}^T \mathbf{y} -
+  \mathbf{W}^T \mathbf{y}_0) = 0 ,
+\]
+which is $\mathbf{F}(\mathbf{y}) = 0$. So the full system is the bordered
+system with its extra unknowns eliminated.
+Eliminating $\boldsymbol{\mu}$ also turns the bordered Jacobian into
+$\mathbf{J}_F$: Newton's method takes the same steps in $\mathbf{y}$ on
+either form. The compact form is simpler to write and to solve with a
+general solver such as \code{nonlin.solve}; the bordered form keeps the
+sparsity of $\mathbf{N}$, since $\mathbf{W}\mathbf{W}^T$ is a full
+$m \times m$ matrix, which would matter for very large networks.
 
 The two methods find the same steady state. The reduced system has $c$
 fewer unknowns, so each Newton iteration costs $c$ fewer evaluations of the
 rates, and it gives $\mathbf{J}_R$, the matrix whose eigenvalues decide stability.
-The augmented system needs no choice of independent species and no link
+The full system needs no choice of independent species and no link
 matrix: only a basis of the null space, and a residual that is one line of
 code. References \ref{ref:reder}--\ref{ref:vallab} reduce the system. The
 closest form we know of in the literature is the ``system augmented by
-conservation laws'' of algebraic reaction network theory: for each
+conservation laws'' of algebraic reaction network theory, which, despite
+its name, replaces equations rather than adding any: for each
 conservation law $\boldsymbol{\gamma}$ (a row of $\mathbf{\Gamma}$), the steady-state equation of the
 first species with a non-zero entry in $\boldsymbol{\gamma}$ is replaced by
 $\boldsymbol{\gamma} \mathbf{y} - \boldsymbol{\gamma} \mathbf{y}_0 = 0$, which gives a square system whose positive roots are the
-steady states in the conservation class \ref{ref:augmented}. It is used
+steady states in the conservation class \ref{ref:obatake}. It is used
 there to count steady states rather than to compute them, and it needs a
 choice of which equations to replace; the orthogonal term above avoids that
 choice.
 
-\paragraph{Jacobians and stability.} \code{antimony.jacobian(model, y)}
-returns $\partial (\mathbf{N} \mathbf{v}) / \partial \mathbf{y}$ at the species' values \code{y}, by
-central differences of the right-hand side, with one row and column per
-species; with conservation laws it is singular, as the zero among its
-eigenvalues shows. \code{antimony.reduced_jacobian(model, y)} returns $\mathbf{J}_R$,
-with rows and columns in the order of the independent species. A steady
-state is stable when every eigenvalue of $\mathbf{J}_R$ has a negative real part, as
-here. The eigenvalues of $\mathbf{J}_R$ are those of the full Jacobian without its
-$c$ zeros.
+\paragraph{Further reading.} References [1]--[3] are listed in
+Section~\ref{sec:conservation}.
 
-\paragraph{Further reading.}
-
-\begin{enumerate}[label={[\arabic*]}, leftmargin=2.2em]
-\item\label{ref:reder} C.~Reder. Metabolic control theory: a structural
-  approach. \emph{Journal of Theoretical Biology} 135(2):175--201, 1988.
-\item\label{ref:sauro} H.~M.~Sauro and B.~Ingalls. Conservation analysis in
-  biochemical networks: computational issues for software writers.
-  \emph{Biophysical Chemistry} 109(1):1--15, 2004.
-\item\label{ref:vallab} R.~R.~Vallabhajosyula, V.~Chickarmane and
-  H.~M.~Sauro. Conservation analysis of large biochemical networks.
-  \emph{Bioinformatics} 22(3):346--353, 2006.
-\item\label{ref:augmented} N.~Obatake and E.~Walker. Newton--Okounkov
+\begin{enumerate}[label={[\arabic*]}, leftmargin=2.2em, start=4]
+\item\label{ref:obatake} N.~Obatake and E.~Walker. Newton--Okounkov
   bodies of chemical reaction systems. arXiv:2203.03840, 2022.
-  Section~2.1, equation~(3), defines the augmented system; the paper itself
+  Section~2.1, equation~(3), defines the system augmented by conservation
+  laws; the paper itself
   bounds the number of steady states.
 \end{enumerate}
 
@@ -4182,7 +4370,7 @@ the network (reference \ref{ref:reder}). With the unscaled elasticities
 $\boldsymbol{\varepsilon} = \partial \mathbf{v} / \partial \mathbf{s}$ (with $\mathbf{s}$ the species'
 concentrations, the $\mathbf{y}$ of the earlier sections, as control
 analysis writes them) and the reduced stoichiometry $\mathbf{N}_R$
-and link matrix $\mathbf{L}$ of the last section,
+and link matrix $\mathbf{L}$ of Section~\ref{sec:conservation},
 \[
 \mathbf{C}^{S} = -\mathbf{L}\,(\mathbf{N}_R\,\boldsymbol{\varepsilon}\,\mathbf{L})^{-1} \mathbf{N}_R,
 \qquad \mathbf{C}^{J} = \mathbf{I} + \boldsymbol{\varepsilon}\,\mathbf{C}^{S},
@@ -4314,7 +4502,7 @@ Function & Result \\
   conserved totals of \code{initial(model)}: a record with \code{y},
   \code{species}, \code{status}, \code{fnorm}, \code{nfev} and
   \code{niters}; keywords \code{guess}, \code{method} (\code{"reduced"} or
-  \code{"augmented"}), \code{ftol}, \code{max_iters} \\
+  \code{"full"}), \code{ftol}, \code{max_iters} \\
 \code{conservation(model)} & The conservation laws and the link matrix: a
   \code{Conservation} record; also takes a stoichiometry matrix \\
 \code{kernel(model)} & The independent fluxes and the kernel matrix: a

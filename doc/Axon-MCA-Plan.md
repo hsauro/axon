@@ -35,7 +35,7 @@ tables.
 | Stoichiometry matrix N (species × reactions) | `stoichiometry` |
 | dy/dt = N v(y) as one compiled function f(t, y, p) | `rhs_text`, `rhs` |
 | Conservation analysis: independent and dependent species, Nr, L0, link matrix L, gamma | `conservation` (Reder; Sauro and Ingalls 2004) |
-| Steady state, reduced or augmented | `steady_state` |
+| Steady state, reduced or full | `steady_state` |
 | Jacobian and reduced Jacobian by central differences | `jacobian`, `reduced_jacobian` |
 
 What is missing:

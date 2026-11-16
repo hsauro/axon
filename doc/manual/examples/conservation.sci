@@ -29,7 +29,7 @@ println("L0:", row(c.L0, 1), "   gamma:", row(c.gamma, 1))
 println("total:", c.gamma * antimony.initial(model))
 
 # Both methods: three unknowns (S, ES, P), or all four.
-for method in {"reduced", "augmented"}
+for method in {"reduced", "full"}
   s = antimony.steady_state(model, method = method)
   println(method + ":", row(s.y, 4), "  iterations:", s.niters)
 end

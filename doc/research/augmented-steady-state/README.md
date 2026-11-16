@@ -323,7 +323,7 @@ Each task lists what to do and what counts as done.
 | `concentration_sensitivities(model, y, way)` | C^s by Theorem 4 or by the link matrix |
 | `flux_control(model, y, Cs)` | C^J = I + E C^s |
 
-**Axon.** `stdlib/antimony.sci` in this repository: `conservation(model)` (QR with column pivoting through `linalg.qrp`), `steady_state(model; method = "reduced" | "augmented")` (KINSOL through `nonlin.solve`), `jacobian`, `reduced_jacobian`. The Axon manual's section "Conservation laws and the link matrix" presents both methods and the proof of Theorem 2.
+**Axon.** `stdlib/antimony.sci` in this repository: `conservation(model)` (QR with column pivoting through `linalg.qrp`), `steady_state(model; method = "reduced" | "augmented")` (KINSOL through `nonlin.solve`), `jacobian`, `reduced_jacobian`. The Axon manual's sections "Conservation laws and the link matrix" (the reduced method) and "An alternative to employing the link matrix" (the augmented one, with the proof of Theorem 2) present both methods.
 
 ---
 

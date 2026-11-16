@@ -47,7 +47,7 @@ t = antimony.load("""
   A = 6; kf = 1; kr = 0.5
 """)
 println(t.compartments, antimony.conservation(t).dependent)
-for method in {"reduced", "augmented"}
+for method in {"reduced", "full"}
   s = antimony.steady_state(t, method = method)
   println(method, s.status, approx(s.y, [2.0; 0.8], tol = 1e-9))
 end

@@ -22,9 +22,9 @@ println(c.gamma)
 println(approx(N, c.link * c.Nr), approx(c.gamma * N, zeros(1, 5)), approx(c.Nr, N[c.ind, :]))
 
 # Both methods give the same steady state; the reduced one solves for three
-# species, the augmented one for four.
+# species, the full one for four.
 sr = antimony.steady_state(m)
-sa = antimony.steady_state(m, method = "augmented")
+sa = antimony.steady_state(m, method = "full")
 exact = [5 * 0.25 / (2 * 0.75); 0.75; 0.25; 2.0]
 println(approx(sr.y, exact, tol = 1e-9), approx(sa.y, exact, tol = 1e-9), sr.status)
 println(approx(c.gamma * sr.y, c.gamma * antimony.initial(m)))
