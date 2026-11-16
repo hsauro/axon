@@ -3834,8 +3834,180 @@ itself, \code{antimony.kernel(N)} for a matrix \code{N}, and name its rows
 \code{S1}, \code{S2}, \ldots{} and its columns \code{J1}, \code{J2}, \ldots
 
 \paragraph{Without choosing species: the augmented system.}
-\code{method = "augmented"} solves for every species instead. Let the
-columns of $\mathbf{K}$ be an orthonormal basis of the null space of $\mathbf{N}^T$
+\code{method = "augmented"} solves for every species instead, without
+dividing them into independent and dependent ones.
+
+First, a word on the name, which can mislead. \emph{Augmented} does not
+mean here that rows or columns are added to anything. The system keeps
+exactly $m$ equations in $m$ unknowns, the same size as $\mathbf{N} v(y) =
+0$, and its Jacobian stays $m \times m$. What is added is a \emph{term}: each
+of the $m$ equations gets an extra part that carries the conservation laws,
+and the equations are augmented in that sense only. The obvious way of
+including the laws, writing them as $c$ more equations under the $m$
+balances, would give $m + c$ equations in $m$ unknowns, which Newton's
+method cannot use as it stands.
+
+The idea is easiest to see in words first.
+
+A steady state in a model with conservation laws has to satisfy two
+conditions. The rates must balance, so that no species changes; and the
+conserved totals must keep the values they had at the start, since the
+reactions cannot change them. The first condition alone is not enough: as
+the start of this section showed, $\mathbf{N} v(y) = 0$ has a whole family
+of solutions, one for each choice of totals. The second condition picks one
+member of that family. The difficulty is that together the two conditions
+make too many equations: $m$ for the balances plus $c$ for the totals, for
+only $m$ unknowns. The reduced method gets out of this by throwing away $c$
+of the balances, those of the dependent species, and that is what forces it
+to choose which species are dependent.
+
+The augmented system instead adds the two conditions together, so that
+there are $m$ equations again, and does it in a way that loses nothing. The
+term that expresses the totals, $\mathbf{K}(\mathbf{K}^T y - \mathbf{K}^T
+y_0)$, is built in three steps.
+
+\begin{enumerate}
+\item \emph{The totals.} A conservation law is a set of weights $w$, one per
+  species, with $w^T \mathbf{N} = 0$. The weighted sum $w^T y$ then never
+  changes, since $\frac{d}{dt}(w^T y) = w^T \mathbf{N} v = 0$; for the
+  enzyme, weights 1 for \code{E} and \code{ES} and 0 for the others give
+  the total $E + ES$. The columns of $\mathbf{K}$ are $c$ such weight
+  vectors, chosen at right angles to each other and of length 1. So
+  $\mathbf{K}^T y$ lists the conserved totals of $y$, and
+  $\mathbf{K}^T y - \mathbf{K}^T y_0 = \mathbf{K}^T (y - y_0)$ says how far
+  they are from the totals at the start: $c$ numbers, which must all be
+  zero.
+\item \emph{Making the sizes match.} Those $c$ numbers cannot be added to
+  the $m$ entries of $\mathbf{N} v(y)$ as they stand. Multiplying them by
+  $\mathbf{K}$ turns them into a vector with one entry per species,
+  $\mathbf{K} \mathbf{K}^T (y - y_0)$. This vector has a meaning of its own.
+  The reactions can move the concentrations only along the columns of
+  $\mathbf{N}$, which describe what each reaction does; the columns of
+  $\mathbf{K}$ are the directions at right angles to all of those, along
+  which nothing can ever move. $\mathbf{K} \mathbf{K}^T (y - y_0)$ is the
+  part of the change from $y_0$ to $y$ that lies along these directions:
+  the part of the change that no sequence of reactions could have made.
+\item \emph{Why $\mathbf{K}$.} The rates of change $\mathbf{N} v(y)$ always
+  point along the columns of $\mathbf{N}$, and the added term along those
+  of $\mathbf{K}$, at right angles to them. Two vectors at right angles add
+  up to zero only when each of them is zero, just as a step north added to
+  a step east brings you back to where you started only if both steps have
+  length zero. So the two terms cannot cancel each other, and since the
+  columns of $\mathbf{K}$ are independent, $\mathbf{K}$ times the $c$
+  numbers is zero only when all $c$ numbers are: nothing about the totals
+  is lost.
+\end{enumerate}
+
+$F(y)$ is therefore the rate of change plus the part of the change from
+$y_0$ that the reactions could not have made. It is zero exactly when $y$
+is a steady state \emph{and} can be reached from $y_0$: one square system
+that says both things, with no species singled out.
+
+The added term also mends the Jacobian. Whatever $y$ is, the rates of
+change $\mathbf{N} v(y)$ never point along a conserved direction, so their
+Jacobian cannot produce any change in those directions, and that is why it
+is singular. The added term supplies exactly what is missing: moving $y$
+along a conserved direction changes it at rate 1 in that direction, and
+moving $y$ along a reaction direction does not change it at all, so the
+rest of the Jacobian is left as it was (the eigenvalues below make this
+precise). Newton's method then has a non-singular matrix to work with, and
+its steps correct the balances and the totals at the same time.
+
+\paragraph{A worked example: A $\rightleftharpoons$ B.} The smallest model
+with a conservation law shows every piece. Reaction \code{J1}, \code{A -> B},
+runs at rate $v_1 = k_1 A$, and \code{J2}, \code{B -> A}, at rate $v_2 = k_2
+B$. With a row per species and a column per reaction, the stoichiometry
+matrix and the rates of change are
+\[
+  \mathbf{N} = \begin{bmatrix} -1 & 1 \\ 1 & -1 \end{bmatrix} ,
+  \qquad
+  \mathbf{N} v = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix} .
+\]
+Setting $\mathbf{N} v = 0$ gives the same equation twice, $v_1 = v_2$, and
+any $A$ and $B$ with $k_1 A = k_2 B$ satisfy it: the balances alone leave a
+whole line of steady states. $\mathbf{N}$ has rank $r = 1$ for $m = 2$
+species, so there is $c = 1$ conservation law.
+
+\emph{Finding $\mathbf{K}$.} A conservation law is a weight vector $w =
+(w_A, w_B)$ with $w^T \mathbf{N} = 0$, which here reads $-w_A + w_B = 0$, so
+$w_A = w_B$: equal weights, the law $A + B$. Scaled to length 1,
+\[
+  \mathbf{K} = \frac{1}{\sqrt{2}} \begin{bmatrix} 1 \\ 1 \end{bmatrix} ,
+  \qquad
+  \mathbf{K}^T y = \frac{A + B}{\sqrt{2}} ,
+  \qquad
+  \mathbf{K} \mathbf{K}^T = \begin{bmatrix} \tfrac12 & \tfrac12 \\[2pt]
+    \tfrac12 & \tfrac12 \end{bmatrix} .
+\]
+$\mathbf{K}^T y$ is the total $A + B$, scaled by $1/\sqrt{2}$ because
+$\mathbf{K}$ has length 1. ($-\mathbf{K}$ would do equally well:
+$\mathbf{K}\mathbf{K}^T$, and so $F$, is the same for every choice.) With
+$T = A_0 + B_0$ the total at the start, the conservation term is
+\[
+  \mathbf{K} (\mathbf{K}^T y - \mathbf{K}^T y_0)
+  = \frac{1}{\sqrt{2}} \begin{bmatrix} 1 \\ 1 \end{bmatrix}
+    \frac{A + B - T}{\sqrt{2}}
+  = \frac{A + B - T}{2} \begin{bmatrix} 1 \\ 1 \end{bmatrix} ,
+\]
+the error in the total, shared equally between the two species. It is
+$\mathbf{K}\mathbf{K}^T(y - y_0)$, the part of the change $y - y_0$ along
+the direction $(1, 1)$, which no reaction can move: each reaction moves
+along $(-1, 1)$ or $(1, -1)$, at right angles to it.
+
+\emph{The system.} Adding the two terms, species by species,
+\[
+  F(y) = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix}
+       + \frac{A + B - T}{2} \begin{bmatrix} 1 \\ 1 \end{bmatrix}
+       = \begin{bmatrix} -v_1 + v_2 + \tfrac12 (A + B - T) \\[2pt]
+                          v_1 - v_2 + \tfrac12 (A + B - T) \end{bmatrix} :
+\]
+still two equations in the two unknowns $A$ and $B$. Adding the two
+equations of $F(y) = 0$ gives $A + B = T$, and subtracting them gives $v_1 =
+v_2$: the repeated balance has been replaced by the conservation law, and
+together they give the steady state $A = k_2 T / (k_1 + k_2)$, $B = k_1 T /
+(k_1 + k_2)$.
+
+\emph{The Jacobians.} With $\partial v / \partial y = \mathrm{diag}(k_1,
+k_2)$,
+\[
+  \mathbf{N} \frac{\partial v}{\partial y}
+    = \begin{bmatrix} -k_1 & k_2 \\ k_1 & -k_2 \end{bmatrix} ,
+  \qquad
+  \mathbf{J}_F = \mathbf{N} \frac{\partial v}{\partial y} + \mathbf{K}\mathbf{K}^T
+    = \begin{bmatrix} \tfrac12 - k_1 & \tfrac12 + k_2 \\[2pt]
+                      \tfrac12 + k_1 & \tfrac12 - k_2 \end{bmatrix} .
+\]
+The first has determinant $k_1 k_2 - k_2 k_1 = 0$ and eigenvalues $0$ and
+$-(k_1 + k_2)$: it is singular, and Newton's method cannot use it. The
+second has determinant $-(k_1 + k_2)$ and eigenvalues $1$ and $-(k_1 +
+k_2)$: the zero has become 1, and the other eigenvalue, which is the
+reduced Jacobian $\mathbf{J}_R = -(k_1 + k_2)$ of the reduced method
+(substitute $B = T - A$ into $dA/dt = -k_1 A + k_2 B$), is unchanged. The
+next program builds all of this with $k_1 = 2$, $k_2 = 1$ and $T = 3$, so
+$A = 1$ and $B = 2$, solves $F(y) = 0$ with \code{nonlin.solve}, and
+compares the result with \code{antimony.steady_state}.
+
+\ex{augmented_ab.sci}
+\begin{axonout}
+N:
+-1   1
+ 1  -1
+K:
+0.7071
+0.7071
+K K':
+0.50  0.50
+0.50  0.50
+steady state: 1.0000  2.0000  A + B = 3.0
+eigenvalues of N dv/dy: -3.0000  0.0000
+eigenvalues of J_F: -3.0000  1.0000
+antimony: 1.0000  2.0000
+\end{axonout}
+
+The whole method is the one line of \code{F}: no species are chosen as
+dependent, and no link matrix is formed.
+
+In symbols, let the columns of $\mathbf{K}$ be an orthonormal basis of the null space of $\mathbf{N}^T$
 (\code{linalg.null(N')}, from the singular value decomposition), so that
 $\mathbf{K}^T \mathbf{N} = 0$ and $\mathbf{K}^T \mathbf{K} = \mathbf{I}$; the totals are then $\mathbf{K}^T y$, and the module
 solves the square system
