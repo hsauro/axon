@@ -1605,7 +1605,8 @@ end
 ## method "reduced" (the default) solves for the independent species of
 ## conservation(model) only, with the dependent ones following from the
 ## totals; method "augmented" solves for every species, with the residual
-## N v(y) + K (K' y - K' y0), K = linalg.null(N'), which is zero exactly when
+## N v(y) + W (W' y - W' y0), W = linalg.null(N') (the conservation laws as
+## orthonormal columns; not the kernel matrix K), which is zero exactly when
 ## the rates balance and the totals keep their values. Returns a record with
 ## y, species (their names, in the order of y), status, fnorm, nfev and
 ## niters, as nonlin.solve reports them.
@@ -1618,9 +1619,9 @@ export function steady_state(model; guess = nothing, method = "reduced", ftol = 
     guess = y0
   end
   if method == "augmented"
-    K = linalg.null(scaled_stoichiometry(model)')   # orthonormal; K' N = 0
-    totals = K' * y0
-    residual = function(y, p) return f(0.0, y, p) + K * (K' * y - totals) end
+    W = linalg.null(scaled_stoichiometry(model)')   # orthonormal; W' N = 0
+    totals = W' * y0
+    residual = function(y, p) return f(0.0, y, p) + W * (W' * y - totals) end
     r = nonlin.solve(residual, guess, params = p, ftol = ftol, max_iters = max_iters)
     y = r.x
   elseif method == "reduced"

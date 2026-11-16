@@ -3202,8 +3202,8 @@ and species, \code{compartment cell, outside} and
 rules, \code{MgATP := MG*ATP/(Kd + MG)}, which are recomputed whenever the
 rates are. In such models a rate law gives an amount per unit time (often the
 compartment's size times a rate), so a species' concentration changes by its
-share of $N v$ divided by the size of its compartment; the module does that,
-and divides the rows of $N$ the same way for the conservation analysis below,
+share of $\mathbf{N} \mathbf{v}$ divided by the size of its compartment; the module does that,
+and divides the rows of $\mathbf{N}$ the same way for the conservation analysis below,
 so that conserved totals hold for concentrations. Rate laws may use \code{ln},
 the natural logarithm. Millard and colleagues' model of \emph{E. coli}'s core
 metabolism, with 64 floating species, 68 reactions, three compartments and
@@ -3387,15 +3387,18 @@ end
 
 \section{From reactions to equations}
 
-Write $y$ for the vector of species concentrations and $v(y)$ for the vector of
-reaction rates. Each reaction changes each species by its rate times the
+Write $\mathbf{y}$ for the vector of species concentrations and $\mathbf{v}(\mathbf{y})$ for the vector of
+reaction rates. (This chapter writes vectors in bold lower case, such as
+$\mathbf{y}$, matrices in bold capitals, such as $\mathbf{N}$, and numbers,
+including single entries of vectors and matrices, in italic, such as $v_1$
+or $N_{ij}$.) Each reaction changes each species by its rate times the
 number of molecules it makes or uses, so
 \[
-  \frac{dy}{dt} = N\,v(y), \qquad
+  \frac{d\mathbf{y}}{dt} = \mathbf{N}\,\mathbf{v}(\mathbf{y}), \qquad
   N_{ij} = (\mbox{molecules of species } i \mbox{ made by reaction } j)
          - (\mbox{molecules used}).
 \]
-$N$ is the stoichiometry matrix, one row per species and one column per
+$\mathbf{N}$ is the stoichiometry matrix, one row per species and one column per
 reaction, and \code{antimony.stoichiometry} builds it from the reactions'
 dictionaries:
 
@@ -3454,8 +3457,8 @@ end
   its component of the vector \code{_p}, so the rate laws can be copied in as
   they were written. The function's own names start with an underscore,
   which keeps them apart from the model's names.
-\item \textbf{The derivatives are $N v$.} Each row of the result sums the
-  rates with their coefficients from $N$. Zero entries are left out, and
+\item \textbf{The derivatives are $\mathbf{N} \mathbf{v}$.} Each row of the result sums the
+  rates with their coefficients from $\mathbf{N}$. Zero entries are left out, and
   coefficients of $\pm 1$ are written without a factor, so the result reads
   like the equations above.
 \item \textbf{Rate laws are checked first.} A function made by
@@ -3564,11 +3567,11 @@ function step(sim, h)
 end
 \end{axon}
 
-\code{ode.advance(s, t, y, t1, params = p)} returns $y$ at \code{t1}. When
+\code{ode.advance(s, t, y, t1, params = p)} returns $\mathbf{y}$ at \code{t1}. When
 \code{t}, \code{y} and \code{p} are exactly what the previous call was given
 and returned, the solver simply carries on: its step size, and for BDF its
 order and Jacobian, stay as they were. It steps past \code{t1} if its step
-is longer, and interpolates $y(t_1)$, so short steps do not slow it down.
+is longer, and interpolates $\mathbf{y}(t_1)$, so short steps do not slow it down.
 In the pathway, 2000 steps of 0.01 take the same 776 evaluations of the
 right-hand side as one RK45 solve to $t = 20$. When anything has changed, as
 after \code{set}, the solver starts afresh from the current state, which is
@@ -3582,7 +3585,7 @@ terminal event, change the value, and continue from the event's state.
 
 \section{Steady states}\label{sec:steady}
 
-A \emph{steady state} is where the species stop changing: $N v(y) = 0$.
+A \emph{steady state} is where the species stop changing: $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$.
 Rather than simulating until nothing moves, \code{antimony.steady_state}
 solves those equations directly with \code{nonlin.solve}
 (Section~\ref{sec:nonlin}), starting from the initial values:
@@ -3617,12 +3620,16 @@ In many models some totals never change. In \code{A -> B} and
 \code{A + B} stays at its initial value; an enzyme that is free (\code{E})
 or bound to its substrate (\code{ES}) keeps \code{E + ES} constant. Such a
 total is a \emph{conservation law}, or conserved moiety. It shows in the
-stoichiometry matrix: a row vector $\gamma$ with $\gamma \mathbf{N} = 0$ gives
-$\frac{d}{dt}(\gamma y) = \gamma \mathbf{N} v = 0$, so $\gamma y$ keeps its initial
-value whatever the rates. A model with $c$ independent conservation laws has
+stoichiometry matrix: a row vector $\boldsymbol{\gamma}$, one weight per species, with
+$\boldsymbol{\gamma} \mathbf{N} = 0$ gives
+$\frac{d}{dt}(\boldsymbol{\gamma} \mathbf{y}) = \boldsymbol{\gamma} \mathbf{N} \mathbf{v} = 0$, so $\boldsymbol{\gamma} \mathbf{y}$ keeps its initial
+value whatever the rates. For \code{E + ES}, $\boldsymbol{\gamma}$ has 1 for \code{E}
+and \code{ES} and 0 for the other species. Each conservation law is one
+such vector $\boldsymbol{\gamma}$; below, the matrix $\mathbf{\Gamma}$ holds all of
+them, one per row. A model with $c$ independent conservation laws has
 an $\mathbf{N}$ of rank $r = m - c$ for $m$ species, and that causes two problems.
-The equations $\mathbf{N} v(y) = 0$ do not fix the steady state, since every total
-has its own; and their Jacobian $\partial (\mathbf{N} v) / \partial y$ is singular,
+The equations $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ do not fix the steady state, since every total
+has its own; and their Jacobian $\partial (\mathbf{N} \mathbf{v}) / \partial \mathbf{y}$ is singular,
 with $c$ zero eigenvalues, so Newton's method fails and the eigenvalues
 cannot be used to judge stability.
 
@@ -3639,9 +3646,11 @@ independent rows, $\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R$. Ordering the indep
 \]
 where $\mathbf{L}$ is the \emph{link matrix}. The conservation laws are the rows of
 $\mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,]$, since $\mathbf{\Gamma} \mathbf{L} = -\mathbf{L}_0 + \mathbf{L}_0 = 0$ and so
-$\mathbf{\Gamma} \mathbf{N} = 0$. With $T = \mathbf{\Gamma} y_0$, the totals in the initial values,
+$\mathbf{\Gamma} \mathbf{N} = 0$. With $\mathbf{T} = \mathbf{\Gamma} \mathbf{y}_0$, the totals in the initial values
+(a vector, one total per law, though written with a capital as in the
+conservation literature),
 \[
-  y_{\mathrm{dep}} = \mathbf{L}_0\, y_{\mathrm{ind}} + T ,
+  \mathbf{y}_{\mathrm{dep}} = \mathbf{L}_0\, \mathbf{y}_{\mathrm{ind}} + \mathbf{T} ,
 \]
 so the independent species determine the dependent ones.
 
@@ -3657,16 +3666,16 @@ standard reliable way of finding the rank of a matrix and which of its
 columns are independent.
 
 A QR factorisation writes a matrix $\mathbf{A}$ as $\mathbf{Q}\mathbf{R}$,
-where the columns $q_1, q_2, \ldots$ of $\mathbf{Q}$ are orthonormal and
+where the columns $\mathbf{q}_1, \mathbf{q}_2, \ldots$ of $\mathbf{Q}$ are orthonormal and
 $\mathbf{R}$ is upper triangular. Column $k$ of $\mathbf{A}$ is then
 \[
-  a_k = R_{1k}\, q_1 + R_{2k}\, q_2 + \cdots + R_{kk}\, q_k ,
+  \mathbf{a}_k = R_{1k}\, \mathbf{q}_1 + R_{2k}\, \mathbf{q}_2 + \cdots + R_{kk}\, \mathbf{q}_k ,
 \]
 so the first $k$ columns of $\mathbf{A}$ span the same space as
-$q_1, \ldots, q_k$, and $|R_{kk}|$ is the length of the part of $a_k$ that
-is not a combination of $a_1, \ldots, a_{k-1}$: the part left over after
+$\mathbf{q}_1, \ldots, \mathbf{q}_k$, and $|R_{kk}|$ is the length of the part of $\mathbf{a}_k$ that
+is not a combination of $\mathbf{a}_1, \ldots, \mathbf{a}_{k-1}$: the part left over after
 projecting the earlier columns out, as in Gram--Schmidt orthogonalisation.
-$R_{kk} = 0$ says exactly that $a_k$ depends on the columns before it.
+$R_{kk} = 0$ says exactly that $\mathbf{a}_k$ depends on the columns before it.
 Applied to $\mathbf{A} = \mathbf{N}^T$, whose columns are the species' rows
 of $\mathbf{N}$, the diagonal of $\mathbf{R}$ measures how much each
 species' row adds to the rows before it.
@@ -3775,12 +3784,12 @@ total can be negative, as the third is here: it is the total of a
 combination, not an amount of anything.
 
 \paragraph{The reduced steady state.} \code{steady_state} solves for the
-$r$ independent species only. For a trial $y_{\mathrm{ind}}$ it fills in
-$y_{\mathrm{dep}} = \mathbf{L}_0 y_{\mathrm{ind}} + T$ and evaluates the rates of
-change of the independent species, $\mathbf{N}_R\, v(y)$. Those $r$ equations in $r$
+$r$ independent species only. For a trial $\mathbf{y}_{\mathrm{ind}}$ it fills in
+$\mathbf{y}_{\mathrm{dep}} = \mathbf{L}_0 \mathbf{y}_{\mathrm{ind}} + \mathbf{T}$ and evaluates the rates of
+change of the independent species, $\mathbf{N}_R\, \mathbf{v}(\mathbf{y})$. Those $r$ equations in $r$
 unknowns have the Jacobian
 \[
-  \mathbf{J}_R = \mathbf{N}_R \, \frac{\partial v}{\partial y}\, \mathbf{L} ,
+  \mathbf{J}_R = \mathbf{N}_R \, \frac{\partial \mathbf{v}}{\partial \mathbf{y}}\, \mathbf{L} ,
 \]
 the \emph{reduced Jacobian}, which is not singular at an isolated steady
 state. This is the standard method, and the default
@@ -3806,27 +3815,28 @@ $\mathbf{L}_0 = [\,0 \;\; {-1} \;\; 0\,]$ says that $E = -ES + T$: the conservat
 law is \code{E + ES}, with total 1.
 
 \paragraph{The kernel matrix.} The same analysis of the columns of $\mathbf{N}$
-describes the fluxes. A steady state has $\mathbf{N} J = 0$, so its fluxes $J$ lie
-in the null space, or kernel, of $\mathbf{N}$, of dimension $n - r$ for $n$
+describes the fluxes, the rates $\mathbf{v}$ at a steady state (many papers
+write them $J$). A steady state has $\mathbf{N} \mathbf{v} = 0$, so its fluxes
+lie in the null space, or kernel, of $\mathbf{N}$, of dimension $n - r$ for $n$
 reactions. \code{antimony.kernel(model)} splits the reactions in two
 \ref{ref:reder}: QR factorisation of $\mathbf{N}$ with column pivoting,
 $\mathbf{N} \mathbf{P} = \mathbf{Q} \mathbf{R}$, takes the reactions' columns largest first, and the first $r$
 pivoted are the \emph{dependent} reactions; the fluxes of the other $n - r$,
 the \emph{independent} ones, can be chosen freely. With the dependent
 reactions first, $\mathbf{N} = [\,\mathbf{N}_D \;\; \mathbf{N}_I\,] = \mathbf{Q}_1 [\,\mathbf{R}_{11} \;\; \mathbf{R}_{12}\,]$,
-so $\mathbf{N} J = \mathbf{Q}_1 (\mathbf{R}_{11} J_D + \mathbf{R}_{12} J_I) = 0$ gives
+so $\mathbf{N} \mathbf{v} = \mathbf{Q}_1 (\mathbf{R}_{11} \mathbf{v}_D + \mathbf{R}_{12} \mathbf{v}_I) = 0$ gives
 \[
-  J_D = \mathbf{K}_0\, J_I , \qquad \mathbf{K}_0 = -\mathbf{R}_{11}^{-1} \mathbf{R}_{12} ,
+  \mathbf{v}_D = \mathbf{K}_0\, \mathbf{v}_I , \qquad \mathbf{K}_0 = -\mathbf{R}_{11}^{-1} \mathbf{R}_{12} ,
   \qquad
-  J = \begin{bmatrix} \mathbf{K}_0 \\ \mathbf{I} \end{bmatrix} J_I = \mathbf{K} J_I ,
+  \mathbf{v} = \begin{bmatrix} \mathbf{K}_0 \\ \mathbf{I} \end{bmatrix} \mathbf{v}_I = \mathbf{K} \mathbf{v}_I ,
 \]
-where $\mathbf{K}$, with $\mathbf{N} \mathbf{K} = 0$, is the \emph{kernel matrix}. (It is not the
-$\mathbf{K}$ of the augmented system below, a basis of the null space of $\mathbf{N}^T$.)
+where $\mathbf{K}$, with $\mathbf{N} \mathbf{K} = 0$, is the \emph{kernel matrix}.
 The record lists both sets of reactions in the model's order, with
 \code{K} indexed by reaction in that order, as \code{link} is by species.
-The last lines of the example print $\mathbf{K}_0$ for the enzyme: with $J_2$
-(the release of $S$ from $ES$) and $J_4$ (the outflow of $P$) as the
-independent fluxes, $J_0 = J_3 = J_4$ and $J_1 = J_2 + J_4$, so the
+The last lines of the example print $\mathbf{K}_0$ for the enzyme: with
+\code{J2} (the release of $S$ from $ES$) and \code{J4} (the outflow of $P$)
+as the independent reactions, $v_{J0} = v_{J3} = v_{J4}$ and $v_{J1} =
+v_{J2} + v_{J4}$, so the
 binding step carries the throughput plus whatever cycles back.
 
 Both \code{conservation} and \code{kernel} also take a stoichiometry matrix
@@ -3839,7 +3849,7 @@ dividing them into independent and dependent ones.
 
 First, a word on the name, which can mislead. \emph{Augmented} does not
 mean here that rows or columns are added to anything. The system keeps
-exactly $m$ equations in $m$ unknowns, the same size as $\mathbf{N} v(y) =
+exactly $m$ equations in $m$ unknowns, the same size as $\mathbf{N} \mathbf{v}(\mathbf{y}) =
 0$, and its Jacobian stays $m \times m$. What is added is a \emph{term}: each
 of the $m$ equations gets an extra part that carries the conservation laws,
 and the equations are augmented in that sense only. The obvious way of
@@ -3853,7 +3863,7 @@ A steady state in a model with conservation laws has to satisfy two
 conditions. The rates must balance, so that no species changes; and the
 conserved totals must keep the values they had at the start, since the
 reactions cannot change them. The first condition alone is not enough: as
-the start of this section showed, $\mathbf{N} v(y) = 0$ has a whole family
+the start of this section showed, $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ has a whole family
 of solutions, one for each choice of totals. The second condition picks one
 member of that family. The difficulty is that together the two conditions
 make too many equations: $m$ for the balances plus $c$ for the totals, for
@@ -3863,52 +3873,56 @@ to choose which species are dependent.
 
 The augmented system instead adds the two conditions together, so that
 there are $m$ equations again, and does it in a way that loses nothing. The
-term that expresses the totals, $\mathbf{K}(\mathbf{K}^T y - \mathbf{K}^T
-y_0)$, is built in three steps.
+term that expresses the totals, $\mathbf{W}(\mathbf{W}^T \mathbf{y} - \mathbf{W}^T
+\mathbf{y}_0)$, is built in three steps.
 
 \begin{enumerate}
-\item \emph{The totals.} A conservation law is a set of weights $w$, one per
-  species, with $w^T \mathbf{N} = 0$. The weighted sum $w^T y$ then never
-  changes, since $\frac{d}{dt}(w^T y) = w^T \mathbf{N} v = 0$; for the
-  enzyme, weights 1 for \code{E} and \code{ES} and 0 for the others give
-  the total $E + ES$. The columns of $\mathbf{K}$ are $c$ such weight
-  vectors, chosen at right angles to each other and of length 1. So
-  $\mathbf{K}^T y$ lists the conserved totals of $y$, and
-  $\mathbf{K}^T y - \mathbf{K}^T y_0 = \mathbf{K}^T (y - y_0)$ says how far
+\item \emph{The totals.} As at the start of this section, a conservation
+  law is a row vector $\boldsymbol{\gamma}$ of weights, one per species, with $\boldsymbol{\gamma}
+  \mathbf{N} = 0$, so that the weighted sum $\boldsymbol{\gamma} \mathbf{y}$ never changes; for
+  the enzyme, weights 1 for \code{E} and \code{ES} give the total $E +
+  ES$. The rows of $\mathbf{\Gamma}$ are $c$ such vectors. The columns of
+  $\mathbf{W}$ hold the same $c$ laws in another form: written as
+  columns, combined so that they are at right angles to each other and of
+  length 1. ($\mathbf{W}$ is not the kernel matrix
+  $\mathbf{K}$, which holds flux modes, the null space of $\mathbf{N}$;
+  $\mathbf{W}$ spans the null space of $\mathbf{N}^T$.) So
+  $\mathbf{W}^T \mathbf{y}$ lists the conserved totals of $\mathbf{y}$, and
+  $\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0 = \mathbf{W}^T (\mathbf{y} - \mathbf{y}_0)$ says how far
   they are from the totals at the start: $c$ numbers, which must all be
   zero.
 \item \emph{Making the sizes match.} Those $c$ numbers cannot be added to
-  the $m$ entries of $\mathbf{N} v(y)$ as they stand. Multiplying them by
-  $\mathbf{K}$ turns them into a vector with one entry per species,
-  $\mathbf{K} \mathbf{K}^T (y - y_0)$. This vector has a meaning of its own.
+  the $m$ entries of $\mathbf{N} \mathbf{v}(\mathbf{y})$ as they stand. Multiplying them by
+  $\mathbf{W}$ turns them into a vector with one entry per species,
+  $\mathbf{W} \mathbf{W}^T (\mathbf{y} - \mathbf{y}_0)$. This vector has a meaning of its own.
   The reactions can move the concentrations only along the columns of
   $\mathbf{N}$, which describe what each reaction does; the columns of
-  $\mathbf{K}$ are the directions at right angles to all of those, along
-  which nothing can ever move. $\mathbf{K} \mathbf{K}^T (y - y_0)$ is the
-  part of the change from $y_0$ to $y$ that lies along these directions:
+  $\mathbf{W}$ are the directions at right angles to all of those, along
+  which nothing can ever move. $\mathbf{W} \mathbf{W}^T (\mathbf{y} - \mathbf{y}_0)$ is the
+  part of the change from $\mathbf{y}_0$ to $\mathbf{y}$ that lies along these directions:
   the part of the change that no sequence of reactions could have made.
-\item \emph{Why $\mathbf{K}$.} The rates of change $\mathbf{N} v(y)$ always
+\item \emph{Why $\mathbf{W}$.} The rates of change $\mathbf{N} \mathbf{v}(\mathbf{y})$ always
   point along the columns of $\mathbf{N}$, and the added term along those
-  of $\mathbf{K}$, at right angles to them. Two vectors at right angles add
+  of $\mathbf{W}$, at right angles to them. Two vectors at right angles add
   up to zero only when each of them is zero, just as a step north added to
   a step east brings you back to where you started only if both steps have
   length zero. So the two terms cannot cancel each other, and since the
-  columns of $\mathbf{K}$ are independent, $\mathbf{K}$ times the $c$
+  columns of $\mathbf{W}$ are independent, $\mathbf{W}$ times the $c$
   numbers is zero only when all $c$ numbers are: nothing about the totals
   is lost.
 \end{enumerate}
 
-$F(y)$ is therefore the rate of change plus the part of the change from
-$y_0$ that the reactions could not have made. It is zero exactly when $y$
-is a steady state \emph{and} can be reached from $y_0$: one square system
+$\mathbf{F}(\mathbf{y})$ is therefore the rate of change plus the part of the change from
+$\mathbf{y}_0$ that the reactions could not have made. It is zero exactly when $\mathbf{y}$
+is a steady state \emph{and} can be reached from $\mathbf{y}_0$: one square system
 that says both things, with no species singled out.
 
-The added term also mends the Jacobian. Whatever $y$ is, the rates of
-change $\mathbf{N} v(y)$ never point along a conserved direction, so their
+The added term also mends the Jacobian. Whatever $\mathbf{y}$ is, the rates of
+change $\mathbf{N} \mathbf{v}(\mathbf{y})$ never point along a conserved direction, so their
 Jacobian cannot produce any change in those directions, and that is why it
-is singular. The added term supplies exactly what is missing: moving $y$
+is singular. The added term supplies exactly what is missing: moving $\mathbf{y}$
 along a conserved direction changes it at rate 1 in that direction, and
-moving $y$ along a reaction direction does not change it at all, so the
+moving $\mathbf{y}$ along a reaction direction does not change it at all, so the
 rest of the Jacobian is left as it was (the eigenvalues below make this
 precise). Newton's method then has a non-singular matrix to work with, and
 its steps correct the balances and the totals at the same time.
@@ -3921,59 +3935,63 @@ matrix and the rates of change are
 \[
   \mathbf{N} = \begin{bmatrix} -1 & 1 \\ 1 & -1 \end{bmatrix} ,
   \qquad
-  \mathbf{N} v = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix} .
+  \mathbf{N} \mathbf{v} = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix} .
 \]
-Setting $\mathbf{N} v = 0$ gives the same equation twice, $v_1 = v_2$, and
+Setting $\mathbf{N} \mathbf{v} = 0$ gives the same equation twice, $v_1 = v_2$, and
 any $A$ and $B$ with $k_1 A = k_2 B$ satisfy it: the balances alone leave a
 whole line of steady states. $\mathbf{N}$ has rank $r = 1$ for $m = 2$
 species, so there is $c = 1$ conservation law.
 
-\emph{Finding $\mathbf{K}$.} A conservation law is a weight vector $w =
-(w_A, w_B)$ with $w^T \mathbf{N} = 0$, which here reads $-w_A + w_B = 0$, so
-$w_A = w_B$: equal weights, the law $A + B$. Scaled to length 1,
+\emph{Finding $\mathbf{W}$.} A conservation law is a row vector $\boldsymbol{\gamma} =
+[\,\gamma_A \;\; \gamma_B\,]$ with $\boldsymbol{\gamma} \mathbf{N} = 0$, which here reads
+$-\gamma_A + \gamma_B = 0$, so $\gamma_A = \gamma_B$: equal weights, the law
+$A + B$. The usual conservation
+analysis writes it as $\mathbf{\Gamma} = [\,1 \;\; 1\,]$ (with \code{A}
+independent, $\mathbf{L}_0 = [\,{-1}\,]$, since $B = -A + T$). Scaled to
+length 1,
 \[
-  \mathbf{K} = \frac{1}{\sqrt{2}} \begin{bmatrix} 1 \\ 1 \end{bmatrix} ,
+  \mathbf{W} = \frac{1}{\sqrt{2}} \begin{bmatrix} 1 \\ 1 \end{bmatrix} ,
   \qquad
-  \mathbf{K}^T y = \frac{A + B}{\sqrt{2}} ,
+  \mathbf{W}^T \mathbf{y} = \frac{A + B}{\sqrt{2}} ,
   \qquad
-  \mathbf{K} \mathbf{K}^T = \begin{bmatrix} \tfrac12 & \tfrac12 \\[2pt]
+  \mathbf{W} \mathbf{W}^T = \begin{bmatrix} \tfrac12 & \tfrac12 \\[2pt]
     \tfrac12 & \tfrac12 \end{bmatrix} .
 \]
-$\mathbf{K}^T y$ is the total $A + B$, scaled by $1/\sqrt{2}$ because
-$\mathbf{K}$ has length 1. ($-\mathbf{K}$ would do equally well:
-$\mathbf{K}\mathbf{K}^T$, and so $F$, is the same for every choice.) With
+$\mathbf{W}^T \mathbf{y}$ is the total $A + B$, scaled by $1/\sqrt{2}$ because
+$\mathbf{W}$ has length 1. ($-\mathbf{W}$ would do equally well:
+$\mathbf{W}\mathbf{W}^T$, and so $\mathbf{F}$, is the same for every choice.) With
 $T = A_0 + B_0$ the total at the start, the conservation term is
 \[
-  \mathbf{K} (\mathbf{K}^T y - \mathbf{K}^T y_0)
+  \mathbf{W} (\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0)
   = \frac{1}{\sqrt{2}} \begin{bmatrix} 1 \\ 1 \end{bmatrix}
     \frac{A + B - T}{\sqrt{2}}
   = \frac{A + B - T}{2} \begin{bmatrix} 1 \\ 1 \end{bmatrix} ,
 \]
 the error in the total, shared equally between the two species. It is
-$\mathbf{K}\mathbf{K}^T(y - y_0)$, the part of the change $y - y_0$ along
+$\mathbf{W}\mathbf{W}^T(\mathbf{y} - \mathbf{y}_0)$, the part of the change $\mathbf{y} - \mathbf{y}_0$ along
 the direction $(1, 1)$, which no reaction can move: each reaction moves
 along $(-1, 1)$ or $(1, -1)$, at right angles to it.
 
 \emph{The system.} Adding the two terms, species by species,
 \[
-  F(y) = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix}
+  \mathbf{F}(\mathbf{y}) = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix}
        + \frac{A + B - T}{2} \begin{bmatrix} 1 \\ 1 \end{bmatrix}
        = \begin{bmatrix} -v_1 + v_2 + \tfrac12 (A + B - T) \\[2pt]
                           v_1 - v_2 + \tfrac12 (A + B - T) \end{bmatrix} :
 \]
 still two equations in the two unknowns $A$ and $B$. Adding the two
-equations of $F(y) = 0$ gives $A + B = T$, and subtracting them gives $v_1 =
+equations of $\mathbf{F}(\mathbf{y}) = 0$ gives $A + B = T$, and subtracting them gives $v_1 =
 v_2$: the repeated balance has been replaced by the conservation law, and
 together they give the steady state $A = k_2 T / (k_1 + k_2)$, $B = k_1 T /
 (k_1 + k_2)$.
 
-\emph{The Jacobians.} With $\partial v / \partial y = \mathrm{diag}(k_1,
+\emph{The Jacobians.} With $\partial \mathbf{v} / \partial \mathbf{y} = \mathrm{diag}(k_1,
 k_2)$,
 \[
-  \mathbf{N} \frac{\partial v}{\partial y}
+  \mathbf{N} \frac{\partial \mathbf{v}}{\partial \mathbf{y}}
     = \begin{bmatrix} -k_1 & k_2 \\ k_1 & -k_2 \end{bmatrix} ,
   \qquad
-  \mathbf{J}_F = \mathbf{N} \frac{\partial v}{\partial y} + \mathbf{K}\mathbf{K}^T
+  \mathbf{J}_F = \mathbf{N} \frac{\partial \mathbf{v}}{\partial \mathbf{y}} + \mathbf{W}\mathbf{W}^T
     = \begin{bmatrix} \tfrac12 - k_1 & \tfrac12 + k_2 \\[2pt]
                       \tfrac12 + k_1 & \tfrac12 - k_2 \end{bmatrix} .
 \]
@@ -3984,7 +4002,8 @@ k_2)$: the zero has become 1, and the other eigenvalue, which is the
 reduced Jacobian $\mathbf{J}_R = -(k_1 + k_2)$ of the reduced method
 (substitute $B = T - A$ into $dA/dt = -k_1 A + k_2 B$), is unchanged. The
 next program builds all of this with $k_1 = 2$, $k_2 = 1$ and $T = 3$, so
-$A = 1$ and $B = 2$, solves $F(y) = 0$ with \code{nonlin.solve}, and
+$A = 1$ and $B = 2$, solves $\mathbf{F}(\mathbf{y}) = 0$ with \code{nonlin.solve}, solves it
+again with $\mathbf{\Gamma}$ in place of $\mathbf{W}$ (see below), and
 compares the result with \code{antimony.steady_state}.
 
 \ex{augmented_ab.sci}
@@ -3992,49 +4011,110 @@ compares the result with \code{antimony.steady_state}.
 N:
 -1   1
  1  -1
-K:
+W:
 0.7071
 0.7071
-K K':
+W W':
 0.50  0.50
 0.50  0.50
 steady state: 1.0000  2.0000  A + B = 3.0
 eigenvalues of N dv/dy: -3.0000  0.0000
 eigenvalues of J_F: -3.0000  1.0000
+Gamma: 1.0000  1.0000
+steady state with Gamma: 1.0000  2.0000
+eigenvalues with Gamma: -3.0000  2.0000
 antimony: 1.0000  2.0000
 \end{axonout}
 
 The whole method is the one line of \code{F}: no species are chosen as
 dependent, and no link matrix is formed.
 
-In symbols, let the columns of $\mathbf{K}$ be an orthonormal basis of the null space of $\mathbf{N}^T$
+\paragraph{The conservation matrix $\mathbf{\Gamma}$ in place of
+$\mathbf{W}$.} Anyone who already has the conservation analysis can build
+the same system from it. The rows of $\mathbf{\Gamma} = [\,-\mathbf{L}_0
+\;\; \mathbf{I}\,]$ are conservation laws, so the columns of
+\[
+  \mathbf{\Gamma}^T = \begin{bmatrix} -\mathbf{L}_0^T \\ \mathbf{I}
+  \end{bmatrix}
+\]
+(species in the pivoted order, independent first) span the same directions
+as the columns of $\mathbf{W}$: those at right angles to every column of
+$\mathbf{N}$. They are not of length 1 or at right angles to each other,
+but the argument above did not need that. So
+\[
+  \mathbf{F}_\Gamma(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{\Gamma}^T (\mathbf{\Gamma} \mathbf{y} -
+  \mathbf{\Gamma} \mathbf{y}_0) = 0
+\]
+also holds exactly when the rates balance and the totals $\mathbf{\Gamma}
+\mathbf{y}$ keep their values $\mathbf{\Gamma} \mathbf{y}_0 = \mathbf{T}$, and it has the same
+solutions. The two differ only in the added part of the Jacobian,
+$\mathbf{\Gamma}^T \mathbf{\Gamma}$ instead of $\mathbf{W}\mathbf{W}^T$: the
+$c$ eigenvalues that are exactly 1 with $\mathbf{W}$ become the eigenvalues
+of the $c \times c$ matrix $\mathbf{\Gamma}\mathbf{\Gamma}^T$, still
+positive, so Newton's method still works. For A $\rightleftharpoons$ B,
+$\mathbf{\Gamma}\mathbf{\Gamma}^T = 2$, and the program's last lines show
+the eigenvalue 2 where $\mathbf{W}$ gave 1. The two bases are related by
+$\mathbf{W} = \mathbf{\Gamma}^T (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2}$
+(one choice of $\mathbf{W}$; any other is this one turned), so that
+$\mathbf{W}\mathbf{W}^T = \mathbf{\Gamma}^T
+(\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1} \mathbf{\Gamma}$. The module uses
+$\mathbf{W}$, from the singular value decomposition, because it needs no
+choice of dependent species and makes the added eigenvalues exactly 1.
+
+Four matrices of this chapter are easily confused, as they come from the
+two null spaces and the two factorisations of $\mathbf{N}$:
+
+\begin{center}
+\begin{tabular}{@{}l l >{\raggedright\arraybackslash}p{0.36\linewidth}@{}}
+\toprule
+Matrix & Defined by & Holds \\
+\midrule
+$\mathbf{L}$, link matrix & $\mathbf{N} = \mathbf{L}\,\mathbf{N}_R$ & the
+  directions the reactions can move, one column per independent species \\
+$\mathbf{\Gamma}$, conservation matrix & $\mathbf{\Gamma}\mathbf{N} = 0$,
+  $\mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,]$ & the
+  conservation laws, one row each \\
+$\mathbf{W}$ & $\mathbf{W}^T\mathbf{N} = 0$, $\mathbf{W}^T\mathbf{W} =
+  \mathbf{I}$ & the same laws, orthonormal, one column each \\
+$\mathbf{K}$, kernel matrix & $\mathbf{N}\mathbf{K} = 0$ & the flux modes,
+  one column per independent flux \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The columns of $\mathbf{L}$ and those of $\mathbf{W}$ (or
+$\mathbf{\Gamma}^T$) are at right angles and together span every species
+direction, which is what the augmented system relies on; $\mathbf{K}$
+belongs to the reactions, not the species, and plays no part in it.
+
+In symbols, let the columns of $\mathbf{W}$ be an orthonormal basis of the null space of $\mathbf{N}^T$
 (\code{linalg.null(N')}, from the singular value decomposition), so that
-$\mathbf{K}^T \mathbf{N} = 0$ and $\mathbf{K}^T \mathbf{K} = \mathbf{I}$; the totals are then $\mathbf{K}^T y$, and the module
+$\mathbf{W}^T \mathbf{N} = 0$ and $\mathbf{W}^T \mathbf{W} = \mathbf{I}$; the totals are then $\mathbf{W}^T \mathbf{y}$, and the module
 solves the square system
 \[
-  F(y) = \mathbf{N} v(y) + \mathbf{K} \,(\mathbf{K}^T y - \mathbf{K}^T y_0) = 0 .
+  \mathbf{F}(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{W} \,(\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0) = 0 .
 \]
 The first term lies in the column space of $\mathbf{N}$ and the second in the
-column space of $\mathbf{K}$, which are orthogonal complements. So $F(y) = 0$ only
-when both terms vanish: the rates balance, $\mathbf{N} v(y) = 0$, and the totals
-keep their values, $\mathbf{K}^T y = \mathbf{K}^T y_0$. The Jacobian
+column space of $\mathbf{W}$, which are orthogonal complements. So $\mathbf{F}(\mathbf{y}) = 0$ only
+when both terms vanish: the rates balance, $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$, and the totals
+keep their values, $\mathbf{W}^T \mathbf{y} = \mathbf{W}^T \mathbf{y}_0$. The Jacobian
 \[
-  \mathbf{J}_F = \mathbf{N} \frac{\partial v}{\partial y} + \mathbf{K} \mathbf{K}^T
+  \mathbf{J}_F = \mathbf{N} \frac{\partial \mathbf{v}}{\partial \mathbf{y}} + \mathbf{W} \mathbf{W}^T
 \]
-is not singular exactly when $\mathbf{J}_R$ is not. If $\mathbf{J}_F z = 0$, multiplying by
-$\mathbf{K}^T$ gives $\mathbf{K}^T z = 0$, so $z$ lies in the column space of $\mathbf{N}$, which is
-that of $\mathbf{L}$: $z = \mathbf{L} z_R$. Then $\mathbf{J}_F z = \mathbf{L} \mathbf{N}_R \,(\partial v / \partial y)\,
-\mathbf{L} z_R = \mathbf{L} \mathbf{J}_R z_R = 0$, and since $\mathbf{L}$ has full column rank, $\mathbf{J}_R z_R = 0$.
-The converse follows the same way. More precisely, $\mathbf{J}_F \mathbf{K} = \mathbf{N}
-(\partial v / \partial y) \mathbf{K} + \mathbf{K}$, whose first term lies in the column space
-of $\mathbf{L}$, so in the basis made of the columns of $\mathbf{L}$ and of $\mathbf{K}$
+is not singular exactly when $\mathbf{J}_R$ is not. If $\mathbf{J}_F \mathbf{z} = 0$, multiplying by
+$\mathbf{W}^T$ gives $\mathbf{W}^T \mathbf{z} = 0$, so $\mathbf{z}$ lies in the column space of $\mathbf{N}$, which is
+that of $\mathbf{L}$: $\mathbf{z} = \mathbf{L} \mathbf{z}_R$. Then $\mathbf{J}_F \mathbf{z} = \mathbf{L} \mathbf{N}_R \,(\partial \mathbf{v} / \partial \mathbf{y})\,
+\mathbf{L} \mathbf{z}_R = \mathbf{L} \mathbf{J}_R \mathbf{z}_R = 0$, and since $\mathbf{L}$ has full column rank, $\mathbf{J}_R \mathbf{z}_R = 0$.
+The converse follows the same way. More precisely, $\mathbf{J}_F \mathbf{W} = \mathbf{N}
+(\partial \mathbf{v} / \partial \mathbf{y}) \mathbf{W} + \mathbf{W}$, whose first term lies in the column space
+of $\mathbf{L}$, so in the basis made of the columns of $\mathbf{L}$ and of $\mathbf{W}$
 \[
-  \mathbf{J}_F \,[\,\mathbf{L} \;\; \mathbf{K}\,] = [\,\mathbf{L} \;\; \mathbf{K}\,]
+  \mathbf{J}_F \,[\,\mathbf{L} \;\; \mathbf{W}\,] = [\,\mathbf{L} \;\; \mathbf{W}\,]
   \begin{bmatrix} \mathbf{J}_R & \mathbf{X} \\ 0 & \mathbf{I} \end{bmatrix}
 \]
 for some matrix $\mathbf{X}$. The eigenvalues of $\mathbf{J}_F$ are therefore those of $\mathbf{J}_R$
-and $c$ eigenvalues equal to 1: the term $\mathbf{K} \mathbf{K}^T$ turns the $c$ zero
-eigenvalues of $\mathbf{N} \partial v / \partial y$ into ones and leaves the others,
+and $c$ eigenvalues equal to 1: the term $\mathbf{W} \mathbf{W}^T$ turns the $c$ zero
+eigenvalues of $\mathbf{N} \partial \mathbf{v} / \partial \mathbf{y}$ into ones and leaves the others,
 which describe the dynamics within a conservation class, unchanged. (For
 the enzyme model above, $\mathbf{J}_F$'s eigenvalues are $-7.3504$, $-0.8163$,
 $-0.5$ and $1$.)
@@ -4047,16 +4127,16 @@ matrix: only a basis of the null space, and a residual that is one line of
 code. References \ref{ref:reder}--\ref{ref:vallab} reduce the system. The
 closest form we know of in the literature is the ``system augmented by
 conservation laws'' of algebraic reaction network theory: for each
-conservation law $w$ (a row of $\mathbf{\Gamma}$), the steady-state equation of the
-first species with a non-zero entry in $w$ is replaced by
-$w y - w y_0 = 0$, which gives a square system whose positive roots are the
+conservation law $\boldsymbol{\gamma}$ (a row of $\mathbf{\Gamma}$), the steady-state equation of the
+first species with a non-zero entry in $\boldsymbol{\gamma}$ is replaced by
+$\boldsymbol{\gamma} \mathbf{y} - \boldsymbol{\gamma} \mathbf{y}_0 = 0$, which gives a square system whose positive roots are the
 steady states in the conservation class \ref{ref:augmented}. It is used
 there to count steady states rather than to compute them, and it needs a
 choice of which equations to replace; the orthogonal term above avoids that
 choice.
 
 \paragraph{Jacobians and stability.} \code{antimony.jacobian(model, y)}
-returns $\partial (\mathbf{N} v) / \partial y$ at the species' values \code{y}, by
+returns $\partial (\mathbf{N} \mathbf{v}) / \partial \mathbf{y}$ at the species' values \code{y}, by
 central differences of the right-hand side, with one row and column per
 species; with conservation laws it is singular, as the zero among its
 eigenvalues shows. \code{antimony.reduced_jacobian(model, y)} returns $\mathbf{J}_R$,
@@ -4099,7 +4179,9 @@ theorem): control is shared out, and it is the elasticities that decide how.
 
 The control coefficients follow from the elasticities and the structure of
 the network (reference \ref{ref:reder}). With the unscaled elasticities
-$\boldsymbol{\varepsilon} = \partial v / \partial s$ and the reduced stoichiometry $\mathbf{N}_R$
+$\boldsymbol{\varepsilon} = \partial \mathbf{v} / \partial \mathbf{s}$ (with $\mathbf{s}$ the species'
+concentrations, the $\mathbf{y}$ of the earlier sections, as control
+analysis writes them) and the reduced stoichiometry $\mathbf{N}_R$
 and link matrix $\mathbf{L}$ of the last section,
 \[
 \mathbf{C}^{S} = -\mathbf{L}\,(\mathbf{N}_R\,\boldsymbol{\varepsilon}\,\mathbf{L})^{-1} \mathbf{N}_R,
@@ -4202,7 +4284,7 @@ Function & Result \\
 \addlinespace
 \multicolumn{2}{@{}l}{\emph{The equations as functions}} \\*
 \code{rhs(model)} & The right-hand side \code{f(t, y, p)} of
-  $dy/dt = \mathbf{N} v(y)$, for \code{ode.solve} with \code{params = p}; compiled by
+  $d\mathbf{y}/dt = \mathbf{N} \mathbf{v}(\mathbf{y})$, for \code{ode.solve} with \code{params = p}; compiled by
   the JIT \\
 \code{rates(model)} & The reaction rates as a function \code{v(y, p)} \\
 \code{rhs_text(model)} & The text of the function \code{rhs} makes \\
@@ -4228,7 +4310,7 @@ Function & Result \\
 \addlinespace
 \multicolumn{2}{@{}l}{\emph{Steady states and structure}
   (Sections~\ref{sec:steady} and \ref{sec:conservation})} \\*
-\code{steady_state(model)} & The species' values with $\mathbf{N} v(y) = 0$ and the
+\code{steady_state(model)} & The species' values with $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ and the
   conserved totals of \code{initial(model)}: a record with \code{y},
   \code{species}, \code{status}, \code{fnorm}, \code{nfev} and
   \code{niters}; keywords \code{guess}, \code{method} (\code{"reduced"} or
@@ -4237,17 +4319,17 @@ Function & Result \\
   \code{Conservation} record; also takes a stoichiometry matrix \\
 \code{kernel(model)} & The independent fluxes and the kernel matrix: a
   \code{Kernel} record; also takes a stoichiometry matrix \\
-\code{jacobian(model, y)} & $\partial (\mathbf{N} v) / \partial y$ at \code{y},
+\code{jacobian(model, y)} & $\partial (\mathbf{N} \mathbf{v}) / \partial \mathbf{y}$ at \code{y},
   one row and column per species \\
-\code{reduced_jacobian(model, y)} & $\mathbf{N}_R\, (\partial v / \partial y)\, \mathbf{L}$
+\code{reduced_jacobian(model, y)} & $\mathbf{N}_R\, (\partial \mathbf{v} / \partial \mathbf{y})\, \mathbf{L}$
   at \code{y}, whose eigenvalues decide stability \\
 \addlinespace
 \multicolumn{2}{@{}l}{\emph{Metabolic control analysis}
   (Section~\ref{sec:mca})} \\*
-\code{elasticities(model, y)} & $\partial v / \partial y$, one row per
+\code{elasticities(model, y)} & $\partial \mathbf{v} / \partial \mathbf{y}$, one row per
   reaction and one column per species; \code{scaled = true} for the scaled
   ones \\
-\code{parameter_elasticities(model, y)} & $\partial v / \partial p$, one
+\code{parameter_elasticities(model, y)} & $\partial \mathbf{v} / \partial \mathbf{p}$, one
   column per parameter and boundary species; \code{scaled} as above \\
 \code{control(model)} & The flux and concentration control coefficients at
   the steady state (or at \code{y}): a \code{Control} record; scaled unless
@@ -4289,7 +4371,7 @@ Record & Fields \\
   $\mathbf{N} = \mathbf{L} \mathbf{N}_R$) and \code{gamma} (the conservation laws, $\mathbf{\Gamma} \mathbf{N} = 0$) \\
 \code{Kernel} & \code{independent} and \code{dependent} (reactions' names),
   \code{ind} and \code{dep} (their positions), \code{K0} (with
-  $J_{\mathrm{dep}} = \mathbf{K}_0 J_{\mathrm{ind}}$) and \code{K} (the kernel matrix,
+  $\mathbf{v}_{\mathrm{dep}} = \mathbf{K}_0 \mathbf{v}_{\mathrm{ind}}$ for the fluxes) and \code{K} (the kernel matrix,
   $\mathbf{N} \mathbf{K} = 0$) \\
 \addlinespace
 \code{Control} & \code{species} and \code{reactions} (names), \code{y} (the
@@ -4328,7 +4410,7 @@ The module reads only part of Antimony. It does not read rate rules, event
 delays and options, function definitions or initial assignments of
 expressions. Each could be added in the same way as boundary species,
 compartments, assignment rules and events were: a boundary species keeps its name in the rate laws,
-gets no row in $N$, and takes its value from the parameter vector; a rule
+gets no row in $\mathbf{N}$, and takes its value from the parameter vector; a rule
 becomes one more line of the generated function, before the rates. The
 Language Reference's section ``The antimony module'' lists exactly what is
 read.
