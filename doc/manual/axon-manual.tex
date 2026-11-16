@@ -3617,62 +3617,170 @@ In many models some totals never change. In \code{A -> B} and
 \code{A + B} stays at its initial value; an enzyme that is free (\code{E})
 or bound to its substrate (\code{ES}) keeps \code{E + ES} constant. Such a
 total is a \emph{conservation law}, or conserved moiety. It shows in the
-stoichiometry matrix: a row vector $\gamma$ with $\gamma N = 0$ gives
-$\frac{d}{dt}(\gamma y) = \gamma N v = 0$, so $\gamma y$ keeps its initial
+stoichiometry matrix: a row vector $\gamma$ with $\gamma \mathbf{N} = 0$ gives
+$\frac{d}{dt}(\gamma y) = \gamma \mathbf{N} v = 0$, so $\gamma y$ keeps its initial
 value whatever the rates. A model with $c$ independent conservation laws has
-an $N$ of rank $r = m - c$ for $m$ species, and that causes two problems.
-The equations $N v(y) = 0$ do not fix the steady state, since every total
-has its own; and their Jacobian $\partial (N v) / \partial y$ is singular,
+an $\mathbf{N}$ of rank $r = m - c$ for $m$ species, and that causes two problems.
+The equations $\mathbf{N} v(y) = 0$ do not fix the steady state, since every total
+has its own; and their Jacobian $\partial (\mathbf{N} v) / \partial y$ is singular,
 with $c$ zero eigenvalues, so Newton's method fails and the eigenvalues
 cannot be used to judge stability.
 
 \paragraph{Conservation analysis.} \code{antimony.conservation(model)}
 finds the conservation laws and splits the species in two
 \ref{ref:reder}, \ref{ref:sauro}, \ref{ref:vallab}. The \emph{independent}
-species are $r$ species whose rows of $N$ are linearly independent; their
-rows form the reduced stoichiometry matrix $N_R$ ($r$ rows). Each of the
-$c$ \emph{dependent} species has a row of $N$ that is a combination of the
-independent rows, $N_0 = L_0 N_R$. Ordering the independent species first,
+species are $r$ species whose rows of $\mathbf{N}$ are linearly independent; their
+rows form the reduced stoichiometry matrix $\mathbf{N}_R$ ($r$ rows). Each of the
+$c$ \emph{dependent} species has a row of $\mathbf{N}$ that is a combination of the
+independent rows, $\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R$. Ordering the independent species first,
 \[
-  N = \begin{bmatrix} N_R \\ N_0 \end{bmatrix}
-    = \begin{bmatrix} I \\ L_0 \end{bmatrix} N_R = L\, N_R ,
+  \mathbf{N} = \begin{bmatrix} \mathbf{N}_R \\ \mathbf{N}_0 \end{bmatrix}
+    = \begin{bmatrix} \mathbf{I} \\ \mathbf{L}_0 \end{bmatrix} \mathbf{N}_R = \mathbf{L}\, \mathbf{N}_R ,
 \]
-where $L$ is the \emph{link matrix}. The conservation laws are the rows of
-$\Gamma = [\,-L_0 \;\; I\,]$, since $\Gamma L = -L_0 + L_0 = 0$ and so
-$\Gamma N = 0$. With $T = \Gamma y_0$, the totals in the initial values,
+where $\mathbf{L}$ is the \emph{link matrix}. The conservation laws are the rows of
+$\mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,]$, since $\mathbf{\Gamma} \mathbf{L} = -\mathbf{L}_0 + \mathbf{L}_0 = 0$ and so
+$\mathbf{\Gamma} \mathbf{N} = 0$. With $T = \mathbf{\Gamma} y_0$, the totals in the initial values,
 \[
-  y_{\mathrm{dep}} = L_0\, y_{\mathrm{ind}} + T ,
+  y_{\mathrm{dep}} = \mathbf{L}_0\, y_{\mathrm{ind}} + T ,
 \]
 so the independent species determine the dependent ones.
 
-The module chooses the independent species by QR factorisation of $N^T$
-with column pivoting (\code{linalg.qrp}, LAPACK's \code{dgeqp3}), as
-Vallabhajosyula, Chickarmane and Sauro describe \ref{ref:vallab}.
-The factorisation $N^T P = Q R$ takes the columns of $N^T$, the species'
-rows of $N$, largest first, and the diagonal of $R$ decreases in size: the
-first $r$ entries are clearly non-zero and the rest are zero to rounding,
-which gives the rank. The first $r$ pivoted species are independent. Writing
+\paragraph{Finding the independent species.} Which species are independent
+is a question about the rows of $\mathbf{N}$: a species is dependent when its
+row is a linear combination of the rows of other species. Gaussian
+elimination answers it in exact arithmetic, but in floating point it has to
+decide whether a small number is a rounding error or a genuine entry, and on
+large networks it decides badly. The module uses QR factorisation with
+column pivoting instead (\code{linalg.qrp}, LAPACK's \code{dgeqp3}), as
+Vallabhajosyula, Chickarmane and Sauro describe \ref{ref:vallab}; it is the
+standard reliable way of finding the rank of a matrix and which of its
+columns are independent.
+
+A QR factorisation writes a matrix $\mathbf{A}$ as $\mathbf{Q}\mathbf{R}$,
+where the columns $q_1, q_2, \ldots$ of $\mathbf{Q}$ are orthonormal and
+$\mathbf{R}$ is upper triangular. Column $k$ of $\mathbf{A}$ is then
 \[
-  R = \begin{bmatrix} R_{11} & R_{12} \\ 0 & 0 \end{bmatrix}
+  a_k = R_{1k}\, q_1 + R_{2k}\, q_2 + \cdots + R_{kk}\, q_k ,
 \]
-with $R_{11}$ of size $r \times r$ and $Q_1$ the first $r$ columns of $Q$,
-the independent rows of $N$ are $R_{11}^T Q_1^T$ and the dependent ones
-$R_{12}^T Q_1^T$, so
+so the first $k$ columns of $\mathbf{A}$ span the same space as
+$q_1, \ldots, q_k$, and $|R_{kk}|$ is the length of the part of $a_k$ that
+is not a combination of $a_1, \ldots, a_{k-1}$: the part left over after
+projecting the earlier columns out, as in Gram--Schmidt orthogonalisation.
+$R_{kk} = 0$ says exactly that $a_k$ depends on the columns before it.
+Applied to $\mathbf{A} = \mathbf{N}^T$, whose columns are the species' rows
+of $\mathbf{N}$, the diagonal of $\mathbf{R}$ measures how much each
+species' row adds to the rows before it.
+
+The order of the columns matters, and column pivoting chooses it: at step
+$k$ the factorisation takes, from the columns not yet used, the one with the
+largest part left over, and moves it to position $k$. A permutation
+$\mathbf{P}$ records the order, $\mathbf{N}^T \mathbf{P} = \mathbf{Q}
+\mathbf{R}$, and \code{linalg.qrp} returns it as the list \code{p} of
+species in the order taken. Because the largest is always taken first, the
+diagonal entries decrease in size: the first $r$ are clearly non-zero, and
+after them comes a gap to entries that are zero up to rounding. The module
+counts as non-zero the entries larger than $\max(m, n)\,\epsilon\,
+|R_{11}|$, with $\epsilon \approx 2.2 \times 10^{-16}$, which gives the
+rank $r$; the first $r$ species taken are independent and the other $c = m -
+r$ are dependent. Without pivoting, a dependent species could come early, and
+the small entries it leaves would be mixed in among the genuine ones.
+
+The link matrix follows from the same factorisation. Ordering the
+independent species first, $\mathbf{N}^T \mathbf{P} = [\,\mathbf{N}_R^T
+\;\; \mathbf{N}_0^T\,]$, and splitting $\mathbf{R}$ after its first $r$ rows
+and columns,
 \[
-  L_0 = (R_{11}^{-1} R_{12})^T ,
+  \mathbf{R} = \begin{bmatrix} \mathbf{R}_{11} & \mathbf{R}_{12} \\ 0 & 0 \end{bmatrix} ,
 \]
-one triangular solve. Entries within $10^{-10}$ of a whole number are
-rounded to it, since for integer stoichiometry they are integers. The
-record lists both sets of species in the model's order, with \code{link}
-and \code{gamma} indexed by species in that order.
+with $\mathbf{R}_{11}$ of size $r \times r$ (its last rows are zero to
+rounding, which is what the rank says), only the first $r$ columns
+$\mathbf{Q}_1$ of $\mathbf{Q}$ take part:
+\[
+  [\,\mathbf{N}_R^T \;\; \mathbf{N}_0^T\,]
+    = [\,\mathbf{Q}_1 \mathbf{R}_{11} \;\; \mathbf{Q}_1 \mathbf{R}_{12}\,] .
+\]
+$\mathbf{R}_{11}$ is triangular with a non-zero diagonal, so it can be
+inverted: the first block gives $\mathbf{Q}_1 = \mathbf{N}_R^T
+\mathbf{R}_{11}^{-1}$, and putting that into the second gives
+$\mathbf{N}_0^T = \mathbf{N}_R^T \mathbf{R}_{11}^{-1} \mathbf{R}_{12}$.
+Transposing,
+\[
+  \mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R ,
+  \qquad
+  \mathbf{L}_0 = (\mathbf{R}_{11}^{-1} \mathbf{R}_{12})^T ,
+\]
+which costs one triangular solve, $\mathbf{R}_{11} \backslash
+\mathbf{R}_{12}$. Then $\mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\;
+\mathbf{I}\,]$, with its columns put back in the species' order. For
+integer stoichiometry the entries of $\mathbf{L}_0$ are integers, apart from
+rounding errors of the solve, so entries within $10^{-10}$ of a whole number
+are rounded to it. The record lists both sets of species in the model's
+order, with \code{link} and \code{gamma} indexed by species in that order.
+
+The function \code{conservation_matrix} in the next program does these
+steps one at a time, for a pathway that uses ATP and NAD as cofactors, and
+checks its result against \code{antimony.conservation}. The program also
+prints the diagonal of $\mathbf{R}$ next to the species in the order the
+factorisation took them.
+
+\ex{conservation_qr.sci}
+\begin{axonout}
+      J0  J1  J2  J3  J4  J5
+S1     1  -1   0   0   0   0
+ATP    0  -1   0   1   0   0
+S2     0   1  -1   0   0   0
+ADP    0   1   0  -1   0   0
+NAD    0   0  -1   0   0   1
+S3     0   0   1  -1   0   0
+NADH   0   0   1   0   0  -1
+S4     0   0   0   1  -1   0
+      |R[k, k]|
+S1       1.4142
+NAD      1.4142
+S4       1.4142
+ADP      1.0000
+S2       0.8660
+NADH     0.0000
+then: {"S3", "ATP"}
+independent: {"S1", "NAD", "S4", "ADP", "S2"}
+dependent: {"NADH", "S3", "ATP"}
+S1  ATP  S2  ADP  NAD  S3  NADH  S4
+ 0    0   0    0    1   0     1   0
+ 0    0   1   -1    0   1     0   0
+ 0    1   0    1    0   0     0   0
+largest entry of Gamma N: 0.0
+NAD + NADH = 1.5
+S2 - ADP + S3 = -1.0
+ATP + ADP = 3.0
+same as antimony.conservation: true
+\end{axonout}
+
+The diagonal shows the gap: five entries between 0.87 and 1.41, then zero,
+so $\mathbf{N}$ has rank 5 and the eight species obey three conservation
+laws. $\mathbf{R}$ has only six rows, one per reaction, since a matrix with
+six columns has rank at most six, so the last two species, \code{S3} and
+\code{ATP}, have no diagonal entry and are dependent too. \code{NADH} is
+dependent because its row of $\mathbf{N}$ is minus the row of \code{NAD},
+taken before it. Two of the laws are the ones expected, the cofactor pairs
+$\mathrm{NAD} + \mathrm{NADH}$ and $\mathrm{ATP} + \mathrm{ADP}$. The third,
+$\mathrm{S2} - \mathrm{ADP} + \mathrm{S3}$, is less obvious; added to the
+second it gives $\mathrm{ATP} + \mathrm{S2} + \mathrm{S3} = 2$: the
+phosphate group that \code{J1} takes from ATP rides on \code{S2} and
+\code{S3} until \code{J3} gives it back. Finding laws like this one, which
+are easy to miss by eye in a large network, is what the analysis is for.
+The rows of $\mathbf{\Gamma}$ are one basis of the conservation laws: any
+combination of laws is a law as well, and the QR factorisation picks the
+basis that has a single dependent species in each row. That is also why a
+total can be negative, as the third is here: it is the total of a
+combination, not an amount of anything.
 
 \paragraph{The reduced steady state.} \code{steady_state} solves for the
 $r$ independent species only. For a trial $y_{\mathrm{ind}}$ it fills in
-$y_{\mathrm{dep}} = L_0 y_{\mathrm{ind}} + T$ and evaluates the rates of
-change of the independent species, $N_R\, v(y)$. Those $r$ equations in $r$
+$y_{\mathrm{dep}} = \mathbf{L}_0 y_{\mathrm{ind}} + T$ and evaluates the rates of
+change of the independent species, $\mathbf{N}_R\, v(y)$. Those $r$ equations in $r$
 unknowns have the Jacobian
 \[
-  J_R = N_R \, \frac{\partial v}{\partial y}\, L ,
+  \mathbf{J}_R = \mathbf{N}_R \, \frac{\partial v}{\partial y}\, \mathbf{L} ,
 \]
 the \emph{reduced Jacobian}, which is not singular at an isolated steady
 state. This is the standard method, and the default
@@ -3694,29 +3802,29 @@ J1: 1.0  1.0
 J3: 0.0  1.0
 \end{axonout}
 
-$L_0 = [\,0 \;\; {-1} \;\; 0\,]$ says that $E = -ES + T$: the conservation
+$\mathbf{L}_0 = [\,0 \;\; {-1} \;\; 0\,]$ says that $E = -ES + T$: the conservation
 law is \code{E + ES}, with total 1.
 
-\paragraph{The kernel matrix.} The same analysis of the columns of $N$
-describes the fluxes. A steady state has $N J = 0$, so its fluxes $J$ lie
-in the null space, or kernel, of $N$, of dimension $n - r$ for $n$
+\paragraph{The kernel matrix.} The same analysis of the columns of $\mathbf{N}$
+describes the fluxes. A steady state has $\mathbf{N} J = 0$, so its fluxes $J$ lie
+in the null space, or kernel, of $\mathbf{N}$, of dimension $n - r$ for $n$
 reactions. \code{antimony.kernel(model)} splits the reactions in two
-\ref{ref:reder}: QR factorisation of $N$ with column pivoting,
-$N P = Q R$, takes the reactions' columns largest first, and the first $r$
+\ref{ref:reder}: QR factorisation of $\mathbf{N}$ with column pivoting,
+$\mathbf{N} \mathbf{P} = \mathbf{Q} \mathbf{R}$, takes the reactions' columns largest first, and the first $r$
 pivoted are the \emph{dependent} reactions; the fluxes of the other $n - r$,
 the \emph{independent} ones, can be chosen freely. With the dependent
-reactions first, $N = [\,N_D \;\; N_I\,] = Q_1 [\,R_{11} \;\; R_{12}\,]$,
-so $N J = Q_1 (R_{11} J_D + R_{12} J_I) = 0$ gives
+reactions first, $\mathbf{N} = [\,\mathbf{N}_D \;\; \mathbf{N}_I\,] = \mathbf{Q}_1 [\,\mathbf{R}_{11} \;\; \mathbf{R}_{12}\,]$,
+so $\mathbf{N} J = \mathbf{Q}_1 (\mathbf{R}_{11} J_D + \mathbf{R}_{12} J_I) = 0$ gives
 \[
-  J_D = K_0\, J_I , \qquad K_0 = -R_{11}^{-1} R_{12} ,
+  J_D = \mathbf{K}_0\, J_I , \qquad \mathbf{K}_0 = -\mathbf{R}_{11}^{-1} \mathbf{R}_{12} ,
   \qquad
-  J = \begin{bmatrix} K_0 \\ I \end{bmatrix} J_I = K J_I ,
+  J = \begin{bmatrix} \mathbf{K}_0 \\ \mathbf{I} \end{bmatrix} J_I = \mathbf{K} J_I ,
 \]
-where $K$, with $N K = 0$, is the \emph{kernel matrix}. (It is not the
-$K$ of the augmented system below, a basis of the null space of $N^T$.)
+where $\mathbf{K}$, with $\mathbf{N} \mathbf{K} = 0$, is the \emph{kernel matrix}. (It is not the
+$\mathbf{K}$ of the augmented system below, a basis of the null space of $\mathbf{N}^T$.)
 The record lists both sets of reactions in the model's order, with
 \code{K} indexed by reaction in that order, as \code{link} is by species.
-The last lines of the example print $K_0$ for the enzyme: with $J_2$
+The last lines of the example print $\mathbf{K}_0$ for the enzyme: with $J_2$
 (the release of $S$ from $ES$) and $J_4$ (the outflow of $P$) as the
 independent fluxes, $J_0 = J_3 = J_4$ and $J_1 = J_2 + J_4$, so the
 binding step carries the throughput plus whatever cycles back.
@@ -3727,47 +3835,47 @@ itself, \code{antimony.kernel(N)} for a matrix \code{N}, and name its rows
 
 \paragraph{Without choosing species: the augmented system.}
 \code{method = "augmented"} solves for every species instead. Let the
-columns of $K$ be an orthonormal basis of the null space of $N^T$
+columns of $\mathbf{K}$ be an orthonormal basis of the null space of $\mathbf{N}^T$
 (\code{linalg.null(N')}, from the singular value decomposition), so that
-$K^T N = 0$ and $K^T K = I$; the totals are then $K^T y$, and the module
+$\mathbf{K}^T \mathbf{N} = 0$ and $\mathbf{K}^T \mathbf{K} = \mathbf{I}$; the totals are then $\mathbf{K}^T y$, and the module
 solves the square system
 \[
-  F(y) = N v(y) + K \,(K^T y - K^T y_0) = 0 .
+  F(y) = \mathbf{N} v(y) + \mathbf{K} \,(\mathbf{K}^T y - \mathbf{K}^T y_0) = 0 .
 \]
-The first term lies in the column space of $N$ and the second in the
-column space of $K$, which are orthogonal complements. So $F(y) = 0$ only
-when both terms vanish: the rates balance, $N v(y) = 0$, and the totals
-keep their values, $K^T y = K^T y_0$. The Jacobian
+The first term lies in the column space of $\mathbf{N}$ and the second in the
+column space of $\mathbf{K}$, which are orthogonal complements. So $F(y) = 0$ only
+when both terms vanish: the rates balance, $\mathbf{N} v(y) = 0$, and the totals
+keep their values, $\mathbf{K}^T y = \mathbf{K}^T y_0$. The Jacobian
 \[
-  J_F = N \frac{\partial v}{\partial y} + K K^T
+  \mathbf{J}_F = \mathbf{N} \frac{\partial v}{\partial y} + \mathbf{K} \mathbf{K}^T
 \]
-is not singular exactly when $J_R$ is not. If $J_F z = 0$, multiplying by
-$K^T$ gives $K^T z = 0$, so $z$ lies in the column space of $N$, which is
-that of $L$: $z = L z_R$. Then $J_F z = L N_R \,(\partial v / \partial y)\,
-L z_R = L J_R z_R = 0$, and since $L$ has full column rank, $J_R z_R = 0$.
-The converse follows the same way. More precisely, $J_F K = N
-(\partial v / \partial y) K + K$, whose first term lies in the column space
-of $L$, so in the basis made of the columns of $L$ and of $K$
+is not singular exactly when $\mathbf{J}_R$ is not. If $\mathbf{J}_F z = 0$, multiplying by
+$\mathbf{K}^T$ gives $\mathbf{K}^T z = 0$, so $z$ lies in the column space of $\mathbf{N}$, which is
+that of $\mathbf{L}$: $z = \mathbf{L} z_R$. Then $\mathbf{J}_F z = \mathbf{L} \mathbf{N}_R \,(\partial v / \partial y)\,
+\mathbf{L} z_R = \mathbf{L} \mathbf{J}_R z_R = 0$, and since $\mathbf{L}$ has full column rank, $\mathbf{J}_R z_R = 0$.
+The converse follows the same way. More precisely, $\mathbf{J}_F \mathbf{K} = \mathbf{N}
+(\partial v / \partial y) \mathbf{K} + \mathbf{K}$, whose first term lies in the column space
+of $\mathbf{L}$, so in the basis made of the columns of $\mathbf{L}$ and of $\mathbf{K}$
 \[
-  J_F \,[\,L \;\; K\,] = [\,L \;\; K\,]
-  \begin{bmatrix} J_R & X \\ 0 & I \end{bmatrix}
+  \mathbf{J}_F \,[\,\mathbf{L} \;\; \mathbf{K}\,] = [\,\mathbf{L} \;\; \mathbf{K}\,]
+  \begin{bmatrix} \mathbf{J}_R & \mathbf{X} \\ 0 & \mathbf{I} \end{bmatrix}
 \]
-for some matrix $X$. The eigenvalues of $J_F$ are therefore those of $J_R$
-and $c$ eigenvalues equal to 1: the term $K K^T$ turns the $c$ zero
-eigenvalues of $N \partial v / \partial y$ into ones and leaves the others,
+for some matrix $\mathbf{X}$. The eigenvalues of $\mathbf{J}_F$ are therefore those of $\mathbf{J}_R$
+and $c$ eigenvalues equal to 1: the term $\mathbf{K} \mathbf{K}^T$ turns the $c$ zero
+eigenvalues of $\mathbf{N} \partial v / \partial y$ into ones and leaves the others,
 which describe the dynamics within a conservation class, unchanged. (For
-the enzyme model above, $J_F$'s eigenvalues are $-7.3504$, $-0.8163$,
+the enzyme model above, $\mathbf{J}_F$'s eigenvalues are $-7.3504$, $-0.8163$,
 $-0.5$ and $1$.)
 
 The two methods find the same steady state. The reduced system has $c$
 fewer unknowns, so each Newton iteration costs $c$ fewer evaluations of the
-rates, and it gives $J_R$, the matrix whose eigenvalues decide stability.
+rates, and it gives $\mathbf{J}_R$, the matrix whose eigenvalues decide stability.
 The augmented system needs no choice of independent species and no link
 matrix: only a basis of the null space, and a residual that is one line of
 code. References \ref{ref:reder}--\ref{ref:vallab} reduce the system. The
 closest form we know of in the literature is the ``system augmented by
 conservation laws'' of algebraic reaction network theory: for each
-conservation law $w$ (a row of $\Gamma$), the steady-state equation of the
+conservation law $w$ (a row of $\mathbf{\Gamma}$), the steady-state equation of the
 first species with a non-zero entry in $w$ is replaced by
 $w y - w y_0 = 0$, which gives a square system whose positive roots are the
 steady states in the conservation class \ref{ref:augmented}. It is used
@@ -3776,13 +3884,13 @@ choice of which equations to replace; the orthogonal term above avoids that
 choice.
 
 \paragraph{Jacobians and stability.} \code{antimony.jacobian(model, y)}
-returns $\partial (N v) / \partial y$ at the species' values \code{y}, by
+returns $\partial (\mathbf{N} v) / \partial y$ at the species' values \code{y}, by
 central differences of the right-hand side, with one row and column per
 species; with conservation laws it is singular, as the zero among its
-eigenvalues shows. \code{antimony.reduced_jacobian(model, y)} returns $J_R$,
+eigenvalues shows. \code{antimony.reduced_jacobian(model, y)} returns $\mathbf{J}_R$,
 with rows and columns in the order of the independent species. A steady
-state is stable when every eigenvalue of $J_R$ has a negative real part, as
-here. The eigenvalues of $J_R$ are those of the full Jacobian without its
+state is stable when every eigenvalue of $\mathbf{J}_R$ has a negative real part, as
+here. The eigenvalues of $\mathbf{J}_R$ are those of the full Jacobian without its
 $c$ zeros.
 
 \paragraph{Further reading.}
@@ -3819,10 +3927,11 @@ theorem): control is shared out, and it is the elasticities that decide how.
 
 The control coefficients follow from the elasticities and the structure of
 the network (reference \ref{ref:reder}). With the unscaled elasticities
-$\varepsilon = \partial v / \partial s$ and the reduced stoichiometry $N_R$
-and link matrix $L$ of the last section,
+$\boldsymbol{\varepsilon} = \partial v / \partial s$ and the reduced stoichiometry $\mathbf{N}_R$
+and link matrix $\mathbf{L}$ of the last section,
 \[
-C^{S} = -L\,(N_R\,\varepsilon\,L)^{-1} N_R, \qquad C^{J} = I + \varepsilon\,C^{S},
+\mathbf{C}^{S} = -\mathbf{L}\,(\mathbf{N}_R\,\boldsymbol{\varepsilon}\,\mathbf{L})^{-1} \mathbf{N}_R,
+\qquad \mathbf{C}^{J} = \mathbf{I} + \boldsymbol{\varepsilon}\,\mathbf{C}^{S},
 \]
 which holds with branches, cycles and conserved moieties alike; scaling by
 the fluxes and concentrations gives the coefficients above.
@@ -3905,14 +4014,14 @@ Function & Result \\
 \code{read(path)} & The model in the file at \code{path} \\
 \addlinespace
 \multicolumn{2}{@{}l}{\emph{The model's parts}} \\*
-\code{species_names(model)} & The floating species: the rows of $N$ and the
+\code{species_names(model)} & The floating species: the rows of $\mathbf{N}$ and the
   components of \code{y} \\
 \code{boundary_names(model)} & The boundary species (\code{$X}), held
   fixed \\
-\code{reaction_names(model)} & The reactions: the columns of $N$ \\
+\code{reaction_names(model)} & The reactions: the columns of $\mathbf{N}$ \\
 \code{parameter_names(model)} & The parameters, then the boundary species,
   then the compartments: the components of \code{p} \\
-\code{stoichiometry(model)} & The stoichiometry matrix $N$, one row per
+\code{stoichiometry(model)} & The stoichiometry matrix $\mathbf{N}$, one row per
   species and one column per reaction \\
 \code{volumes(model)} & The size of each species' compartment (1 for none),
   in the order of \code{y} \\
@@ -3921,7 +4030,7 @@ Function & Result \\
 \addlinespace
 \multicolumn{2}{@{}l}{\emph{The equations as functions}} \\*
 \code{rhs(model)} & The right-hand side \code{f(t, y, p)} of
-  $dy/dt = N v(y)$, for \code{ode.solve} with \code{params = p}; compiled by
+  $dy/dt = \mathbf{N} v(y)$, for \code{ode.solve} with \code{params = p}; compiled by
   the JIT \\
 \code{rates(model)} & The reaction rates as a function \code{v(y, p)} \\
 \code{rhs_text(model)} & The text of the function \code{rhs} makes \\
@@ -3947,7 +4056,7 @@ Function & Result \\
 \addlinespace
 \multicolumn{2}{@{}l}{\emph{Steady states and structure}
   (Sections~\ref{sec:steady} and \ref{sec:conservation})} \\*
-\code{steady_state(model)} & The species' values with $N v(y) = 0$ and the
+\code{steady_state(model)} & The species' values with $\mathbf{N} v(y) = 0$ and the
   conserved totals of \code{initial(model)}: a record with \code{y},
   \code{species}, \code{status}, \code{fnorm}, \code{nfev} and
   \code{niters}; keywords \code{guess}, \code{method} (\code{"reduced"} or
@@ -3956,9 +4065,9 @@ Function & Result \\
   \code{Conservation} record; also takes a stoichiometry matrix \\
 \code{kernel(model)} & The independent fluxes and the kernel matrix: a
   \code{Kernel} record; also takes a stoichiometry matrix \\
-\code{jacobian(model, y)} & $\partial (N v) / \partial y$ at \code{y},
+\code{jacobian(model, y)} & $\partial (\mathbf{N} v) / \partial y$ at \code{y},
   one row and column per species \\
-\code{reduced_jacobian(model, y)} & $N_R\, (\partial v / \partial y)\, L$
+\code{reduced_jacobian(model, y)} & $\mathbf{N}_R\, (\partial v / \partial y)\, \mathbf{L}$
   at \code{y}, whose eigenvalues decide stability \\
 \addlinespace
 \multicolumn{2}{@{}l}{\emph{Metabolic control analysis}
@@ -4004,12 +4113,12 @@ Record & Fields \\
 \code{Conservation} & \code{independent} and \code{dependent} (species'
   names), \code{ind} and \code{dep} (their positions in \code{y}),
   \code{Nr} (the reduced stoichiometry matrix), \code{L0} (with
-  $N_{\mathrm{dep}} = L_0 N_R$), \code{link} (the link matrix $L$, with
-  $N = L N_R$) and \code{gamma} (the conservation laws, $\Gamma N = 0$) \\
+  $\mathbf{N}_{\mathrm{dep}} = \mathbf{L}_0 \mathbf{N}_R$), \code{link} (the link matrix $\mathbf{L}$, with
+  $\mathbf{N} = \mathbf{L} \mathbf{N}_R$) and \code{gamma} (the conservation laws, $\mathbf{\Gamma} \mathbf{N} = 0$) \\
 \code{Kernel} & \code{independent} and \code{dependent} (reactions' names),
   \code{ind} and \code{dep} (their positions), \code{K0} (with
-  $J_{\mathrm{dep}} = K_0 J_{\mathrm{ind}}$) and \code{K} (the kernel matrix,
-  $N K = 0$) \\
+  $J_{\mathrm{dep}} = \mathbf{K}_0 J_{\mathrm{ind}}$) and \code{K} (the kernel matrix,
+  $\mathbf{N} \mathbf{K} = 0$) \\
 \addlinespace
 \code{Control} & \code{species} and \code{reactions} (names), \code{y} (the
   steady state), \code{J} (its fluxes), \code{elasticities},
