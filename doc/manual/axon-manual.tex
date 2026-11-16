@@ -4109,7 +4109,12 @@ With a single law that is all there is to do; with several, step~1 also
 asks for the columns to be at right angles to each other, which takes
 combining the laws as well. \code{linalg.null(N')} does all of this at
 once, and for this $\mathbf{N}$ it returns the $\mathbf{W}$ below, as the
-program at the end of this example prints. Then
+program at the end of this example prints. With the concentrations as the
+column
+\[
+  \mathbf{y} = \begin{bmatrix} A \\ B \end{bmatrix}
+\]
+(in the order of the rows of $\mathbf{N}$, $A$ first), this gives
 \[
   \mathbf{W} = \frac{1}{\sqrt{2}} \begin{bmatrix} 1 \\ 1 \end{bmatrix} ,
   \qquad
