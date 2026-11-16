@@ -355,6 +355,13 @@ since the IDE started, the newest 50:
 \item \textbf{Clear} forgets them all.
 \end{itemize}
 
+The program sends each figure to the IDE as a description of what to draw,
+not as a picture file, and the IDE draws it, so showing figures writes nothing
+to disk; the history lives in memory and is gone when the IDE closes. Save the
+figures you want to keep with \textbf{Save\ldots}, or from the program with
+\code{plot.save}. A run that shows nothing but saves a PNG file in its folder
+gets that picture in the pane instead.
+
 \paragraph{Interactive charts.} Line, scatter, bar and histogram plots are drawn
 in an interactive chart:
 

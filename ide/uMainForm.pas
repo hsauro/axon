@@ -14,10 +14,11 @@ unit uMainForm;
      trace lines are links: clicking one opens the file at that line. After a
      failed run, the error location gets a wavy underline whose tooltip is
      the error.
-   - The plot pane shows figures from plot.show() as they appear: the IDE
-     sets AXON_SHOW_DIR for the programs it starts, and graphics.show then
-     writes a line #3"show <path>" to stderr. Without one, the pane shows
-     the newest PNG the run saved in its directory.
+   - The plot pane shows figures from plot.show() and drawings from
+     graphics.show/frame as they appear: programs and the REPL are started
+     with the display channel (uProcessRunner), on which axon sends scenes
+     and figure records, not image files. When a run shows nothing, the pane
+     shows the newest PNG the run saved in its directory.
    - The REPL tab drives "axon --repl-protocol" through pipes: a session
      starts on first use in the current file's directory and keeps its
      variables until it is restarted. Send to REPL (Ctrl+Enter) sends the
@@ -162,8 +163,6 @@ type
     FCheckText: string;
     FCheckOutput: string;
     FCheckAgain: Boolean;
-    // Figures from plot.show()
-    FShowDir: string;
     // Layout remembered between sessions
     FPlotPane: TLayout;
     FNormalBounds: TRect;      // the window's bounds when last not maximized
@@ -200,11 +199,11 @@ type
     // Preferences
     FPrefs: TIdePreferences;
     FFigureShown: Boolean;     // since the current run or REPL command started
-    // Animation frames (graphics.frame): the newest frame's file, whether a
-    // display of it is queued, and whether the last history entry is the
-    // current animation (updated in place by each frame).
-    FAnimPending: string;          // a frame's file (marker lines), or ''
-    FAnimBytes: TBytes;            // a frame's scene (display channel), or nil
+    // Animation frames (graphics.frame): the newest full frame not yet
+    // drawn, whether a display of it is queued, and whether the last
+    // history entry is the current animation (updated in place by each
+    // frame).
+    FAnimBytes: TBytes;            // a frame's encoded scene, or nil
     FAnimQueued: Boolean;
     FAnimActive: Boolean;
     procedure BuildUI;
@@ -241,7 +240,6 @@ type
     procedure StartCheck(Doc: TDocument);
     procedure CheckOutput(Kind: TOutputKind; const Text: string);
     procedure CheckExit(ExitCode: Integer);
-    procedure SetupShowDir;
     procedure RecordNormalBounds;
     procedure ShowWelcome;
     procedure CloseWelcome;
@@ -295,8 +293,6 @@ type
     function IsFullScreen: Boolean;
     procedure LoadLayout(Ini: TCustomIniFile);
     procedure SaveLayout(Ini: TCustomIniFile);
-    function TryShowFigure(const Line: string): Boolean;
-    function TryShowFrame(const Line: string): Boolean;
     procedure ShowPendingFrame;
     function AnimEntry(Make: Boolean): TFigureEntry;
     procedure ApplyPendingFrame;
@@ -555,7 +551,6 @@ begin
   FDocsHistory := TStringList.Create;
   FPal := PanePalette(False);
   FPrefs := TIdePreferences.Defaults;
-  SetupShowDir;
   FJitCompiled := TStringList.Create;
   FJitRejected := TStringList.Create;
   BuildUI;
@@ -626,12 +621,6 @@ begin
   FJitWhere.Free;
   FOutput.Free;
   FReplOutput.Free;
-  // The figures of this session are temporary.
-  if (FShowDir <> '') and TDirectory.Exists(FShowDir) then
-    try
-      TDirectory.Delete(FShowDir, True);
-    except
-    end;
   if not FSettingsSaved then
     SaveSettings;
   FRecent.Free;
@@ -1761,7 +1750,7 @@ var
   Head, Msg, Text: string;
   Asks: Boolean;
 begin
-  if (Kind = okStdErr) and (TryShowFrame(Line) or TryShowFigure(Line) or TryJitReport(Line)) then
+  if (Kind = okStdErr) and TryJitReport(Line) then
     Exit;
   // A line ending in U+0005 is input()'s prompt: the program waits.
   Asks := (Kind = okStdOut) and Line.EndsWith(#5);
@@ -2013,9 +2002,10 @@ begin
   begin
     if Kind = Axon.Scene.DisplayFrame then
     begin
-      // Only the newest full frame is decoded and drawn; see TryShowFrame.
+      // Only the newest full frame is decoded and drawn: frames can arrive
+      // faster than they can be drawn, and the animation then skips frames
+      // rather than falling behind.
       FAnimBytes := Payload;
-      FAnimPending := '';
     end
     else
       AddToFrame(Payload);
@@ -2114,10 +2104,7 @@ begin
     try
       FPlotImage.Bitmap.LoadFromFile(Path);
       ShowOnly(FPlotImage);
-      if SameFileName(ExtractFileDir(Path), FShowDir) then
-        What := 'plot.show'
-      else
-        What := ExtractFileName(Path);
+      What := ExtractFileName(Path);
     except
       FPlotCaption.Text := 'Cannot show ' + ExtractFileName(Path);
       Exit;
@@ -2465,8 +2452,6 @@ begin
         FReplOutput.ScrollToEnd;
         FReplEdit.SetFocus;
       end
-      else if TryShowFrame(L) or TryShowFigure(L) then
-        // shown in the plot pane
       else if L.StartsWith(#3'jit ') then
         // a JIT report line: not shown in the REPL
       else if Kind = okStdErr then
@@ -2967,7 +2952,9 @@ begin
     if FHelpRunner.Running then
       Exit;   // the previous lookup is still being stopped; F1 again
     try
-      FHelpRunner.Start(Exe, ['--repl-protocol'], Dir, True);
+      // With the display channel (and no OnDisplay), a figure shown by an
+      // imported module is dropped instead of opening an image viewer.
+      FHelpRunner.Start(Exe, ['--repl-protocol'], Dir, True, True);
     except
       on E: Exception do
       begin
@@ -3027,68 +3014,7 @@ begin
   ShowHelp(Text);
 end;
 
-{ ---------------- figures from plot.show() ---------------- }
-
-{ A folder for this IDE's figures, passed to every axon it starts through
-  the environment (child processes inherit it). }
-procedure TfrmMain.SetupShowDir;
-var
-  D: string;
-begin
-  // Folders left by an IDE that did not close normally, after a day.
-  try
-    for D in TDirectory.GetDirectories(TPath.GetTempPath, 'AxonIDE-*') do
-      if TDirectory.GetLastWriteTime(D) < IncDay(Now, -1) then
-        TDirectory.Delete(D, True);
-  except
-  end;
-  FShowDir := TPath.Combine(TPath.GetTempPath, Format('AxonIDE-%d', [MainThreadID]));
-  try
-    ForceDirectories(FShowDir);
-  except
-    FShowDir := '';
-    Exit;
-  end;
-{$IFDEF MSWINDOWS}
-  SetEnvironmentVariable('AXON_SHOW_DIR', PChar(FShowDir));
-{$ELSE}
-  setenv('AXON_SHOW_DIR', PAnsiChar(UTF8String(FShowDir)), 1);
-{$ENDIF}
-end;
-
-{ True (and the figure shown) for a line #3"show <path>". }
-function TfrmMain.TryShowFigure(const Line: string): Boolean;
-const
-  Marker = #3'show ';
-begin
-  Result := Line.StartsWith(Marker);
-  if not Result then
-    Exit;
-  AddFigure(Line.Substring(Length(Marker)).Trim);
-  FFigureShown := True;
-end;
-
-(* A frame of an animation (graphics.frame): remember it as the newest and
-   queue one display, unless one is already queued. Lines arrive faster than
-   images can be loaded when the IDE is busy; the queued display then shows
-   only the newest frame, so the animation skips frames rather than falling
-   behind and playing in bursts. *)
-function TfrmMain.TryShowFrame(const Line: string): Boolean;
-const
-  Marker = #3'frame ';
-begin
-  Result := Line.StartsWith(Marker);
-  if not Result then
-    Exit;
-  FAnimPending := Line.Substring(Length(Marker)).Trim;
-  FAnimBytes := nil;
-  FFigureShown := True;
-  if not FAnimQueued then
-  begin
-    FAnimQueued := True;
-    TThread.ForceQueue(nil, ShowPendingFrame);
-  end;
-end;
+{ ---------------- animation frames (graphics.frame) ---------------- }
 
 (* The animation's entry in the figure history: the last, which each frame
    replaces or adds to. With Make, one is added when there is none. *)
@@ -3154,7 +3080,6 @@ begin
     end;
   end;
   ApplyPendingFrame;
-  FAnimPending := '';
   E := AnimEntry(True);
   if E.Scene = nil then
   begin
@@ -3174,19 +3099,14 @@ end;
 
 (* Shows the animation's current frame. The animation has one entry in the
    figure history, the last, which each frame replaces (or adds to); the
-   newest full frame waiting is decoded first, and older ones never are.
-   A frame reported as a file (marker lines) is loaded into the image, and
-   skipped if it cannot be read (being rewritten). *)
+   newest full frame waiting is decoded first, and older ones never are. *)
 procedure TfrmMain.ShowPendingFrame;
 var
-  Path: string;
   E: TFigureEntry;
 begin
   FAnimQueued := False;
-  Path := FAnimPending;
-  FAnimPending := '';
   ApplyPendingFrame;
-  E := AnimEntry(Path <> '');
+  E := AnimEntry(False);
   if E = nil then
     Exit;
   if FFigureIndex <> FFigures.Count - 1 then
@@ -3196,20 +3116,7 @@ begin
   end;
   if FPlotGrid <> nil then
     FreeAndNil(FPlotGrid);
-  if Path <> '' then
-  begin
-    FreeAndNil(E.Scene);
-    FShownScene := nil;
-    E.Path := Path;
-    try
-      FPlotImage.Bitmap.LoadFromFile(Path);
-    except
-      Exit;
-    end;
-    if not FPlotImage.Visible then
-      ShowOnly(FPlotImage);
-  end
-  else if E.Scene <> nil then
+  if E.Scene <> nil then
   begin
     FShownScene := E.Scene;
     if not FPlotScene.Visible then
