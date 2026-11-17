@@ -3938,7 +3938,7 @@ The full system instead adds the two conditions together, so that
 there are $m$ equations again, and does it in a way that loses nothing. It
 is the system
 \[
-  \mathbf{F}(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y})
+  \mathbf{f}(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y})
     + \mathbf{W} (\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0) = 0 ,
 \]
 $m$ equations in the $m$ unknowns $\mathbf{y}$. Its first term is the rate of
@@ -3982,7 +3982,7 @@ that step~1 below defines. That second term is built in three steps.
   is lost.
 \end{enumerate}
 
-$\mathbf{F}(\mathbf{y})$ is therefore the rate of change plus the part of the change from
+$\mathbf{f}(\mathbf{y})$ is therefore the rate of change plus the part of the change from
 $\mathbf{y}_0$ that the reactions could not have made. It is zero exactly when $\mathbf{y}$
 is a steady state \emph{and} can be reached from $\mathbf{y}_0$: one square system
 that says both things, with no species singled out. Figure~\ref{fig:full-plane} draws all of this for the smallest
@@ -4035,7 +4035,7 @@ example, A $\rightleftharpoons$ B, which the next paragraphs work through by han
   \draw[->, very thick] (1,3) -- (1.5,3.5);
   \node[above right, inner sep=1pt] at (1.5,3.5) {$\mathbf{W}(\mathbf{W}^T\mathbf{y} - \mathbf{W}^T\mathbf{y}_0)$};
   \draw[->, very thick, green!45!black] (1,3) -- (2.5,2.5);
-  \node[green!45!black, right] at (2.5,2.5) {$\mathbf{F}(\mathbf{y})$};
+  \node[green!45!black, right] at (2.5,2.5) {$\mathbf{f}(\mathbf{y})$};
   \draw (1.106,2.894) -- (1.212,3.0) -- (1.106,3.106);
   \fill (1,3) circle (2.2pt);
   \node[left] at (0.95,3) {$\mathbf{y}$};
@@ -4049,21 +4049,62 @@ example, A $\rightleftharpoons$ B, which the next paragraphs work through by han
   it, and nothing moves along it. The rates balance on the line $k_1 A = k_2
   B$, and the steady state is where the two lines cross, at $(1, 2)$.
   (b)~At a trial point $\mathbf{y} = (1, 3)$, which is off the line $A + B =
-  T$, the two terms of $\mathbf{F}(\mathbf{y})$: $\mathbf{N}\mathbf{v}(\mathbf{y})
+  T$, the two terms of $\mathbf{f}(\mathbf{y})$: $\mathbf{N}\mathbf{v}(\mathbf{y})
   = (1, -1)$ along the reaction direction, and the conservation term $0.5\,(1,
   1)$, the error in the total, along $\mathbf{W}$. Their sum is
-  $\mathbf{F}(\mathbf{y}) = (1.5, -0.5)$. Because the two terms are at right
-  angles, $\mathbf{F}$ is zero only where both are: on both lines at once,
+  $\mathbf{f}(\mathbf{y}) = (1.5, -0.5)$. Because the two terms are at right
+  angles, $\mathbf{f}(\mathbf{y})$ is zero only where both are: on both lines at once,
   at the steady state.}
 \label{fig:full-plane}
 \end{figure}
+
+\paragraph{What $\mathbf{W}\mathbf{W}^T$ does.} The matrix
+$\mathbf{W}\mathbf{W}^T$ in the conservation term has a mechanistic meaning.
+Any change $\Delta\mathbf{y}$ in the concentrations can be split into two
+parts,
+\[
+  \Delta\mathbf{y} = (\mathbf{I} - \mathbf{W}\mathbf{W}^T)\,\Delta\mathbf{y}
+    + \mathbf{W}\mathbf{W}^T \Delta\mathbf{y} .
+\]
+The first part is a \emph{redistribution}: material moved from one species
+to another, as when \code{A} is converted into \code{B}, or free enzyme
+\code{E} binds substrate to become \code{ES}. It lies along the columns of
+$\mathbf{N}$, so some combination of reactions can produce it, and it leaves
+every conserved total as it was. The second part is a \emph{change of
+totals}: material added to or taken away from a conserved moiety, as when
+more enzyme is added. No reaction can produce it. $\mathbf{W}\mathbf{W}^T$
+picks out this second part and discards the first, which is why it is
+called the \emph{projection} onto the conserved directions;
+$\mathbf{I} - \mathbf{W}\mathbf{W}^T$ picks out the first. For
+A $\rightleftharpoons$ B, adding one unit of \code{A} splits as
+\[
+  \begin{bmatrix} 1 \\ 0 \end{bmatrix}
+  = \begin{bmatrix} \tfrac12 \\[2pt] -\tfrac12 \end{bmatrix}
+  + \begin{bmatrix} \tfrac12 \\[2pt] \tfrac12 \end{bmatrix} :
+\]
+the total $A + B$ rises by 1, shared equally between the two species (the
+second part, $\mathbf{W}\mathbf{W}^T \Delta\mathbf{y}$), and half a unit of
+\code{B} is converted into \code{A} (the first part). In the conservation
+term $\mathbf{W}\mathbf{W}^T(\mathbf{y} - \mathbf{y}_0)$ the change is the
+whole departure of $\mathbf{y}$ from the starting state, and
+$\mathbf{W}\mathbf{W}^T$ keeps the part of it that no sequence of reactions
+could have caused: for any state the model can actually reach, that part is
+zero. $\mathbf{W}\mathbf{W}^T$ depends on $\mathbf{N}$ alone: every
+orthonormal choice of $\mathbf{W}$ gives the same product, which can also
+be written with the conservation matrix as $\mathbf{\Gamma}^T
+(\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1} \mathbf{\Gamma}$ (see the paragraph
+on $\mathbf{\Gamma}$ below). One caveat: ``at right angles'' is measured
+with ordinary lengths in concentration units, so measuring a species in
+different units would change how a change is split, though not the steady
+state that $\mathbf{f}(\mathbf{y}) = 0$ finds.
 
 The added term also mends the Jacobian. Whatever $\mathbf{y}$ is, the rates of
 change $\mathbf{N} \mathbf{v}(\mathbf{y})$ never point along a conserved direction, so their
 Jacobian cannot produce any change in those directions, and that is why it
 is singular. The added term supplies exactly what is missing: moving $\mathbf{y}$
 along a conserved direction changes it at rate 1 in that direction, and
-moving $\mathbf{y}$ along a reaction direction does not change it at all, so the
+moving $\mathbf{y}$ along a reaction direction does not change it at all, like
+a spring of unit stiffness that acts on the totals alone, so the
 rest of the Jacobian is left as it was (the eigenvalues below make this
 precise). Newton's method then has a non-singular matrix to work with, and
 its steps correct the balances and the totals at the same time.
@@ -4074,7 +4115,7 @@ full method by hand, in this order: the stoichiometry matrix $\mathbf{N}$
 and why its balances alone do not fix the steady state; the conservation
 law and the matrix $\mathbf{W}$ found from it; the conservation term
 $\mathbf{W}(\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0)$; the
-system $\mathbf{F}(\mathbf{y}) = 0$ and its solution; and the Jacobian with
+system $\mathbf{f}(\mathbf{y}) = 0$ and its solution; and the Jacobian with
 and without the added term. A program then checks every number.
 Reaction \code{J1}, \code{A -> B},
 runs at rate $v_1 = k_1 A$, and \code{J2}, \code{B -> A}, at rate $v_2 = k_2
@@ -4125,7 +4166,7 @@ column
 \]
 $\mathbf{W}^T \mathbf{y}$ is the total $A + B$, scaled by $1/\sqrt{2}$ because
 $\mathbf{W}$ has length 1. ($-\mathbf{W}$ would do equally well:
-$\mathbf{W}\mathbf{W}^T$, and so $\mathbf{F}$, is the same for every choice.) With
+$\mathbf{W}\mathbf{W}^T$, and so $\mathbf{f}(\mathbf{y})$, is the same for every choice.) With
 $T = A_0 + B_0$ the total at the start, the conservation term is
 \[
   \mathbf{W} (\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0)
@@ -4140,13 +4181,13 @@ along $(-1, 1)$ or $(1, -1)$, at right angles to it.
 
 \emph{The system.} Adding the two terms, species by species,
 \[
-  \mathbf{F}(\mathbf{y}) = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix}
+  \mathbf{f}(\mathbf{y}) = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix}
        + \frac{A + B - T}{2} \begin{bmatrix} 1 \\ 1 \end{bmatrix}
        = \begin{bmatrix} -v_1 + v_2 + \tfrac12 (A + B - T) \\[2pt]
                           v_1 - v_2 + \tfrac12 (A + B - T) \end{bmatrix} :
 \]
 still two equations in the two unknowns $A$ and $B$. Adding the two
-equations of $\mathbf{F}(\mathbf{y}) = 0$ gives $A + B = T$, and subtracting them gives $v_1 =
+equations of $\mathbf{f}(\mathbf{y}) = 0$ gives $A + B = T$, and subtracting them gives $v_1 =
 v_2$: the repeated balance has been replaced by the conservation law, and
 together they give the steady state $A = k_2 T / (k_1 + k_2)$, $B = k_1 T /
 (k_1 + k_2)$.
@@ -4157,7 +4198,7 @@ k_2)$,
   \mathbf{N} \frac{\partial \mathbf{v}}{\partial \mathbf{y}}
     = \begin{bmatrix} -k_1 & k_2 \\ k_1 & -k_2 \end{bmatrix} ,
   \qquad
-  \mathbf{J}_F = \mathbf{N} \frac{\partial \mathbf{v}}{\partial \mathbf{y}} + \mathbf{W}\mathbf{W}^T
+  \mathbf{J}_f = \mathbf{N} \frac{\partial \mathbf{v}}{\partial \mathbf{y}} + \mathbf{W}\mathbf{W}^T
     = \begin{bmatrix} \tfrac12 - k_1 & \tfrac12 + k_2 \\[2pt]
                       \tfrac12 + k_1 & \tfrac12 - k_2 \end{bmatrix} .
 \]
@@ -4168,7 +4209,7 @@ k_2)$: the zero has become 1, and the other eigenvalue, which is the
 reduced Jacobian $\mathbf{J}_R = -(k_1 + k_2)$ of the reduced method
 (substitute $B = T - A$ into $dA/dt = -k_1 A + k_2 B$), is unchanged. The
 next program builds all of this with $k_1 = 2$, $k_2 = 1$ and $T = 3$, so
-$A = 1$ and $B = 2$, solves $\mathbf{F}(\mathbf{y}) = 0$ with \code{nonlin.solve}, solves it
+$A = 1$ and $B = 2$, solves $\mathbf{f}(\mathbf{y}) = 0$ with \code{nonlin.solve}, solves it
 again with $\mathbf{\Gamma}$ in place of $\mathbf{W}$ (see below), and
 compares the result with \code{antimony.steady_state}.
 
@@ -4185,14 +4226,14 @@ W W':
 0.50  0.50
 steady state: 1.0000  2.0000  A + B = 3.0
 eigenvalues of N dv/dy: -3.0000  0.0000
-eigenvalues of J_F: -3.0000  1.0000
+eigenvalues of J_f: -3.0000  1.0000
 Gamma: 1.0000  1.0000
 steady state with Gamma: 1.0000  2.0000
 eigenvalues with Gamma: -3.0000  2.0000
 antimony: 1.0000  2.0000
 \end{axonout}
 
-The whole method is the one line of \code{F}: no species are chosen as
+The whole method is the one line of \code{f}: no species are chosen as
 dependent, and no link matrix is formed.
 
 \paragraph{The conservation matrix $\mathbf{\Gamma}$ in place of
@@ -4208,7 +4249,7 @@ as the columns of $\mathbf{W}$: those at right angles to every column of
 $\mathbf{N}$. They are not of length 1 or at right angles to each other,
 but the argument above did not need that. So
 \[
-  \mathbf{F}_\Gamma(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{\Gamma}^T (\mathbf{\Gamma} \mathbf{y} -
+  \mathbf{f}_\Gamma(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{\Gamma}^T (\mathbf{\Gamma} \mathbf{y} -
   \mathbf{\Gamma} \mathbf{y}_0) = 0
 \]
 also holds exactly when the rates balance and the totals $\mathbf{\Gamma}
@@ -4258,31 +4299,31 @@ In symbols, the columns of $\mathbf{W}$ are an orthonormal basis of the null spa
 $\mathbf{W}^T \mathbf{N} = 0$ and $\mathbf{W}^T \mathbf{W} = \mathbf{I}$; the totals are then $\mathbf{W}^T \mathbf{y}$, and the module
 solves the square system given at the start of this section,
 \[
-  \mathbf{F}(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{W} \,(\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0) = 0 .
+  \mathbf{f}(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{W} \,(\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0) = 0 .
 \]
 The first term lies in the column space of $\mathbf{N}$ and the second in the
-column space of $\mathbf{W}$, which are orthogonal complements. So $\mathbf{F}(\mathbf{y}) = 0$ only
+column space of $\mathbf{W}$, which are orthogonal complements. So $\mathbf{f}(\mathbf{y}) = 0$ only
 when both terms vanish: the rates balance, $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$, and the totals
 keep their values, $\mathbf{W}^T \mathbf{y} = \mathbf{W}^T \mathbf{y}_0$. The Jacobian
 \[
-  \mathbf{J}_F = \mathbf{N} \frac{\partial \mathbf{v}}{\partial \mathbf{y}} + \mathbf{W} \mathbf{W}^T
+  \mathbf{J}_f = \mathbf{N} \frac{\partial \mathbf{v}}{\partial \mathbf{y}} + \mathbf{W} \mathbf{W}^T
 \]
-is not singular exactly when $\mathbf{J}_R$ is not. If $\mathbf{J}_F \mathbf{z} = 0$, multiplying by
+is not singular exactly when $\mathbf{J}_R$ is not. If $\mathbf{J}_f \mathbf{z} = 0$, multiplying by
 $\mathbf{W}^T$ gives $\mathbf{W}^T \mathbf{z} = 0$, so $\mathbf{z}$ lies in the column space of $\mathbf{N}$, which is
-that of $\mathbf{L}$: $\mathbf{z} = \mathbf{L} \mathbf{z}_R$. Then $\mathbf{J}_F \mathbf{z} = \mathbf{L} \mathbf{N}_R \,(\partial \mathbf{v} / \partial \mathbf{y})\,
+that of $\mathbf{L}$: $\mathbf{z} = \mathbf{L} \mathbf{z}_R$. Then $\mathbf{J}_f \mathbf{z} = \mathbf{L} \mathbf{N}_R \,(\partial \mathbf{v} / \partial \mathbf{y})\,
 \mathbf{L} \mathbf{z}_R = \mathbf{L} \mathbf{J}_R \mathbf{z}_R = 0$, and since $\mathbf{L}$ has full column rank, $\mathbf{J}_R \mathbf{z}_R = 0$.
-The converse follows the same way. More precisely, $\mathbf{J}_F \mathbf{W} = \mathbf{N}
+The converse follows the same way. More precisely, $\mathbf{J}_f \mathbf{W} = \mathbf{N}
 (\partial \mathbf{v} / \partial \mathbf{y}) \mathbf{W} + \mathbf{W}$, whose first term lies in the column space
 of $\mathbf{L}$, so in the basis made of the columns of $\mathbf{L}$ and of $\mathbf{W}$
 \[
-  \mathbf{J}_F \,[\,\mathbf{L} \;\; \mathbf{W}\,] = [\,\mathbf{L} \;\; \mathbf{W}\,]
+  \mathbf{J}_f \,[\,\mathbf{L} \;\; \mathbf{W}\,] = [\,\mathbf{L} \;\; \mathbf{W}\,]
   \begin{bmatrix} \mathbf{J}_R & \mathbf{X} \\ 0 & \mathbf{I} \end{bmatrix}
 \]
-for some matrix $\mathbf{X}$. The eigenvalues of $\mathbf{J}_F$ are therefore those of $\mathbf{J}_R$
+for some matrix $\mathbf{X}$. The eigenvalues of $\mathbf{J}_f$ are therefore those of $\mathbf{J}_R$
 and $c$ eigenvalues equal to 1: the term $\mathbf{W} \mathbf{W}^T$ turns the $c$ zero
 eigenvalues of $\mathbf{N} \partial \mathbf{v} / \partial \mathbf{y}$ into ones and leaves the others,
 which describe the dynamics within a conservation class, unchanged. (For
-the enzyme model of Section~\ref{sec:conservation}, $\mathbf{J}_F$'s eigenvalues are $-7.3504$, $-0.8163$,
+the enzyme model of Section~\ref{sec:conservation}, $\mathbf{J}_f$'s eigenvalues are $-7.3504$, $-0.8163$,
 $-0.5$ and $1$.)
 
 \paragraph{A bordered form.} Readers who know constrained optimisation may
@@ -4318,10 +4359,10 @@ gives
   \mathbf{N} \mathbf{v}(\mathbf{y}) + \mathbf{W} (\mathbf{W}^T \mathbf{y} -
   \mathbf{W}^T \mathbf{y}_0) = 0 ,
 \]
-which is $\mathbf{F}(\mathbf{y}) = 0$. So the full system is the bordered
+which is $\mathbf{f}(\mathbf{y}) = 0$. So the full system is the bordered
 system with its extra unknowns eliminated.
 Eliminating $\boldsymbol{\mu}$ also turns the bordered Jacobian into
-$\mathbf{J}_F$: Newton's method takes the same steps in $\mathbf{y}$ on
+$\mathbf{J}_f$: Newton's method takes the same steps in $\mathbf{y}$ on
 either form. The compact form is simpler to write and to solve with a
 general solver such as \code{nonlin.solve}; the bordered form keeps the
 sparsity of $\mathbf{N}$, since $\mathbf{W}\mathbf{W}^T$ is a full

@@ -1,5 +1,5 @@
 ## The full steady-state system for A <-> B, built by hand: the
-## stoichiometry matrix, the conservation basis W, F(y) solved by Newton's
+## stoichiometry matrix, the conservation basis W, f(y) solved by Newton's
 ## method, and the Jacobian's eigenvalues.
 
 import antimony
@@ -27,7 +27,7 @@ function rates(y)
   return [k1 * y[1]; k2 * y[2]]
 end
 
-function F(y)
+function f(y)
   return N * rates(y) + W * (W' * y - W' * y0)
 end
 
@@ -36,24 +36,24 @@ function row(v)
   return fmt.matrix(v', decimals = 4)
 end
 
-s = nonlin.solve(F, y0)
+s = nonlin.solve(f, y0)
 println("steady state:", row(s.x), " A + B =", sum(s.x))
 
 # The Jacobians: N dv/dy alone is singular; adding W W' mends it.
 Jv = N * [k1, 0.0; 0.0, k2]
 println("eigenvalues of N dv/dy:", row(sort(linalg.eig(Jv))))
-println("eigenvalues of J_F:", row(sort(linalg.eig(Jv + W * W'))))
+println("eigenvalues of J_f:", row(sort(linalg.eig(Jv + W * W'))))
 
 # The conservation matrix Gamma of the usual analysis works as well: its
 # rows span the same directions as W's columns, but are not of length 1.
 G = antimony.conservation(N).gamma
 println("Gamma:", row(G'))
 
-function FG(y)
+function f_gamma(y)
   return N * rates(y) + G' * (G * y - G * y0)
 end
 
-sg = nonlin.solve(FG, y0)
+sg = nonlin.solve(f_gamma, y0)
 println("steady state with Gamma:", row(sg.x))
 println("eigenvalues with Gamma:", row(sort(linalg.eig(Jv + G' * G))))
 
