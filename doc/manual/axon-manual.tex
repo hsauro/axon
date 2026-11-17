@@ -3647,7 +3647,7 @@ complex \code{ES} and the product \code{P}, in that order, the law
 \code{E + ES} is $\boldsymbol{\gamma} = [\,0 \;\; 1 \;\; 1 \;\; 0\,]$: a
 weight of 1 for each form of the enzyme and 0 for the substrate and the
 product, which are not part of the total. Each conservation law is one
-such vector $\boldsymbol{\gamma}$. The matrix $\mathbf{\Gamma}$, introduced
+such vector $\boldsymbol{\gamma}$. The \emph{conservation matrix} $\mathbf{\Gamma}$, introduced
 below, holds all the conservation laws of a network, one per row. A model with $c$ independent conservation laws has
 an $\mathbf{N}$ of rank $r = m - c$ for $m$ species, and that causes two problems.
 First, the equations $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ do not fix the
@@ -3656,7 +3656,7 @@ choice of those values has a steady state of its own, so the equations have
 a whole family of solutions, one for each set of totals. (In
 \code{A -> B} and \code{B -> A}, with rates $k_1 A$ and $k_2 B$, any $A$
 and $B$ with $k_1 A = k_2 B$ balance the rates, whatever $A + B$ is.) Second, the Jacobian matrix $\partial (\mathbf{N} \mathbf{v}) / \partial \mathbf{y}$ is singular,
-with $c$ zero eigenvalues, so Newton's methodfor finding steady states fails and the eigenvalues
+with $c$ zero eigenvalues, so Newton's method for finding steady states fails and the eigenvalues
 cannot be used to judge stability.
 
 \paragraph{Conservation analysis.} \code{antimony.conservation(model)}
@@ -3670,9 +3670,29 @@ independent rows, $\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R$. Ordering the indep
   \mathbf{N} = \begin{bmatrix} \mathbf{N}_R \\ \mathbf{N}_0 \end{bmatrix}
     = \begin{bmatrix} \mathbf{I} \\ \mathbf{L}_0 \end{bmatrix} \mathbf{N}_R = \mathbf{L}\, \mathbf{N}_R ,
 \]
-where $\mathbf{L}$ is the \emph{link matrix}. The conservation laws are the rows of
-$\mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,]$, since $\mathbf{\Gamma} \mathbf{L} = -\mathbf{L}_0 + \mathbf{L}_0 = 0$ and so
-$\mathbf{\Gamma} \mathbf{N} = 0$. With $\mathbf{T} = \mathbf{\Gamma} \mathbf{y}_0$, the totals in the initial values
+where $\mathbf{L}$ is the \emph{link matrix}.
+
+The same matrix $\mathbf{L}_0$ gives the conservation laws. Collected as rows,
+they form the \emph{conservation matrix}
+\[
+  \mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,] ,
+\]
+with $c$ rows, one per conservation law, and $m$ columns, one per species,
+in the same order as above (independent species first). Each row of
+$\mathbf{\Gamma}$ is one of the vectors $\boldsymbol{\gamma}$ of the start of
+this section. The row of a dependent species has a 1 in that species'
+column (from $\mathbf{I}$), minus its row of $\mathbf{L}_0$ in the columns of
+the independent species, and 0 for the other dependent species: it is the
+dependent species minus the combination of independent species whose rows
+of $\mathbf{N}$ its own row equals. That combination is a conservation law
+because $\mathbf{\Gamma} \mathbf{L} = -\mathbf{L}_0 + \mathbf{L}_0 = 0$, and so
+$\mathbf{\Gamma} \mathbf{N} = \mathbf{\Gamma} \mathbf{L} \mathbf{N}_R = 0$: every
+row satisfies $\boldsymbol{\gamma} \mathbf{N} = 0$. \code{antimony.conservation}
+returns $\mathbf{\Gamma}$ as the field \code{gamma}, with its columns put back
+in the model's order of species; for the enzyme model later in this section
+it is the single row $[\,0 \;\; 1 \;\; 1 \;\; 0\,]$, the law \code{E + ES}.
+
+With $\mathbf{T} = \mathbf{\Gamma} \mathbf{y}_0$, the totals in the initial values
 (a vector, one total per law, though written with a capital as in the
 conservation literature),
 \[
@@ -3954,7 +3974,19 @@ that step~1 below defines. That second term is built in three steps.
   gives the total $E + ES$. The rows of $\mathbf{\Gamma}$ are $c$ such vectors. The columns of
   $\mathbf{W}$ hold the same $c$ laws in another form: written as
   columns, combined so that they are at right angles to each other and of
-  length 1. ($\mathbf{W}$ is not the kernel matrix
+  length 1. In symbols, the columns of $\mathbf{\Gamma}^T$ are the laws
+  written as columns, and one way of making them orthonormal is
+  \[
+    \mathbf{W} = \mathbf{\Gamma}^T (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2} ,
+  \]
+  where $(\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2}$ is the $c \times c$
+  matrix that undoes the lengths of the laws and the angles between them
+  (with a single law, $\mathbf{\Gamma}\mathbf{\Gamma}^T$ is the squared
+  length of $\boldsymbol{\gamma}$, so this just divides $\boldsymbol{\gamma}^T$
+  by its length). Any other orthonormal $\mathbf{W}$ for the same laws,
+  such as the one \code{linalg.null(N')} returns, differs from this one only
+  by a rotation of its columns, which changes nothing below.
+  ($\mathbf{W}$ is not the kernel matrix
   $\mathbf{K}$, which holds flux modes, the null space of $\mathbf{N}$;
   $\mathbf{W}$ spans the null space of $\mathbf{N}^T$.) So
   $\mathbf{W}^T \mathbf{y}$ lists the conserved totals of $\mathbf{y}$, and
@@ -4090,10 +4122,16 @@ whole departure of $\mathbf{y}$ from the starting state, and
 $\mathbf{W}\mathbf{W}^T$ keeps the part of it that no sequence of reactions
 could have caused: for any state the model can actually reach, that part is
 zero. $\mathbf{W}\mathbf{W}^T$ depends on $\mathbf{N}$ alone: every
-orthonormal choice of $\mathbf{W}$ gives the same product, which can also
-be written with the conservation matrix as $\mathbf{\Gamma}^T
-(\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1} \mathbf{\Gamma}$ (see the paragraph
-on $\mathbf{\Gamma}$ below). One caveat: ``at right angles'' is measured
+orthonormal choice of $\mathbf{W}$ gives the same product. With
+$\mathbf{W} = \mathbf{\Gamma}^T (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2}$
+from step~1, the product can be written with the conservation matrix:
+\[
+  \mathbf{W}\mathbf{W}^T
+  = \mathbf{\Gamma}^T (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2}
+    (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2} \mathbf{\Gamma}
+  = \mathbf{\Gamma}^T (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1} \mathbf{\Gamma} .
+\]
+One caveat: ``at right angles'' is measured
 with ordinary lengths in concentration units, so measuring a species in
 different units would change how a change is split, though not the steady
 state that $\mathbf{f}(\mathbf{y}) = 0$ finds.
@@ -4146,7 +4184,8 @@ $\mathbf{W}$ holds the same law in the form that step~1 of the three steps
 above described: written as a column instead of a row, and scaled to length
 1. The vector $[\,1 \;\; 1\,]$ has length $\sqrt{1^2 + 1^2} = \sqrt{2}$, so
 dividing it by $\sqrt{2}$ and turning it into a column gives $\mathbf{W}$.
-With a single law that is all there is to do; with several, step~1 also
+This is the formula of step~1: $\mathbf{\Gamma}\mathbf{\Gamma}^T = 1^2 + 1^2
+= 2$, so $\mathbf{W} = \mathbf{\Gamma}^T / \sqrt{2}$. With a single law that is all there is to do; with several, step~1 also
 asks for the columns to be at right angles to each other, which takes
 combining the laws as well. \code{linalg.null(N')} does all of this at
 once, and for this $\mathbf{N}$ it returns the $\mathbf{W}$ below, as the
@@ -4237,8 +4276,19 @@ The whole method is the one line of \code{f}: no species are chosen as
 dependent, and no link matrix is formed.
 
 \paragraph{The conservation matrix $\mathbf{\Gamma}$ in place of
-$\mathbf{W}$.} Anyone who already has the conservation analysis can build
-the same system from it. The rows of $\mathbf{\Gamma} = [\,-\mathbf{L}_0
+$\mathbf{W}$.} Either $\mathbf{W}$ or the conservation matrix
+$\mathbf{\Gamma}$ can be used to build $\mathbf{f}$: both give the same
+steady state. $\mathbf{\Gamma}$ is worth knowing about because many
+modelling tools already compute it, as part of the usual conservation
+analysis, so the full method can be added to them with one extra term and
+no singular value decomposition. $\mathbf{W}$ is what the module uses,
+because it needs no choice of dependent species and makes the added
+eigenvalues of the Jacobian exactly 1. What makes the method work is not
+that $\mathbf{W}$ is orthonormal, but that the added term points along the
+conserved directions, at right angles to everything $\mathbf{N}
+\mathbf{v}(\mathbf{y})$ can do; any basis of those directions will serve.
+
+In detail: the rows of $\mathbf{\Gamma} = [\,-\mathbf{L}_0
 \;\; \mathbf{I}\,]$ are conservation laws, so the columns of
 \[
   \mathbf{\Gamma}^T = \begin{bmatrix} -\mathbf{L}_0^T \\ \mathbf{I}
@@ -4260,13 +4310,13 @@ $c$ eigenvalues that are exactly 1 with $\mathbf{W}$ become the eigenvalues
 of the $c \times c$ matrix $\mathbf{\Gamma}\mathbf{\Gamma}^T$, still
 positive, so Newton's method still works. For A $\rightleftharpoons$ B,
 $\mathbf{\Gamma}\mathbf{\Gamma}^T = 2$, and the program's last lines show
-the eigenvalue 2 where $\mathbf{W}$ gave 1. The two bases are related by
-$\mathbf{W} = \mathbf{\Gamma}^T (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2}$
-(one choice of $\mathbf{W}$; any other is this one turned), so that
+the eigenvalue 2 where $\mathbf{W}$ gave 1. The two are related, as
+step~1 showed, by $\mathbf{W} = \mathbf{\Gamma}^T
+(\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2}$, so that
 $\mathbf{W}\mathbf{W}^T = \mathbf{\Gamma}^T
-(\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1} \mathbf{\Gamma}$. The module uses
-$\mathbf{W}$, from the singular value decomposition, because it needs no
-choice of dependent species and makes the added eigenvalues exactly 1.
+(\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1} \mathbf{\Gamma}$. The program
+\code{full_ab.sci} above solves the system both ways, as \code{f} and
+\code{f_gamma}.
 
 Four matrices of this chapter are easily confused, as they come from the
 two null spaces and the two factorisations of $\mathbf{N}$:
