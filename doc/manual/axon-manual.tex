@@ -4278,15 +4278,12 @@ dependent, and no link matrix is formed.
 \paragraph{The conservation matrix $\mathbf{\Gamma}$ in place of
 $\mathbf{W}$.} Either $\mathbf{W}$ or the conservation matrix
 $\mathbf{\Gamma}$ can be used to build $\mathbf{f}$: both give the same
-steady state. $\mathbf{\Gamma}$ is worth knowing about because many
-modelling tools already compute it, as part of the usual conservation
-analysis, so the full method can be added to them with one extra term and
-no singular value decomposition. $\mathbf{W}$ is what the module uses,
-because it needs no choice of dependent species and makes the added
-eigenvalues of the Jacobian exactly 1. What makes the method work is not
-that $\mathbf{W}$ is orthonormal, but that the added term points along the
-conserved directions, at right angles to everything $\mathbf{N}
-\mathbf{v}(\mathbf{y})$ can do; any basis of those directions will serve.
+steady state. What makes the method work is not that $\mathbf{W}$ is
+orthonormal, but that the added term points along the conserved
+directions, at right angles to everything $\mathbf{N}
+\mathbf{v}(\mathbf{y})$ can do; any basis of those directions will serve,
+and the rows of $\mathbf{\Gamma}$ are one. The comparison after the
+details below says when each is the better choice.
 
 In detail: the rows of $\mathbf{\Gamma} = [\,-\mathbf{L}_0
 \;\; \mathbf{I}\,]$ are conservation laws, so the columns of
@@ -4317,6 +4314,68 @@ $\mathbf{W}\mathbf{W}^T = \mathbf{\Gamma}^T
 (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1} \mathbf{\Gamma}$. The program
 \code{full_ab.sci} above solves the system both ways, as \code{f} and
 \code{f_gamma}.
+
+\paragraph{Choosing between $\mathbf{W}$ and $\mathbf{\Gamma}$.} Neither is
+better in every respect. Computed from scratch they cost about the same:
+$\mathbf{\Gamma}$ needs a factorisation of $\mathbf{N}$ to find
+$\mathbf{L}_0$ (the QR factorisation with column pivoting of
+Section~\ref{sec:conservation}), and $\mathbf{W}$ needs one too (the
+singular value decomposition behind \code{linalg.null}). Beyond that:
+
+\begin{itemize}
+\item In favour of $\mathbf{\Gamma}$:
+  \begin{itemize}
+  \item \emph{Readable laws.} Its rows are the conservation laws as they are
+    usually written, with whole-number weights, such as \code{E + ES}, and
+    the totals $\mathbf{\Gamma}\mathbf{y}_0$ mean something, such as the
+    total amount of enzyme. The columns of $\mathbf{W}$ mix the laws, with
+    irrational entries, and $\mathbf{W}^T\mathbf{y}$ is only a set of
+    numbers to compare with $\mathbf{W}^T\mathbf{y}_0$. This does not change
+    the answer, but it makes the system easier to check and to explain.
+  \item \emph{Sparsity.} A conservation law usually involves few species, so
+    $\mathbf{\Gamma}$ is mostly zeros, and $\mathbf{\Gamma}^T\mathbf{\Gamma}$
+    couples only species that share a law. $\mathbf{W}$ from the singular
+    value decomposition is generally full, and $\mathbf{W}\mathbf{W}^T$
+    couples every pair of species in a group of overlapping laws. For very
+    large networks, such as genome-scale models, $\mathbf{\Gamma}$ is the
+    better choice, especially in the bordered form below, which keeps the
+    sparsity of $\mathbf{N}$ as well.
+  \item \emph{Often already there.} Many modelling tools compute
+    $\mathbf{\Gamma}$ as part of their conservation analysis, so the full
+    method can be added to them with one extra term and nothing more to
+    compute.
+  \end{itemize}
+\item In favour of $\mathbf{W}$:
+  \begin{itemize}
+  \item \emph{Uniform scaling.} Every law has the same weight, so the
+    eigenvalues that the added term contributes to the Jacobian are all
+    exactly 1. With $\mathbf{\Gamma}$ they are the eigenvalues of
+    $\mathbf{\Gamma}\mathbf{\Gamma}^T$, which spread out when laws involve
+    many species or large weights: the law $\mathrm{ATP} + \mathrm{ADP} +
+    \mathrm{AMP}$ counts for more than a law of two species, which can make
+    the Jacobian less well conditioned.
+  \item \emph{Easy reading of stability.} The added eigenvalues are exactly
+    1, so they are easy to recognise and set aside, leaving those of
+    $\mathbf{J}_R$. With $\mathbf{\Gamma}$ the added ones are the
+    eigenvalues of $\mathbf{\Gamma}\mathbf{\Gamma}^T$, which have to be
+    computed to know which to set aside.
+  \item \emph{No dependent species.} $\mathbf{W}$ is found without choosing
+    dependent species, in one call, \code{linalg.null(N')}. This advantage
+    is smaller than it sounds: the QR factorisation makes that choice
+    automatically, and the choice does not change the solution of
+    $\mathbf{f}_\Gamma(\mathbf{y}) = 0$.
+  \end{itemize}
+\end{itemize}
+
+\noindent One question is open for both. The added term can be multiplied
+by any positive number without changing the steady state, and that number
+sets the size of the added eigenvalues. When they are much smaller or much
+larger than the eigenvalues of $\mathbf{J}_R$, which are set by the rates
+of the model, the Jacobian is poorly conditioned, so choosing the factor to
+suit the rates may matter more than the choice between $\mathbf{W}$ and
+$\mathbf{\Gamma}$; how best to choose it is not yet settled. The module
+uses $\mathbf{W}$, with factor 1, because the code is a single line; a
+factor of 1 has worked for the test models used so far.
 
 Four matrices of this chapter are easily confused, as they come from the
 two null spaces and the two factorisations of $\mathbf{N}$:
