@@ -4391,7 +4391,9 @@ $\mathbf{\Gamma}$, conservation matrix & $\mathbf{\Gamma}\mathbf{N} = 0$,
   $\mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,]$ & the
   conservation laws, one row each \\
 $\mathbf{W}$ & $\mathbf{W}^T\mathbf{N} = 0$, $\mathbf{W}^T\mathbf{W} =
-  \mathbf{I}$ & the same laws, orthonormal, one column each \\
+  \mathbf{I}$ & the conservation laws of $\mathbf{\Gamma}$, combined into
+  orthonormal columns, one per law; one choice
+  is $\mathbf{W} = \mathbf{\Gamma}^T (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2}$ \\
 $\mathbf{K}$, kernel matrix & $\mathbf{N}\mathbf{K} = 0$ & the flux modes,
   one column per independent flux \\
 \bottomrule
