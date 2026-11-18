@@ -3619,8 +3619,7 @@ in the next section, shows whether a steady state is stable.
 
 \section{Conservation laws and the link matrix}\label{sec:conservation}
 
-Recall from Section~\ref{sec:equations} what $\mathbf{N} \mathbf{v}$ is.
-$\mathbf{N}$ is the stoichiometry matrix, one row per species and one
+Recall from Section~\ref{sec:equations} that $\mathbf{N}$ is the stoichiometry matrix, one row per species and one
 column per reaction, and $\mathbf{v}(\mathbf{y})$ is the vector of reaction
 rates at the concentrations $\mathbf{y}$. Their product is the vector of the
 species' rates of change,
@@ -3628,27 +3627,86 @@ species' rates of change,
   \frac{d\mathbf{y}}{dt} = \mathbf{N} \mathbf{v}(\mathbf{y}) ,
 \]
 each entry the sum, over the reactions, of what the reaction makes of that
-species minus what it uses. At a steady state nothing changes, so
+species minus what it uses. At a steady state the concentrations are not changing, so
 $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$: these $m$ equations, one per
 species, are the \emph{balance equations}, and solving them is how
 Section~\ref{sec:steady} found steady states.
 
+For example, take the two reactions \code{J1: A -> B} and
+\code{J2: B -> A}, with rates $v_1$ and $v_2$. The stoichiometry matrix has a
+row for each species, \code{A} then \code{B}, and a column for each
+reaction, \code{J1} then \code{J2}; each column says what one reaction does
+to each species, $-1$ for a molecule used and $+1$ for one made:
+\[
+  \mathbf{N} = \begin{bmatrix} -1 & 1 \\ 1 & -1 \end{bmatrix} ,
+  \qquad
+  \frac{d}{dt} \begin{bmatrix} A \\ B \end{bmatrix}
+  = \mathbf{N} \begin{bmatrix} v_1 \\ v_2 \end{bmatrix}
+  = \begin{bmatrix} -v_1 + v_2 \\ v_1 - v_2 \end{bmatrix} .
+\]
+\code{J1} uses one \code{A} and makes one \code{B}, so its column is
+$(-1, 1)$; \code{J2} does the reverse. Notice that the row of \code{B} is
+minus the row of \code{A}. Whatever the rates, $A$ and $B$ always change by
+opposite amounts. That is the first sign of a conservation law.
+
 In many models some totals never change. In \code{A -> B} and
 \code{B -> A}, every reaction turns one molecule into another, so
 \code{A + B} stays at its initial value; an enzyme that is free (\code{E})
-or bound to its substrate (\code{ES}) keeps \code{E + ES} constant. Such a
-total is a \emph{conservation law}, or conserved moiety. It shows in the
-stoichiometry matrix: a row vector $\boldsymbol{\gamma}$, one weight per species, with
-$\boldsymbol{\gamma} \mathbf{N} = 0$ gives
-$\frac{d}{dt}(\boldsymbol{\gamma} \mathbf{y}) = \boldsymbol{\gamma} \mathbf{N} \mathbf{v} = 0$, so $\boldsymbol{\gamma} \mathbf{y}$ keeps its initial
-value whatever the rates. In the enzyme model used later in this section,
+or bound to its substrate (\code{ES}) keeps \code{E + ES} constant. The
+statement that such a total stays constant is a \emph{conservation law}.
+What it counts is a \emph{conserved moiety}: the part of a molecules that
+is passed from species to species by the reactions but is never made or
+destroyed, such as the enzyme, which is present in both \code{E} and
+\code{ES}.
+
+A conservation law can be read off the stoichiometry matrix. Write the
+total as a weighted sum of the concentrations, $\boldsymbol{\gamma}
+\mathbf{y}$, where $\boldsymbol{\gamma}$ is a row vector with one weight per
+species. For A $\rightleftharpoons$ B the total is $A + B$, so
+$\boldsymbol{\gamma} = [\,1 \;\; 1\,]$ and $\boldsymbol{\gamma} \mathbf{y} =
+A + B$. The rate of change of the total is
+\[
+  \frac{d}{dt} (\boldsymbol{\gamma} \mathbf{y})
+  = \boldsymbol{\gamma} \frac{d\mathbf{y}}{dt}
+  = \boldsymbol{\gamma} \mathbf{N} \mathbf{v} ,
+\]
+To see when this is zero, look at $\boldsymbol{\gamma} \mathbf{N}$ first.
+It is a row vector with one entry per reaction: entry $j$ is the column of
+reaction $j$ weighted by $\boldsymbol{\gamma}$, which is how much the total
+changes each time reaction $j$ takes place once. Multiplying by
+$\mathbf{v}$ then adds up, over the reactions, that change times the
+reaction's rate. The rates change as the concentrations change and can take
+many different values, so the total stays constant whatever they are only
+if every reaction on its own leaves the total unchanged, that is, if every
+entry of $\boldsymbol{\gamma} \mathbf{N}$ is zero:
+\[
+  \boldsymbol{\gamma} \mathbf{N} = 0 .
+\]
+If one entry were not zero, that reaction would change the total whenever
+it ran. For A $\rightleftharpoons$ B,
+\[
+  \boldsymbol{\gamma} \mathbf{N}
+  = [\,1 \;\; 1\,] \begin{bmatrix} -1 & 1 \\ 1 & -1 \end{bmatrix}
+  = [\,{-1} + 1 \;\;\; 1 - 1\,] = [\,0 \;\; 0\,] :
+\]
+\code{J1} uses one \code{A} and makes one \code{B}, which changes $A + B$
+by $-1 + 1 = 0$, and \code{J2} changes it by $1 - 1 = 0$. Read by rows
+instead, the same product says that the row of \code{A} plus the row of
+\code{B} is zero, the observation above that one row is minus the other. So
+$d(A + B)/dt = 0$, and $A + B$ keeps its initial value whatever the rates. In general, every row
+vector $\boldsymbol{\gamma}$ with $\boldsymbol{\gamma} \mathbf{N} = 0$ gives a
+total $\boldsymbol{\gamma} \mathbf{y}$ that never changes, and finding the
+conservation laws of a network means finding all such $\boldsymbol{\gamma}$.
+In the enzyme model used later in this section,
 whose species are the substrate \code{S}, the free enzyme \code{E}, the
 complex \code{ES} and the product \code{P}, in that order, the law
 \code{E + ES} is $\boldsymbol{\gamma} = [\,0 \;\; 1 \;\; 1 \;\; 0\,]$: a
 weight of 1 for each form of the enzyme and 0 for the substrate and the
 product, which are not part of the total. Each conservation law is one
 such vector $\boldsymbol{\gamma}$. The \emph{conservation matrix} $\mathbf{\Gamma}$, introduced
-below, holds all the conservation laws of a network, one per row. A model with $c$ independent conservation laws has
+below, holds all the conservation laws of a network, one per row.
+
+A model with $c$ independent conservation laws has
 an $\mathbf{N}$ of rank $r = m - c$ for $m$ species, and that causes two problems.
 First, the equations $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ do not fix the
 steady state: they say nothing about the values of the totals, and each
@@ -4581,7 +4639,8 @@ which the bars of negative control show (Figure~\ref{fig:mca.pdf}).
 \code{plot.bar3} takes the names of the reactions and species for its axes,
 and \code{clim = [-1, 1]} fixes the colour range so that the grey middle of
 \code{"coolwarm"} falls at 0. The Welcome tab's example 30 does the same for a
-branched pathway with a conserved moiety (ATP and ADP).
+branched pathway with a conserved moiety (the adenine nucleotide, present
+in both ATP and ADP).
 
 \fig{mca.pdf}{0.65}{The concentration control coefficients of the
 feedback-inhibited pathway, from \texttt{mca.sci}.}
