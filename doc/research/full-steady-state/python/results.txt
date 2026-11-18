@@ -1,8 +1,8 @@
 
 ==============================================================================
-E1  Roots: augmented = reduced = long simulation, totals kept
+E1  Roots: full = reduced = long simulation, totals kept
 ==============================================================================
-model             c  |y_aug - y_red|  |y_aug - y_sim|  |K^T(y - y0)|   |N v(y)|
+model             c |y_full - y_red| |y_full - y_sim|  |K^T(y - y0)|   |N v(y)|
 two_state         1         0.00e+00         1.24e-14       2.71e-16   0.00e+00
 enzyme_feed       1         1.44e-15         1.78e-15       2.78e-17   0.00e+00
 two_cycles        2         4.44e-16         2.66e-15       2.71e-16   4.44e-16
@@ -31,14 +31,14 @@ glycolysis       alpha=-3  max|eig diff| = 6.8e-14   det ratio = 1.000000000000
 E3  Newton iterates: totals exact after one step; same iterates as reduced Newton
 ==============================================================================
 (a) guess in the class (y0): iterations 7 and 7
-   k=0  |y_aug - y_red| = 0.00e+00   |F(y_aug)| = 2.00e+00
-   k=1  |y_aug - y_red| = 1.11e-15   |F(y_aug)| = 2.40e+01
-   k=2  |y_aug - y_red| = 2.89e-15   |F(y_aug)| = 6.53e+00
-   k=3  |y_aug - y_red| = 6.57e-13   |F(y_aug)| = 3.37e+01
-   k=4  |y_aug - y_red| = 3.69e-13   |F(y_aug)| = 1.27e+01
-   k=5  |y_aug - y_red| = 1.88e-13   |F(y_aug)| = 2.40e-01
-   k=6  |y_aug - y_red| = 3.55e-15   |F(y_aug)| = 2.80e-05
-   k=7  |y_aug - y_red| = 4.88e-15   |F(y_aug)| = 1.38e-13
+   k=0  |y_full - y_red| = 0.00e+00   |F(y_full)| = 2.00e+00
+   k=1  |y_full - y_red| = 1.11e-15   |F(y_full)| = 2.40e+01
+   k=2  |y_full - y_red| = 2.89e-15   |F(y_full)| = 6.53e+00
+   k=3  |y_full - y_red| = 6.57e-13   |F(y_full)| = 3.37e+01
+   k=4  |y_full - y_red| = 3.69e-13   |F(y_full)| = 1.27e+01
+   k=5  |y_full - y_red| = 1.88e-13   |F(y_full)| = 2.40e-01
+   k=6  |y_full - y_red| = 3.55e-15   |F(y_full)| = 2.80e-05
+   k=7  |y_full - y_red| = 4.88e-15   |F(y_full)| = 1.38e-13
 (b) guess outside the class: converged True in 4
    k=0  |K^T y - K^T y0| = 7.96e-01
    k=1  |K^T y - K^T y0| = 2.27e-16
@@ -52,27 +52,27 @@ E3  Newton iterates: totals exact after one step; same iterates as reduced Newto
 E4  Robustness from 200 random guesses (log-uniform, 1e-2..1e2 x scale)
 ==============================================================================
 model            method      conv in class  y >= 0  = ref mean it
-two_state        augmented    200      200     200    200     1.0
+two_state        full         200      200     200    200     1.0
 two_state        reduced      200      200     200    200     1.0
 two_state        naive          0        0       0      0     nan
 two_state        pinv         200        0       0      0     1.0
-enzyme_feed      augmented    200      200     200    200     2.6
+enzyme_feed      full         200      200     200    200     2.6
 enzyme_feed      reduced      200      200     200    200     2.2
 enzyme_feed      naive          0        0       0      0     nan
 enzyme_feed      pinv         200        0       0      0     3.0
-two_cycles       augmented    200      200     200    200     1.0
+two_cycles       full         200      200     200    200     1.0
 two_cycles       reduced      200      200     200    200     1.0
 two_cycles       naive          0        0       0      0     nan
 two_cycles       pinv         200        0       0      0     1.0
-gk_cycle         augmented    131      131     131    131     6.5
+gk_cycle         full         131      131     131    131     6.5
 gk_cycle         reduced      200      200     108    108     6.5
 gk_cycle         naive          0        0       0      0     nan
 gk_cycle         pinv         183        0       0      0     7.2
-bistable_cycle   augmented    171      171     148     52     6.1
+bistable_cycle   full         171      171     148     52     6.1
 bistable_cycle   reduced      200      200     152     14     5.4
 bistable_cycle   naive          0        0       0      0     nan
 bistable_cycle   pinv         200        0       0      0     5.3
-glycolysis       augmented    191      191     180    180    11.2
+glycolysis       full         191      191     180    180    11.2
 glycolysis       reduced      175      175     175    175    11.7
 glycolysis       naive          0        0       0      0     nan
 glycolysis       pinv         200        0       0      0     5.6
@@ -139,17 +139,17 @@ E9  Stabilised dynamics: dy/dt = N v - beta K (K^T y - T)
 ==============================================================================
 E10 Random reversible mass-action networks (100)
 ==============================================================================
-   seed 39, augmented: min y = -2.14e-07, |N v| = 6.6e-11, |K^T(y - y0)| = 1.1e-15
+   seed 39, full: min y = -2.14e-07, |N v| = 6.6e-11, |K^T(y - y0)| = 1.1e-15
    seed 39, reduced: min y = -4.17e-16, |N v| = 3.8e-14, |K^T(y - y0)| = 6.2e-15
-   seed 83, augmented: min y = -3.13e-16, |N v| = 2.2e-13, |K^T(y - y0)| = 0.0e+00
+   seed 83, full: min y = -3.13e-16, |N v| = 2.2e-13, |K^T(y - y0)| = 0.0e+00
    seed 83, reduced: min y = -7.28e-21, |N v| = 5.2e-18, |K^T(y - y0)| = 9.3e-15
    conservation laws per network: min 1, max 3, mean 1.6
-   converged: augmented 100/100, reduced 100/100; same steady state 98
-   worst |y_aug - y_red| = 2.1e+01; worst relative eigenvalue mismatch = 4.0e-15
+   converged: full 100/100, reduced 100/100; same steady state 98
+   worst |y_full - y_red| = 2.1e+01; worst relative eigenvalue mismatch = 4.0e-15
 
 ==============================================================================
 E11 Bordered (y, mu) form: same Newton steps; alpha = inf is the KKT form
 ==============================================================================
-   alpha = 1.0: converged True in 7, |mu| = 4.6e-22, augmented: 7 iterations, max |y_bordered - y_aug| over the iterates = 3.7e-13
-   alpha = 10.0: converged True in 7, |mu| = 5.2e-22, augmented: 7 iterations, max |y_bordered - y_aug| over the iterates = 2.8e-13
+   alpha = 1.0: converged True in 7, |mu| = 4.6e-22, full: 7 iterations, max |y_bordered - y_full| over the iterates = 3.7e-13
+   alpha = 10.0: converged True in 7, |mu| = 5.2e-22, full: 7 iterations, max |y_bordered - y_full| over the iterates = 2.8e-13
    alpha = inf: converged True in 7, |mu| = 2.0e-21, |y - y_red| = 8.1e-14

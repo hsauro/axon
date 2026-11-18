@@ -1,11 +1,11 @@
 """Test models with conservation laws, from two species to random networks.
 
 Every rate function takes (y, p) and uses only analytic numpy operations, so
-the complex-step Jacobian in augss is exact to rounding."""
+the complex-step Jacobian in fullss is exact to rounding."""
 
 import itertools
 import numpy as np
-from augss import Model
+from fullss import Model
 
 
 def two_state():

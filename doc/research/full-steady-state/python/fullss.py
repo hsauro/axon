@@ -9,7 +9,7 @@ rank r < m, that is, when there are c = m - r conservation laws:
   r independent species, the dependent ones following from the link matrix
   and the conserved totals;
 
-* the augmented system studied in this project:
+* the full system studied in this project:
 
       F(y) = N v(y) + s K M (K^T y - K^T y0) = 0
 
@@ -109,7 +109,7 @@ class Conservation:
         self.gamma[:, self.dep] = np.eye(self.c)
         self.gamma[:, self.ind] = -self.L0
 
-    def full(self, x, totals):
+    def complete(self, x, totals):
         """All species from the independent ones: y[dep] = L0 x + totals."""
         y = np.empty(len(self.ind) + len(self.dep), dtype=np.result_type(x, float))
         y[self.ind] = x
@@ -132,7 +132,7 @@ def left_null_basis(N, kind="orthonormal"):
 # --------------------------------------------------------------------------
 # The two square systems
 
-def augmented(model, K=None, M=None, alpha=1.0, sign=+1.0, y_ref=None):
+def full_system(model, K=None, M=None, alpha=1.0, sign=+1.0, y_ref=None):
     """F(y) = N v(y) + sign K M (K^T y - K^T y_ref), and its parts.
 
     Returns (F, K, M). y_ref fixes the conservation class (default y0)."""
@@ -151,14 +151,14 @@ def augmented(model, K=None, M=None, alpha=1.0, sign=+1.0, y_ref=None):
 
 
 def reduced(model, cons=None, y_ref=None):
-    """G(x) = N_R v(full(x)) for the independent species x. Returns
+    """G(x) = N_R v(complete(x)) for the independent species x. Returns
     (G, cons, totals), totals = Gamma y_ref."""
     cons = Conservation(model.N) if cons is None else cons
     y_ref = model.y0 if y_ref is None else y_ref
     totals = cons.gamma @ y_ref
 
     def G(x):
-        return model.f(cons.full(x, totals))[cons.ind]
+        return model.f(cons.complete(x, totals))[cons.ind]
 
     return G, cons, totals
 
@@ -224,23 +224,23 @@ def pinv_step(F, x):
 # --------------------------------------------------------------------------
 # Steady states and sensitivities
 
-def steady_state(model, method="augmented", guess=None, **kw):
+def steady_state(model, method="full", guess=None, **kw):
     """Steady state in the conservation class of model.y0.
 
-    method: "augmented" (all species), "reduced" (independent species),
+    method: "full" (all species), "reduced" (independent species),
     "naive" (Newton on N v(y) = 0, singular with conservation laws) or
     "pinv" (minimum-norm steps on N v(y) = 0). Returns (y, NewtonResult)."""
     guess = model.y0 if guess is None else np.asarray(guess, dtype=float)
     opts = {k: v for k, v in kw.items() if k in ("tol", "max_iter", "line_search")}
-    if method == "augmented":
-        F, _, _ = augmented(model, **{k: v for k, v in kw.items()
+    if method == "full":
+        F, _, _ = full_system(model, **{k: v for k, v in kw.items()
                                       if k in ("K", "M", "alpha", "sign")})
         res = newton(F, guess, **opts)
         return res.x, res
     if method == "reduced":
         G, cons, totals = reduced(model)
         res = newton(G, guess[cons.ind], **opts)
-        return cons.full(res.x, totals), res
+        return cons.complete(res.x, totals), res
     if method == "naive":
         res = newton(model.f, guess, **opts)
         return res.x, res
@@ -250,14 +250,14 @@ def steady_state(model, method="augmented", guess=None, **kw):
     raise ValueError(method)
 
 
-def concentration_sensitivities(model, y, way="augmented", alpha=1.0, sign=+1.0):
+def concentration_sensitivities(model, y, way="full", alpha=1.0, sign=+1.0):
     """Unscaled concentration control coefficients C^s (m x n): the change
     in the steady state per unit change in each reaction rate, within the
     conservation class, so that dy/dp = C^s dv/dp.
 
-    "augmented": -J_F^{-1} N.  "reduced": -L J_R^{-1} N_R (Reder 1988)."""
+    "full": -J_F^{-1} N.  "reduced": -L J_R^{-1} N_R (Reder 1988)."""
     E = elasticities(model, y)
-    if way == "augmented":
+    if way == "full":
         K = left_null_basis(model.N)
         JF = model.N @ E + sign * alpha * K @ K.T
         return -np.linalg.solve(JF, model.N)

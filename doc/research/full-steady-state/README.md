@@ -1,11 +1,11 @@
-# Steady states with conservation laws, without reduction: an augmented Newton system
+# Steady states with conservation laws, without reduction: the full Newton system
 
-**Project description.** Status: exploratory; theory worked out and checked numerically, not yet written up or compared on real models. Started November 2026 by Herbert Sauro and Claude (Anthropic), during work on the Axon language, whose `antimony` module uses the method (`steady_state(model, method = "augmented")`).
+**Project description.** Status: exploratory; theory worked out and checked numerically, not yet written up or compared on real models. Started November 2026 by Herbert Sauro and Claude (Anthropic), during work on the Axon language, whose `antimony` module uses the method (`steady_state(model, method = "full")`). The method was called "augmented" until 16 November 2026. It is now "full": it solves for all species, where the reduced method solves for the independent ones, and "augmented" suggested added rows or columns, while the method adds a term to each equation (the literature's "system augmented by conservation laws", section 2.4, is a different system).
 
 | File | Contents |
 | --- | --- |
 | `README.md` | This document: background, the method, theory with proofs, experiments, limitations, open questions and a work plan |
-| `python/augss.py` | A reference implementation: conservation analysis (link matrix), the augmented and reduced systems, Newton's method, control coefficients |
+| `python/fullss.py` | A reference implementation: conservation analysis (link matrix), the full and reduced systems, Newton's method, control coefficients |
 | `python/models.py` | Test models: small classics, a Goldbeter–Koshland cycle, a bistable cycle, a toy glycolysis with three conservation laws, random mass-action networks |
 | `python/experiments.py` | Experiments E1–E11, one per claim below. `python experiments.py` runs all (about 10 s); `python experiments.py E3` runs one |
 | `python/results.txt` | The output of the last full run, quoted in section 6 |
@@ -69,7 +69,7 @@ As far as their documentation shows, COPASI (Householder QR with column pivoting
 
 ### 2.4 Replacing equations
 
-Algebraic reaction network theory uses a different square system, the "system augmented by conservation laws" (Obatake and Walker 2022, section 2.1, eq. (3), there cited as standard): for each conservation law (a row w of a conservation matrix W), the steady-state equation of the first species with a non-zero entry in w is replaced by w y − w y₀ = 0. Its positive roots are the positive steady states in the class. It is used to count steady states (mixed volumes, Newton–Okounkov bodies), not to compute them, and it needs a choice of which equations to replace. Note the name clash: this project's "augmented system" adds a term instead of replacing equations.
+Algebraic reaction network theory uses a different square system, the "system augmented by conservation laws" (Obatake and Walker 2022, section 2.1, eq. (3), there cited as standard): for each conservation law (a row w of a conservation matrix W), the steady-state equation of the first species with a non-zero entry in w is replaced by w y − w y₀ = 0. Its positive roots are the positive steady states in the class. It is used to count steady states (mixed volumes, Newton–Okounkov bodies), not to compute them, and it needs a choice of which equations to replace. Note the name clash: this project's "full system" adds a term instead of replacing equations.
 
 ---
 
@@ -77,11 +77,11 @@ Algebraic reaction network theory uses a different square system, the "system au
 
 ### 3.1 Definition
 
-Let K ∈ ℝ^{m×c} have columns spanning the left null space of N (Kᵀ N = 0, rank K = c). Let M ∈ ℝ^{c×c} be non-singular and s = ±1. The augmented residual is
+Let K ∈ ℝ^{m×c} have columns spanning the left null space of N (Kᵀ N = 0, rank K = c). Let M ∈ ℝ^{c×c} be non-singular and s = ±1. The full residual is
 
 $$F(y) = N v(y) + s\,K M\,(K^T y - K^T y_0) .$$
 
-The default in this project is K orthonormal (from the SVD: `scipy.linalg.null_space(N.T)`, Axon's `linalg.null(N')`), M = α I with α = 1, and s = +1. The Axon implementation (`stdlib/antimony.sci`, `steady_state(model, method = "augmented")`) uses exactly this, with KINSOL's Newton method and line search.
+The default in this project is K orthonormal (from the SVD: `scipy.linalg.null_space(N.T)`, Axon's `linalg.null(N')`), M = α I with α = 1, and s = +1. The Axon implementation (`stdlib/antimony.sci`, `steady_state(model, method = "full")`) uses exactly this, with KINSOL's Newton method and line search.
 
 The Jacobian is
 
@@ -101,7 +101,7 @@ F = lambda y: N @ v(y) + K @ (K.T @ y - T)
 # solve F(y) = 0 with any Newton solver, e.g. scipy.optimize.root(F, guess)
 ```
 
-`python/augss.py` has the full version (`augmented`, `newton`, `steady_state(model, "augmented")`).
+`python/fullss.py` has the complete version (`full_system`, `newton`, `steady_state(model, "full")`).
 
 ---
 
@@ -138,19 +138,19 @@ Without the added term (N E alone) the lower-right block would be 0: the c zero 
 
 ### Theorem 3 (Newton iterates)
 
-Let y_k be a point and Δ the full Newton step for F: J_F Δ = −F(y_k).
+Let y_k be a point and Δ the Newton step for F: J_F Δ = −F(y_k).
 
-(a) **Totals.** Kᵀ(y_k + λΔ) − Kᵀ y₀ = (1 − λ)(Kᵀ y_k − Kᵀ y₀) for any step length λ. A full step (λ = 1) puts the iterate in the conservation class, exactly in exact arithmetic, and every later iterate stays there.
+(a) **Totals.** Kᵀ(y_k + λΔ) − Kᵀ y₀ = (1 − λ)(Kᵀ y_k − Kᵀ y₀) for any step length λ. A whole step (λ = 1) puts the iterate in the conservation class, exactly in exact arithmetic, and every later iterate stays there.
 
 (b) **Equivalence with reduction.** If y_k is in the class, the Newton step for F is the Newton step for the reduced system, lifted through the link matrix: Δ = L Δ_R with J_R Δ_R = −N_R v(y_k). So full Newton on F from a point in the class produces the same iterates as full Newton on the reduced system from the corresponding independent species.
 
 *Proof.* (a) Multiply J_F Δ = −F by Kᵀ. Kᵀ J_F = Kᵀ N E + s KᵀK M Kᵀ = s KᵀK M Kᵀ and Kᵀ F = s KᵀK M (Kᵀ y_k − Kᵀ y₀). Cancelling the non-singular s KᵀK M gives Kᵀ Δ = −(Kᵀ y_k − Kᵀ y₀). (b) If y_k is in the class, Kᵀ Δ = 0, so Δ ∈ R(N) = R(L) (F1, F2): Δ = L a. Then J_F L a = L J_R a (Theorem 2) and F(y_k) = N v(y_k) = L N_R v(y_k), so L (J_R a + N_R v) = 0, and since L has full column rank, J_R a = −N_R v. ∎
 
-Consequences: locally the augmented method converges exactly as the reduced one does (quadratically near a non-singular root). Any difference in practice comes from the globalisation (line search or trust region), because the merit functions differ: for orthonormal K,
+Consequences: locally the full method converges exactly as the reduced one does (quadratically near a non-singular root). Any difference in practice comes from the globalisation (line search or trust region), because the merit functions differ: for orthonormal K,
 
 $$\|F(y)\|^2 = \|N v(y)\|^2 + \|M (K^T y - K^T y_0)\|^2 \quad\text{versus}\quad \|N_R v(y)\|^2 ,$$
 
-and ‖N v‖ = ‖L N_R v‖ weights the independent rates by LᵀL. With a guess outside the class, the first step also differs: the reduced method silently moves the guess into the class along the dependent species (y_dep := L₀ y_ind + T), while the augmented method moves it along R(K) as part of the first Newton step.
+and ‖N v‖ = ‖L N_R v‖ weights the independent rates by LᵀL. With a guess outside the class, the first step also differs: the reduced method silently moves the guess into the class along the dependent species (y_dep := L₀ y_ind + T), while the full method moves it along R(K) as part of the first Newton step.
 
 ### Theorem 4 (sensitivities without the link matrix)
 
@@ -184,7 +184,7 @@ in the m + c unknowns (y, μ) has the Jacobian [[N E, K], [Kᵀ, −I/α]], whos
 
 $$N v(y) + K \mu = 0, \qquad K^T y = T ,$$
 
-the Lagrange (KKT) form of "N v(y) = 0 subject to the conservation laws", with μ a multiplier. At every solution μ = 0, because Kᵀ(N v + K μ) = KᵀK μ = 0. The bordered Jacobian keeps the sparsity of N E and K; the augmented J_F has the dense rank-c term K Kᵀ. So the bordered form, or a Sherman–Morrison–Woodbury treatment of the rank-c update, is the route to sparse, genome-scale use.
+the Lagrange (KKT) form of "N v(y) = 0 subject to the conservation laws", with μ a multiplier. At every solution μ = 0, because Kᵀ(N v + K μ) = KᵀK μ = 0. The bordered Jacobian keeps the sparsity of N E and K; the full J_F has the dense rank-c term K Kᵀ. So the bordered form, or a Sherman–Morrison–Woodbury treatment of the rank-c update, is the route to sparse, genome-scale use.
 
 ### 4.8 Conditioning and the choice of α
 
@@ -196,11 +196,11 @@ J_F mixes rates (units concentration/time) with concentration differences, so it
 
 These are leads to follow up; none has been read in detail for this project.
 
-- **Baumgarte stabilisation** (Baumgarte 1972): constraints of a differential-algebraic system are kept by adding a term proportional to the constraint violation to the dynamics. The dynamic version of the augmented term, dy/dt = N v(y) − β K(Kᵀ y − T), is exactly this applied to the conservation laws: trajectories with the right totals are unchanged, and drift in the totals decays at rate β (E9). It could be used against drift in long simulations.
-- **Bordered systems and pseudo-arclength continuation** (Keller 1977; AUTO, MATCONT): Newton's method on systems bordered with extra equations is standard in continuation. Theorem 7 puts the augmented system in that frame.
+- **Baumgarte stabilisation** (Baumgarte 1972): constraints of a differential-algebraic system are kept by adding a term proportional to the constraint violation to the dynamics. The dynamic version of the full term, dy/dt = N v(y) − β K(Kᵀ y − T), is exactly this applied to the conservation laws: trajectories with the right totals are unchanged, and drift in the totals decays at rate β (E9). It could be used against drift in long simulations.
+- **Bordered systems and pseudo-arclength continuation** (Keller 1977; AUTO, MATCONT): Newton's method on systems bordered with extra equations is standard in continuation. Theorem 7 puts the full system in that frame.
 - **Constrained least squares and KKT systems**: the α → ∞ limit of Theorem 7.
 - **Projection and stabilised index reduction for DAEs** (Gear, Gupta and Leimkuhler 1985): related ways of enforcing invariants.
-- **The augmented system of reaction network theory** (section 2.4): the replace-equations version.
+- **The "system augmented by conservation laws" of reaction network theory** (section 2.4): the replace-equations version, which despite its name adds no equations.
 - **Simulators' steady-state solvers**: COPASI, libRoadRunner (NLEQ2, KINSOL on the reduced system?), Jarnac/SCAMP, PySCeS, AMICI's steady-state sensitivities (Lakrisenko et al. 2023 discuss singular Jacobians from conserved quantities): how each handles conservation laws should be documented from their sources.
 
 ---
@@ -223,29 +223,29 @@ These are leads to follow up; none has been read in detail for this project.
 
 ### Results
 
-**E1, roots (Theorem 1).** Augmented and reduced Newton and a long LSODA simulation agree on every model to 10⁻¹⁰ or better; totals are kept to 10⁻¹⁶.
+**E1, roots (Theorem 1).** Full and reduced Newton and a long LSODA simulation agree on every model to 10⁻¹⁰ or better; totals are kept to 10⁻¹⁶.
 
 **E2, spectrum (Theorem 2).** eig(J_F) equals eig(J_R) plus c copies of sα to 10⁻¹³ for α = 1, s = +1 and α = 3, s = −1; det J_F / ((sα)^c det J_R) = 1.000000000000 for all models. Enzyme model: eig(J_R) = −7.3504, −0.8163, −0.5.
 
-**E3, iterates (Theorem 3).** Glycolysis, full Newton without line search. From y₀ (in the class): the augmented and reduced iterates agree to 10⁻¹² at every one of 7 iterations. From a guess outside the class: ‖Kᵀ y − Kᵀ y₀‖ = 0.80, then 2 × 10⁻¹⁶ after the first step. A damped step λ multiplies the error in the totals by exactly 1 − λ (0.750000000000 for λ = 0.25).
+**E3, iterates (Theorem 3).** Glycolysis, Newton with whole steps (no line search). From y₀ (in the class): the full and reduced iterates agree to 10⁻¹² at every one of 7 iterations. From a guess outside the class: ‖Kᵀ y − Kᵀ y₀‖ = 0.80, then 2 × 10⁻¹⁶ after the first step. A damped step λ multiplies the error in the totals by exactly 1 − λ (0.750000000000 for λ = 0.25).
 
 **E4, robustness from 200 random guesses** (each component log-uniform in [10⁻², 10²] times the model's scale; line search; at most 200 iterations). Columns: converged, in the right class, non-negative, equal to the reference steady state, mean iterations.
 
 | Model | Method | Conv. | In class | y ≥ 0 | = ref | Mean it. |
 | --- | --- | --- | --- | --- | --- | --- |
-| enzyme_feed | augmented | 200 | 200 | 200 | 200 | 2.5 |
+| enzyme_feed | full | 200 | 200 | 200 | 200 | 2.5 |
 | | reduced | 200 | 200 | 200 | 200 | 2.5 |
 | | naive (N v = 0) | 0 | 0 | 0 | 0 | |
 | | pseudo-inverse | 200 | 0 | 0 | 0 | 3.2 |
-| gk_cycle | augmented | 130 | 130 | 130 | 130 | 6.5 |
+| gk_cycle | full | 130 | 130 | 130 | 130 | 6.5 |
 | | reduced | 200 | 200 | 117 | 117 | 6.6 |
 | | pseudo-inverse | 175 | 0 | 0 | 0 | 7.1 |
-| bistable_cycle | augmented | 164 | 164 | 136 | 50 | 5.9 |
+| bistable_cycle | full | 164 | 164 | 136 | 50 | 5.9 |
 | | reduced | 200 | 200 | 155 | 16 | 5.4 |
-| glycolysis | augmented | 190 | 190 | 179 | 179 | 11.2 |
+| glycolysis | full | 190 | 190 | 179 | 179 | 11.2 |
 | | reduced | 175 | 175 | 175 | 175 | 11.7 |
 
-(two_state and two_cycles, which are linear: augmented and reduced converge in one iteration from every guess; naive Newton fails and the pseudo-inverse converges outside the class, as for enzyme_feed.) Reading: naive Newton always fails (singular Jacobian); the pseudo-inverse converges but never in the right class. Between augmented and reduced the picture is mixed: on the ultrasensitive cycle the augmented method fails more often but never converges to a negative root, while the reduced method always converges but in 83 of 200 cases to a non-physical one; on glycolysis the augmented method converges more often. With several steady states (bistable) the two methods land on different ones from the same guesses ("= ref" is the state reached from y₀). These differences come from the line search's merit function and from how a guess outside the class is mapped into it (Theorem 3), not from the local behaviour.
+(two_state and two_cycles, which are linear: full and reduced converge in one iteration from every guess; naive Newton fails and the pseudo-inverse converges outside the class, as for enzyme_feed.) Reading: naive Newton always fails (singular Jacobian); the pseudo-inverse converges but never in the right class. Between full and reduced the picture is mixed: on the ultrasensitive cycle the full method fails more often but never converges to a negative root, while the reduced method always converges but in 83 of 200 cases to a non-physical one; on glycolysis the full method converges more often. With several steady states (bistable) the two methods land on different ones from the same guesses ("= ref" is the state reached from y₀). These differences come from the line search's merit function and from how a guess outside the class is mapped into it (Theorem 3), not from the local behaviour.
 
 **E5, sensitivities (Theorem 4).** Enzyme and glycolysis models: −J_F⁻¹ N equals −L J_R⁻¹ N_R to 10⁻¹⁴, is independent of α and s (α = 1, s = +1 versus α = 7, s = −1: 10⁻¹⁴), and matches central finite differences of the steady state with respect to each rate to 10⁻⁹. The summation theorems hold: max |C^J v − v| ≤ 4 × 10⁻¹⁶, max |C^s v| ≤ 4 × 10⁻¹⁵. dy*/dT₁ = J_F⁻¹ K e₁ matches finite differences in the total to 10⁻⁹.
 
@@ -295,9 +295,9 @@ These are leads to follow up; none has been read in detail for this project.
 
 Each task lists what to do and what counts as done.
 
-1. **Literature check.** Search for the formulation N v + K(Kᵀy − T) = 0, or "add a multiple of the conservation-law violation", in: steady-state and MCA literature (Reder; Hofmeyr; Heinrich and Schuster's book; Cornish-Bowden), software papers (COPASI; libRoadRunner and its steady-state solvers; PySCeS; Jarnac/SCAMP; AMICI, Lakrisenko et al. 2023), continuation (Keller; Allgower and Georg; Govaerts; MATCONT), DAE stabilisation (Baumgarte; Gear–Gupta–Leimkuhler; Ascher), reaction network theory (Feinberg; Conradi, Feliu and others on augmented systems), and optimisation (penalty and augmented Lagrangian methods). *Done when:* a short annotated bibliography says whether and where it appears, and how Theorems 2–7 relate to known results.
+1. **Literature check.** Search for the formulation N v + K(Kᵀy − T) = 0, or "add a multiple of the conservation-law violation", in: steady-state and MCA literature (Reder; Hofmeyr; Heinrich and Schuster's book; Cornish-Bowden), software papers (COPASI; libRoadRunner and its steady-state solvers; PySCeS; Jarnac/SCAMP; AMICI, Lakrisenko et al. 2023), continuation (Keller; Allgower and Georg; Govaerts; MATCONT), DAE stabilisation (Baumgarte; Gear–Gupta–Leimkuhler; Ascher), reaction network theory (Feinberg; Conradi, Feliu and others on full systems), and optimisation (penalty and full Lagrangian methods). *Done when:* a short annotated bibliography says whether and where it appears, and how Theorems 2–7 relate to known results.
 2. **Tidy the theory.** Write Theorems 1–7 as a short note with full proofs; add the complex-eigenvalue case (Hopf) to Theorem 6 and the statement for general M. Decide on notation that matches the MCA literature (Γ, L, N_R, J_R, C^s, C^J). *Done when:* the note reads as a self-contained methods section.
-3. **Benchmark on real models.** Take curated SBML models from BioModels with conservation laws (load with libRoadRunner/tellurium for N, rates and Jacobians, or with the Axon antimony reader for simple ones). For each: steady state from the initial values and from perturbed guesses with (a) reduction, (b) augmented with α = 1, (c) augmented with scaled α, (d) augmented with projected guess, (e) the bordered/KKT form, (f) libRoadRunner's own steady-state solver. Record success, physical correctness, iterations, time. *Done when:* a table over ≥ 50 models, with the scripts in `python/`.
+3. **Benchmark on real models.** Take curated SBML models from BioModels with conservation laws (load with libRoadRunner/tellurium for N, rates and Jacobians, or with the Axon antimony reader for simple ones). For each: steady state from the initial values and from perturbed guesses with (a) reduction, (b) full with α = 1, (c) full with scaled α, (d) full with projected guess, (e) the bordered/KKT form, (f) libRoadRunner's own steady-state solver. Record success, physical correctness, iterations, time. *Done when:* a table over ≥ 50 models, with the scripts in `python/`.
 4. **Scaling of α.** From task 3, find a rule for α (or M) that keeps cond(J_F) near cond(J_R); test it on stiff models. *Done when:* a default with evidence.
 5. **Sparse version.** Implement the bordered form with a sparse LU (scipy `splu`, or SuiteSparse/UMFPACK) and an integer Γ from a sparse factorisation; test on a genome-scale model (BiGG Recon, with simple kinetics) for feasibility. *Done when:* timing and memory against the reduced sparse approach of Henderson et al.
 6. **MCA without the link matrix.** Package Theorem 4 (control coefficients, response to totals, sensitivities to parameters) and compare with libRoadRunner/COPASI MCA output on the benchmark models. *Done when:* agreement to solver tolerance on all models.
@@ -308,22 +308,22 @@ Each task lists what to do and what counts as done.
 
 ## 9. Implementations
 
-**Python (this folder).** `augss.py`:
+**Python (this folder).** `fullss.py`:
 
 | Function | Purpose |
 | --- | --- |
 | `Model(name, species, N, rates, y0, p)` | A network; `f(y)` = N v(y); `rates(y, p)` must accept complex y |
 | `jacobian(fun, y)` | Complex-step Jacobian |
-| `Conservation(N)` | QR with column pivoting: `ind`, `dep`, `L0`, `link`, `gamma`, `Nr`, `full(x, totals)` |
+| `Conservation(N)` | QR with column pivoting: `ind`, `dep`, `L0`, `link`, `gamma`, `Nr`, `complete(x, totals)` |
 | `left_null_basis(N, kind)` | Orthonormal K (SVD) or Γᵀ |
-| `augmented(model, K, M, alpha, sign)` | The residual F and its K, M |
+| `full_system(model, K, M, alpha, sign)` | The residual F and its K, M |
 | `reduced(model)` | The reduced residual on the independent species |
 | `newton(F, x0, ...)` | Dense Newton with Armijo backtracking; records the iterates |
-| `steady_state(model, method, guess)` | `"augmented"`, `"reduced"`, `"naive"`, `"pinv"` |
+| `steady_state(model, method, guess)` | `"full"`, `"reduced"`, `"naive"`, `"pinv"` |
 | `concentration_sensitivities(model, y, way)` | C^s by Theorem 4 or by the link matrix |
 | `flux_control(model, y, Cs)` | C^J = I + E C^s |
 
-**Axon.** `stdlib/antimony.sci` in this repository: `conservation(model)` (QR with column pivoting through `linalg.qrp`), `steady_state(model; method = "reduced" | "augmented")` (KINSOL through `nonlin.solve`), `jacobian`, `reduced_jacobian`. The Axon manual's sections "Conservation laws and the link matrix" (the reduced method) and "An alternative to employing the link matrix" (the augmented one, with the proof of Theorem 2) present both methods.
+**Axon.** `stdlib/antimony.sci` in this repository: `conservation(model)` (QR with column pivoting through `linalg.qrp`), `steady_state(model; method = "reduced" | "full")` (KINSOL through `nonlin.solve`), `jacobian`, `reduced_jacobian`. The Axon manual's sections "Conservation laws and the link matrix" (the reduced method) and "An alternative to employing the link matrix" (the full one, with the proof of Theorem 2) present both methods.
 
 ---
 

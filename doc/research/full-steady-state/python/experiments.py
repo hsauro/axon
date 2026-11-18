@@ -5,7 +5,7 @@ import sys
 import numpy as np
 from scipy.integrate import solve_ivp
 
-import augss as A
+import fullss as A
 import models
 
 np.set_printoptions(precision=4, suppress=True, linewidth=110)
@@ -28,13 +28,13 @@ def simulate_to_steady(model, t_end=1e4):
 # ---------------------------------------------------------------- E1
 def E1_roots():
     """Theorem 1: the roots of F are the steady states in the conservation
-    class. Augmented and reduced Newton, and a long simulation, agree."""
-    header("E1  Roots: augmented = reduced = long simulation, totals kept")
-    print(f"{'model':16s} {'c':>2s} {'|y_aug - y_red|':>16s} {'|y_aug - y_sim|':>16s} "
+    class. Full and reduced Newton, and a long simulation, agree."""
+    header("E1  Roots: full = reduced = long simulation, totals kept")
+    print(f"{'model':16s} {'c':>2s} {'|y_full - y_red|':>16s} {'|y_full - y_sim|':>16s} "
           f"{'|K^T(y - y0)|':>14s} {'|N v(y)|':>10s}")
     for make in models.ALL:
         mdl = make()
-        ya, ra = A.steady_state(mdl, "augmented")
+        ya, ra = A.steady_state(mdl, "full")
         yr, rr = A.steady_state(mdl, "reduced")
         ys = simulate_to_steady(mdl)
         K = A.left_null_basis(mdl.N)
@@ -50,7 +50,7 @@ def E2_spectrum():
     header("E2  Spectrum: eig(J_F) = eig(J_R) + c copies of s*alpha; det J_F = (s alpha)^c det J_R")
     for make in models.ALL:
         mdl = make()
-        y, _ = A.steady_state(mdl, "augmented")
+        y, _ = A.steady_state(mdl, "full")
         cons = A.Conservation(mdl.N)
         E = A.elasticities(mdl, y)
         JR = cons.Nr @ E @ cons.link
@@ -69,21 +69,21 @@ def E2_spectrum():
 
 # ---------------------------------------------------------------- E3
 def E3_iterates():
-    """Theorem 3: full Newton on F restores the totals in one step, and from
+    """Theorem 3: Newton with whole steps on F restores the totals in one step, and from
     a point in the class its iterates are the reduced Newton iterates."""
     header("E3  Newton iterates: totals exact after one step; same iterates as reduced Newton")
     mdl = models.glycolysis()
-    F, K, _ = A.augmented(mdl)
+    F, K, _ = A.full_system(mdl)
     G, cons, totals = A.reduced(mdl)
     # (a) Start in the class (the initial values): identical iterates.
     ra = A.newton(F, mdl.y0, line_search=False)
     rr = A.newton(G, mdl.y0[cons.ind], line_search=False)
     print("(a) guess in the class (y0): iterations", ra.iterations, "and", rr.iterations)
     for k, (ya, xr) in enumerate(zip(ra.history, rr.history)):
-        yr = cons.full(xr, totals)
-        print(f"   k={k}  |y_aug - y_red| = {np.max(np.abs(ya - yr)):.2e}   "
-              f"|F(y_aug)| = {np.max(np.abs(F(ya))):.2e}")
-    # (b) Start outside the class: totals right after the first full step.
+        yr = cons.complete(xr, totals)
+        print(f"   k={k}  |y_full - y_red| = {np.max(np.abs(ya - yr)):.2e}   "
+              f"|F(y_full)| = {np.max(np.abs(F(ya))):.2e}")
+    # (b) Start outside the class: totals right after the first whole step.
     guess = mdl.y0 + RNG.uniform(0.2, 1.0, mdl.m)
     ra = A.newton(F, guess, line_search=False)
     print("(b) guess outside the class: converged", ra.converged, "in", ra.iterations)
@@ -102,7 +102,7 @@ def E3_iterates():
 
 # ---------------------------------------------------------------- E4
 def E4_robustness(trials=200):
-    """Success from random guesses: augmented vs reduced Newton, both with a
+    """Success from random guesses: full vs reduced Newton, both with a
     line search, and two ways of ignoring the conservation laws."""
     header(f"E4  Robustness from {trials} random guesses (log-uniform, 1e-2..1e2 x scale)")
     print(f"{'model':16s} {'method':10s} {'conv':>5s} {'in class':>8s} {'y >= 0':>7s} "
@@ -113,7 +113,7 @@ def E4_robustness(trials=200):
         K = A.left_null_basis(mdl.N)
         scale = np.maximum(np.abs(mdl.y0), np.abs(y_ref)).max()
         guesses = [scale * 10 ** RNG.uniform(-2, 2, mdl.m) for _ in range(trials)]
-        for method in ("augmented", "reduced", "naive", "pinv"):
+        for method in ("full", "reduced", "naive", "pinv"):
             conv = inclass = phys = right = its = 0
             for g in guesses:
                 y, res = A.steady_state(mdl, method, guess=g, max_iter=200)
@@ -141,10 +141,10 @@ def E5_sensitivities():
     header("E5  Sensitivities without the link matrix")
     for make in (models.enzyme_feed, models.glycolysis):
         mdl = make()
-        y, _ = A.steady_state(mdl, "augmented")
-        Ca = A.concentration_sensitivities(mdl, y, "augmented")
+        y, _ = A.steady_state(mdl, "full")
+        Ca = A.concentration_sensitivities(mdl, y, "full")
         Cr = A.concentration_sensitivities(mdl, y, "reduced")
-        Ca2 = A.concentration_sensitivities(mdl, y, "augmented", alpha=7.0, sign=-1)
+        Ca2 = A.concentration_sensitivities(mdl, y, "full", alpha=7.0, sign=-1)
         # Finite differences: scale reaction j's rate by (1 + eps), so dv_j = eps v_j.
         v = mdl.rates(y, mdl.p)
         eps = 1e-6
@@ -158,8 +158,8 @@ def E5_sensitivities():
                          lambda z, p, j=j: scaled(z, p, j, 1 + eps), mdl.y0, mdl.p)
             dn = A.Model(mdl.name, mdl.species, mdl.N,
                          lambda z, p, j=j: scaled(z, p, j, 1 - eps), mdl.y0, mdl.p)
-            yu, _ = A.steady_state(up, "augmented", guess=y, tol=1e-13)
-            yd, _ = A.steady_state(dn, "augmented", guess=y, tol=1e-13)
+            yu, _ = A.steady_state(up, "full", guess=y, tol=1e-13)
+            yd, _ = A.steady_state(dn, "full", guess=y, tol=1e-13)
             Cfd[:, j] = (yu - yd) / (2 * eps * v[j])
         print(f"{mdl.name}: |C_aug - C_link| = {np.max(np.abs(Ca - Cr)):.1e}, "
               f"|C_aug(alpha=1) - C_aug(alpha=-7)| = {np.max(np.abs(Ca - Ca2)):.1e}, "
@@ -176,8 +176,8 @@ def E5_sensitivities():
         k = 0
         y0u = mdl.y0 + h * K[:, k]
         y0d = mdl.y0 - h * K[:, k]
-        Fu, _, _ = A.augmented(mdl, y_ref=y0u)
-        Fd, _, _ = A.augmented(mdl, y_ref=y0d)
+        Fu, _, _ = A.full_system(mdl, y_ref=y0u)
+        Fd, _, _ = A.full_system(mdl, y_ref=y0d)
         yu = A.newton(Fu, y, tol=1e-13).x
         yd = A.newton(Fd, y, tol=1e-13).x
         print(f"   dy/dT_1: |J_F^-1 K e_1 - finite difference| = "
@@ -195,7 +195,7 @@ def E6_sign_and_stability():
     found = []
     for wp in np.linspace(0.0, 1.0, 21):
         g = np.array([1.0 - wp, wp])
-        y, res = A.steady_state(mdl, "augmented", guess=g, sign=-1.0)
+        y, res = A.steady_state(mdl, "full", guess=g, sign=-1.0)
         if res.converged and not any(np.allclose(y, f, atol=1e-8) for f in found):
             found.append(y)
     cons = A.Conservation(mdl.N)
@@ -218,7 +218,7 @@ def E7_other_bases():
     for make in (models.two_cycles, models.glycolysis):
         mdl = make()
         G = A.left_null_basis(mdl.N, "gamma") + 0.0
-        y, res = A.steady_state(mdl, "augmented", K=G)
+        y, res = A.steady_state(mdl, "full", K=G)
         yr, _ = A.steady_state(mdl, "reduced")
         E = A.elasticities(mdl, y)
         cons = A.Conservation(mdl.N)
@@ -289,7 +289,7 @@ def E10_random_networks(count=100):
         mdl = models.random_closed(m=8, pairs=8, seed=seed)
         cons = A.Conservation(mdl.N)
         cs.append(cons.c)
-        ya, ra = A.steady_state(mdl, "augmented", max_iter=200)
+        ya, ra = A.steady_state(mdl, "full", max_iter=200)
         yr, rr = A.steady_state(mdl, "reduced", max_iter=200)
         conv_a += ra.converged
         conv_r += rr.converged
@@ -299,7 +299,7 @@ def E10_random_networks(count=100):
             agree += d < 1e-7
             if d >= 1e-7:
                 K0 = A.left_null_basis(mdl.N)
-                for nm, yy in (("augmented", ya), ("reduced", yr)):
+                for nm, yy in (("full", ya), ("reduced", yr)):
                     print(f"   seed {seed}, {nm}: min y = {np.min(yy):.3g}, |N v| = "
                           f"{np.max(np.abs(mdl.f(yy))):.1e}, |K^T(y - y0)| = "
                           f"{np.max(np.abs(K0.T @ (yy - mdl.y0))):.1e}")
@@ -311,15 +311,15 @@ def E10_random_networks(count=100):
             worst_eig = max(worst_eig, np.max(np.abs(ef - er)) / max(1, np.max(np.abs(er))))
     print(f"   conservation laws per network: min {min(cs)}, max {max(cs)}, "
           f"mean {np.mean(cs):.1f}")
-    print(f"   converged: augmented {conv_a}/{count}, reduced {conv_r}/{count}; "
+    print(f"   converged: full {conv_a}/{count}, reduced {conv_r}/{count}; "
           f"same steady state {agree}")
-    print(f"   worst |y_aug - y_red| = {worst_root:.1e}; worst relative eigenvalue "
+    print(f"   worst |y_full - y_red| = {worst_root:.1e}; worst relative eigenvalue "
           f"mismatch = {worst_eig:.1e}")
 
 
 # ---------------------------------------------------------------- E11
 def E11_bordered():
-    """The augmented system is the Schur complement of a bordered system in
+    """The full system is the Schur complement of a bordered system in
     (y, mu): N v(y) + K mu = 0, K^T y - T - mu / alpha = 0. Newton on the
     bordered system takes the same steps; alpha = infinity gives the
     Lagrange (KKT) form, and mu = 0 at every solution."""
@@ -339,10 +339,10 @@ def E11_bordered():
         rb = A.newton(B, z0, line_search=False, tol=1e-12)
         msg = f"alpha = {alpha}: converged {rb.converged} in {rb.iterations}, |mu| = "               f"{np.max(np.abs(rb.x[m:])):.1e}"
         if not np.isinf(alpha):
-            F, _, _ = A.augmented(mdl, alpha=alpha)
+            F, _, _ = A.full_system(mdl, alpha=alpha)
             ra = A.newton(F, mdl.y0, line_search=False, tol=1e-12)
             diff = max(np.max(np.abs(zb[:m] - ya)) for zb, ya in zip(rb.history, ra.history))
-            msg += f", augmented: {ra.iterations} iterations, max |y_bordered - y_aug| over "                    f"the iterates = {diff:.1e}"
+            msg += f", full: {ra.iterations} iterations, max |y_bordered - y_full| over "                    f"the iterates = {diff:.1e}"
         else:
             yr, _ = A.steady_state(mdl, "reduced")
             msg += f", |y - y_red| = {np.max(np.abs(rb.x[:m] - yr)):.1e}"
