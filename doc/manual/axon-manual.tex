@@ -5,6 +5,9 @@
 
 \input{axon-style}
 \usepackage{tikz}
+% \refs{ref:a,ref:b}: references to the numbered "Further reading" lists,
+% printed together in brackets, as [1, 2].
+\newcommand{\refs}[1]{[\foreach \r [count=\n] in {#1}{\ifnum\n>1,\space\fi\ref{\r}}]}
 
 \title{\Huge\bfseries Axon\\[6pt]\LARGE User Manual\\[18pt]
   \large The language and the IDE}
@@ -3659,44 +3662,59 @@ is passed from species to species by the reactions but is never made or
 destroyed, such as the enzyme, which is present in both \code{E} and
 \code{ES}.
 
-A conservation law can be read off the stoichiometry matrix. Write the
-total as a weighted sum of the concentrations, $\boldsymbol{\gamma}
-\mathbf{y}$, where $\boldsymbol{\gamma}$ is a row vector with one weight per
-species. For A $\rightleftharpoons$ B the total is $A + B$, so
-$\boldsymbol{\gamma} = [\,1 \;\; 1\,]$ and $\boldsymbol{\gamma} \mathbf{y} =
-A + B$. The rate of change of the total is
+In terms of the stoichiometry matrix, a total, $T$, is a weighted sum of the
+concentrations, $T = \boldsymbol{\gamma} \mathbf{y}$, where
+$\boldsymbol{\gamma}$ is a row vector with one weight per species. If the
+total is conserved, $dT/dt = 0$ always. Differentiating,
 \[
-  \frac{d}{dt} (\boldsymbol{\gamma} \mathbf{y})
-  = \boldsymbol{\gamma} \frac{d\mathbf{y}}{dt}
-  = \boldsymbol{\gamma} \mathbf{N} \mathbf{v} ,
+  \frac{dT}{dt} = \boldsymbol{\gamma} \frac{d\mathbf{y}}{dt}
+  = \boldsymbol{\gamma} \mathbf{N} \mathbf{v} = 0 .
 \]
-To see when this is zero, look at $\boldsymbol{\gamma} \mathbf{N}$ first.
-It is a row vector with one entry per reaction: entry $j$ is the column of
-reaction $j$ weighted by $\boldsymbol{\gamma}$, which is how much the total
-changes each time reaction $j$ takes place once. Multiplying by
-$\mathbf{v}$ then adds up, over the reactions, that change times the
-reaction's rate. The rates change as the concentrations change and can take
-many different values, so the total stays constant whatever they are only
-if every reaction on its own leaves the total unchanged, that is, if every
-entry of $\boldsymbol{\gamma} \mathbf{N}$ is zero:
+The product $\boldsymbol{\gamma} \mathbf{N}$ is a row vector with one entry
+per reaction, so $\boldsymbol{\gamma} \mathbf{N} \mathbf{v}$ is the dot
+product
+\[
+  (\boldsymbol{\gamma} \mathbf{N})_1 v_1 + (\boldsymbol{\gamma} \mathbf{N})_2
+  v_2 + \cdots + (\boldsymbol{\gamma} \mathbf{N})_n v_n = 0 .
+\]
+A conservation law belongs to the network, not to particular rate laws or
+parameter values, so this has to hold whatever the rates $v_j$ are. Since
+the rates can take any values, the only way the sum can always be zero is
+if every term $(\boldsymbol{\gamma} \mathbf{N})_j$ is zero:
 \[
   \boldsymbol{\gamma} \mathbf{N} = 0 .
 \]
-If one entry were not zero, that reaction would change the total whenever
-it ran. For A $\rightleftharpoons$ B,
+Each term also has a meaning: column $j$ of $\mathbf{N}$ lists the molecules
+reaction $j$ makes and uses, so $(\boldsymbol{\gamma} \mathbf{N})_j$ is how
+much the total changes each time reaction $j$ takes place, and a conserved
+total is one that no reaction changes. In words, $\boldsymbol{\gamma}
+\mathbf{N} = 0$ says that the rows of $\mathbf{N}$, multiplied by the
+weights and added up, give a row of zeros, so the rows depend on each
+other. Conversely, for any $\boldsymbol{\gamma}$ with $\boldsymbol{\gamma}
+\mathbf{N} = 0$ the same line, read the other way, gives $dT/dt =
+(\boldsymbol{\gamma} \mathbf{N}) \mathbf{v} = 0$ whatever the rates, so
+$\boldsymbol{\gamma} \mathbf{N} = 0$ is exactly the condition for a
+conservation law. (A particular rate law can occasionally keep some other
+combination constant, and at a steady state every concentration is
+constant; neither is a conservation law in this sense, since neither holds
+whatever the rates.)
+
+For example, in A $\rightleftharpoons$ B the row of \code{B} is minus the
+row of \code{A}, so the two rows add up to zero, and the weights
+$\boldsymbol{\gamma} = [\,1 \;\; 1\,]$ give
 \[
   \boldsymbol{\gamma} \mathbf{N}
   = [\,1 \;\; 1\,] \begin{bmatrix} -1 & 1 \\ 1 & -1 \end{bmatrix}
-  = [\,{-1} + 1 \;\;\; 1 - 1\,] = [\,0 \;\; 0\,] :
+  = [\,{-1} + 1 \;\;\; 1 - 1\,] = [\,0 \;\; 0\,] .
 \]
-\code{J1} uses one \code{A} and makes one \code{B}, which changes $A + B$
-by $-1 + 1 = 0$, and \code{J2} changes it by $1 - 1 = 0$. Read by rows
-instead, the same product says that the row of \code{A} plus the row of
-\code{B} is zero, the observation above that one row is minus the other. So
-$d(A + B)/dt = 0$, and $A + B$ keeps its initial value whatever the rates. In general, every row
-vector $\boldsymbol{\gamma}$ with $\boldsymbol{\gamma} \mathbf{N} = 0$ gives a
-total $\boldsymbol{\gamma} \mathbf{y}$ that never changes, and finding the
-conservation laws of a network means finding all such $\boldsymbol{\gamma}$.
+Since $\boldsymbol{\gamma} \mathbf{y} = A + B$, the result above says
+$d(A + B)/dt = 0$: $A + B$ keeps its initial value. (Read by columns, the
+same product says that each reaction leaves the total unchanged: \code{J1}
+uses one \code{A} and makes one \code{B}, changing $A + B$ by $-1 + 1 = 0$.)
+Finding the conservation laws of a network means finding all the
+combinations of the rows of $\mathbf{N}$ that add up to zero, that is, the
+linear dependences among its rows; the conservation analysis below shows
+how.
 In the enzyme model used later in this section,
 whose species are the substrate \code{S}, the free enzyme \code{E}, the
 complex \code{ES} and the product \code{P}, in that order, the law
@@ -3719,7 +3737,7 @@ cannot be used to judge stability.
 
 \paragraph{Conservation analysis.} \code{antimony.conservation(model)}
 finds the conservation laws and splits the species in two
-\ref{ref:reder}, \ref{ref:sauro}, \ref{ref:vallab}. The \emph{independent}
+\refs{ref:reder,ref:sauro,ref:vallab}. The \emph{independent}
 species are $r$ species whose rows of $\mathbf{N}$ are linearly independent; their
 rows form the reduced stoichiometry matrix $\mathbf{N}_R$ ($r$ rows). Each of the
 $c$ \emph{dependent} species has a row of $\mathbf{N}$ that is a combination of the
@@ -3730,22 +3748,33 @@ independent rows, $\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R$. Ordering the indep
 \]
 where $\mathbf{L}$ is the \emph{link matrix}.
 
-The same matrix $\mathbf{L}_0$ gives the conservation laws. Collected as rows,
-they form the \emph{conservation matrix}
+The same matrix $\mathbf{L}_0$ also gives the conservation laws. Start from
+the relation between the rows, $\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R$,
+and move everything to one side: $-\mathbf{L}_0 \mathbf{N}_R + \mathbf{N}_0
+= 0$. Written as one product, with the species in the order above
+(independent first), this is
+\[
+  [\,-\mathbf{L}_0 \;\; \mathbf{I}\,]
+  \begin{bmatrix} \mathbf{N}_R \\ \mathbf{N}_0 \end{bmatrix}
+  = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,]\, \mathbf{N} = 0 .
+\]
+So every row of the matrix $[\,-\mathbf{L}_0 \;\; \mathbf{I}\,]$ is a row
+vector $\boldsymbol{\gamma}$ with $\boldsymbol{\gamma} \mathbf{N} = 0$, which
+is a conservation law, as the start of this section showed. Collected as
+rows, these laws form the \emph{conservation matrix}
 \[
   \mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,] ,
+  \qquad \mathbf{\Gamma} \mathbf{N} = 0 ,
 \]
-with $c$ rows, one per conservation law, and $m$ columns, one per species,
-in the same order as above (independent species first). Each row of
-$\mathbf{\Gamma}$ is one of the vectors $\boldsymbol{\gamma}$ of the start of
-this section. The row of a dependent species has a 1 in that species'
-column (from $\mathbf{I}$), minus its row of $\mathbf{L}_0$ in the columns of
-the independent species, and 0 for the other dependent species: it is the
-dependent species minus the combination of independent species whose rows
-of $\mathbf{N}$ its own row equals. That combination is a conservation law
-because $\mathbf{\Gamma} \mathbf{L} = -\mathbf{L}_0 + \mathbf{L}_0 = 0$, and so
-$\mathbf{\Gamma} \mathbf{N} = \mathbf{\Gamma} \mathbf{L} \mathbf{N}_R = 0$: every
-row satisfies $\boldsymbol{\gamma} \mathbf{N} = 0$. \code{antimony.conservation}
+with $c$ rows, one per dependent species and so one per independent
+conservation law (every other law is a combination of these, since $c = m -
+r$ is the number of independent laws and the $\mathbf{I}$ block makes the
+rows independent), and $m$ columns, one per species. The row of a dependent species has a 1 in
+that species' column (from $\mathbf{I}$), minus its row of $\mathbf{L}_0$ in
+the columns of the independent species, and 0 for the other dependent
+species: it is the dependent species minus the combination of independent
+species whose rows of $\mathbf{N}$ its own row equals, and its total
+$\boldsymbol{\gamma} \mathbf{y}$ never changes. \code{antimony.conservation}
 returns $\mathbf{\Gamma}$ as the field \code{gamma}, with its columns put back
 in the model's order of species; for the enzyme model later in this section
 it is the single row $[\,0 \;\; 1 \;\; 1 \;\; 0\,]$, the law \code{E + ES}.
@@ -3765,7 +3794,7 @@ elimination answers it in exact arithmetic, but in floating point it has to
 decide whether a small number is a rounding error or a genuine entry, and on
 large networks it decides badly. The module uses QR factorisation with
 column pivoting instead (\code{linalg.qrp}, LAPACK's \code{dgeqp3}), as
-Vallabhajosyula, Chickarmane and Sauro describe \ref{ref:vallab}; it is the
+Vallabhajosyula, Chickarmane and Sauro describe \refs{ref:vallab}; it is the
 standard reliable way of finding the rank of a matrix and which of its
 columns are independent.
 
@@ -3925,7 +3954,7 @@ describes the fluxes, the rates $\mathbf{v}$ at a steady state (many papers
 write them $J$). A steady state has $\mathbf{N} \mathbf{v} = 0$, so its fluxes
 lie in the null space, or kernel, of $\mathbf{N}$, of dimension $n - r$ for $n$
 reactions. \code{antimony.kernel(model)} splits the reactions in two
-\ref{ref:reder}: QR factorisation of $\mathbf{N}$ with column pivoting,
+\refs{ref:reder}: QR factorisation of $\mathbf{N}$ with column pivoting,
 $\mathbf{N} \mathbf{P} = \mathbf{Q} \mathbf{R}$, takes the reactions' columns largest first, and the first $r$
 pivoted are the \emph{dependent} reactions; the fluxes of the other $n - r$,
 the \emph{independent} ones, can be chosen freely. With the dependent
@@ -3961,7 +3990,7 @@ $c$ zeros.
 
 \paragraph{Further reading.}
 
-\begin{enumerate}[label={[\arabic*]}, leftmargin=2.2em]
+\begin{enumerate}[label={[\arabic*]}, ref={\arabic*}, leftmargin=2.2em]
 \item\label{ref:reder} C.~Reder. Metabolic control theory: a structural
   approach. \emph{Journal of Theoretical Biology} 135(2):175--201, 1988.
 \item\label{ref:sauro} H.~M.~Sauro and B.~Ingalls. Conservation analysis in
@@ -4542,14 +4571,14 @@ fewer unknowns, so each Newton iteration costs $c$ fewer evaluations of the
 rates, and it gives $\mathbf{J}_R$, the matrix whose eigenvalues decide stability.
 The full system needs no choice of independent species and no link
 matrix: only a basis of the null space, and a residual that is one line of
-code. References \ref{ref:reder}--\ref{ref:vallab} reduce the system. The
+code. References [\ref{ref:reder}--\ref{ref:vallab}] reduce the system. The
 closest form we know of in the literature is the ``system augmented by
 conservation laws'' of algebraic reaction network theory, which, despite
 its name, replaces equations rather than adding any: for each
 conservation law $\boldsymbol{\gamma}$ (a row of $\mathbf{\Gamma}$), the steady-state equation of the
 first species with a non-zero entry in $\boldsymbol{\gamma}$ is replaced by
 $\boldsymbol{\gamma} \mathbf{y} - \boldsymbol{\gamma} \mathbf{y}_0 = 0$, which gives a square system whose positive roots are the
-steady states in the conservation class \ref{ref:obatake}. It is used
+steady states in the conservation class \refs{ref:obatake}. It is used
 there to count steady states rather than to compute them, and it needs a
 choice of which equations to replace; the orthogonal term above avoids that
 choice.
@@ -4557,7 +4586,7 @@ choice.
 \paragraph{Further reading.} References [1]--[3] are listed in
 Section~\ref{sec:conservation}.
 
-\begin{enumerate}[label={[\arabic*]}, leftmargin=2.2em, start=4]
+\begin{enumerate}[label={[\arabic*]}, ref={\arabic*}, leftmargin=2.2em, start=4]
 \item\label{ref:obatake} N.~Obatake and E.~Walker. Newton--Okounkov
   bodies of chemical reaction systems. arXiv:2203.03840, 2022.
   Section~2.1, equation~(3), defines the system augmented by conservation
@@ -4581,7 +4610,7 @@ theorems), and $\sum_j C^{J}_{v_j}\varepsilon^{v_j}_{s} = 0$ (a connectivity
 theorem): control is shared out, and it is the elasticities that decide how.
 
 The control coefficients follow from the elasticities and the structure of
-the network (reference \ref{ref:reder}). With the unscaled elasticities
+the network (reference \refs{ref:reder}). With the unscaled elasticities
 $\boldsymbol{\varepsilon} = \partial \mathbf{v} / \partial \mathbf{s}$ (with $\mathbf{s}$ the species'
 concentrations, the $\mathbf{y}$ of the earlier sections, as control
 analysis writes them) and the reduced stoichiometry $\mathbf{N}_R$
