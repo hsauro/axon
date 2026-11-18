@@ -3664,8 +3664,22 @@ destroyed, such as the enzyme, which is present in both \code{E} and
 
 In terms of the stoichiometry matrix, a total, $T$, is a weighted sum of the
 concentrations, $T = \boldsymbol{\gamma} \mathbf{y}$, where
-$\boldsymbol{\gamma}$ is a row vector with one weight per species. If the
-total is conserved, $dT/dt = 0$ always. Differentiating,
+$\boldsymbol{\gamma}$ is a row vector with one weight per species. For
+A $\rightleftharpoons$ B, whose concentrations are $\mathbf{y} = [\,A \;\;
+B\,]^T$, the total $A + B$ has a weight of 1 for each species:
+\[
+  T = \boldsymbol{\gamma} \mathbf{y}
+    = [\,1 \;\; 1\,] \begin{bmatrix} A \\ B \end{bmatrix}
+    = 1 \cdot A + 1 \cdot B = A + B .
+\]
+The weights need not all be 1. In the reaction \code{2A -> B}, each
+\code{B} is made from two \code{A}, so what is conserved is the number of
+\code{A} units, free or inside \code{B}: the total $A + 2B$, with
+$\boldsymbol{\gamma} = [\,1 \;\; 2\,]$. (Each time the reaction takes place,
+$A$ falls by 2 and $B$ rises by 1, so $A + 2B$ changes by $-2 + 2 \cdot 1 =
+0$.)
+
+If the total is conserved, $dT/dt = 0$ always. Differentiating,
 \[
   \frac{dT}{dt} = \boldsymbol{\gamma} \frac{d\mathbf{y}}{dt}
   = \boldsymbol{\gamma} \mathbf{N} \mathbf{v} = 0 .
