@@ -3679,7 +3679,7 @@ $\boldsymbol{\gamma} = [\,1 \;\; 2\,]$. (Each time the reaction takes place,
 $A$ falls by 2 and $B$ rises by 1, so $A + 2B$ changes by $-2 + 2 \cdot 1 =
 0$.)
 
-If the total is conserved, $dT/dt = 0$ always. Differentiating,
+If the total is conserved, it will always be true that $dT/dt = 0$. Differentiating, $T = \boldsymbol{\gamma} \mathbf{y}$ with respect to time gives:
 \[
   \frac{dT}{dt} = \boldsymbol{\gamma} \frac{d\mathbf{y}}{dt}
   = \boldsymbol{\gamma} \mathbf{N} \mathbf{v} = 0 .
@@ -3699,7 +3699,7 @@ if every term $(\boldsymbol{\gamma} \mathbf{N})_j$ is zero:
   \boldsymbol{\gamma} \mathbf{N} = 0 .
 \]
 Each term also has a meaning: column $j$ of $\mathbf{N}$ lists the molecules
-reaction $j$ makes and uses, so $(\boldsymbol{\gamma} \mathbf{N})_j$ is how
+reaction $j$ makes and consumes, so $(\boldsymbol{\gamma} \mathbf{N})_j$ is how
 much the total changes each time reaction $j$ takes place, and a conserved
 total is one that no reaction changes. In words, $\boldsymbol{\gamma}
 \mathbf{N} = 0$ says that the rows of $\mathbf{N}$, multiplied by the
@@ -3738,35 +3738,44 @@ product, which are not part of the total. Each conservation law is one
 such vector $\boldsymbol{\gamma}$. The \emph{conservation matrix} $\mathbf{\Gamma}$, introduced
 below, holds all the conservation laws of a network, one per row.
 
-A model with $c$ independent conservation laws has
-an $\mathbf{N}$ of rank $r = m - c$ for $m$ species, and that causes two problems.
-First, the equations $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ do not fix the
-steady state: they say nothing about the values of the totals, and each
-choice of those values has a steady state of its own, so the equations have
-a whole family of solutions, one for each set of totals. (In
+In a model without conservation laws, $\mathbf{N}$ has full row rank: its
+$m$ rows are independent, and the $m$ balance equations
+$\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ for the $m$ unknown concentrations
+can, in general, fix the steady state. Conservation laws change that. A
+model with $c$ independent conservation laws has an $\mathbf{N}$ of rank
+$r = m - c$ for $m$ species: $c$ of its rows are combinations of the
+others, and that causes two problems. First, $c$ of the balance equations
+then repeat what the others say, so only $r$ of them carry information, and
+the equations no longer fix the steady state on their own and there is insufficient information to determine a unique solution. In order
+to find a unique solution, information on the total masses in the conservation laws must be used. Without that the equations have a whole family of
+solutions, one for each set of totals. (In
 \code{A -> B} and \code{B -> A}, with rates $k_1 A$ and $k_2 B$, any $A$
 and $B$ with $k_1 A = k_2 B$ balance the rates, whatever $A + B$ is.) Second, the Jacobian matrix $\partial (\mathbf{N} \mathbf{v}) / \partial \mathbf{y}$ is singular,
 with $c$ zero eigenvalues, so Newton's method for finding steady states fails and the eigenvalues
 cannot be used to judge stability.
 
-\paragraph{Conservation analysis.} \code{antimony.conservation(model)}
-finds the conservation laws and splits the species in two
+\paragraph{Conservation analysis.} The method \code{antimony.conservation(model)}
+finds the conservation laws and splits the species in two groups, the dependent and independent species.
 \refs{ref:reder,ref:sauro,ref:vallab}. The \emph{independent}
 species are $r$ species whose rows of $\mathbf{N}$ are linearly independent; their
 rows form the reduced stoichiometry matrix $\mathbf{N}_R$ ($r$ rows). Each of the
 $c$ \emph{dependent} species has a row of $\mathbf{N}$ that is a combination of the
-independent rows, $\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R$. Ordering the independent species first,
+independent rows. This splits the stoichiometry matrix into two blocks, $\mathbf{N}_R$ with $r$ rows and $\mathbf{N}_0$ with $c$ rows, such that the dependent rows can be computed from the linearly independent rows in $\mathbf{N}_R$ using:
+%
+$$\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R . $$ 
+%
+If we order the independent species be be first in the stoichiometry matrix, we can write:
 \[
   \mathbf{N} = \begin{bmatrix} \mathbf{N}_R \\ \mathbf{N}_0 \end{bmatrix}
     = \begin{bmatrix} \mathbf{I} \\ \mathbf{L}_0 \end{bmatrix} \mathbf{N}_R = \mathbf{L}\, \mathbf{N}_R ,
 \]
-where $\mathbf{L}$ is the \emph{link matrix}.
+where $\mathbf{L}$ is called the \emph{link matrix}.
 
-The same matrix $\mathbf{L}_0$ also gives the conservation laws. Start from
+The matrix $\mathbf{L}_0$ also gives the conservation laws. We can show this as follows. Start from
 the relation between the rows, $\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R$,
 and move everything to one side: $-\mathbf{L}_0 \mathbf{N}_R + \mathbf{N}_0
 = 0$. Written as one product, with the species in the order above
-(independent first), this is
+(independent first), this can be rewritten as:
 \[
   [\,-\mathbf{L}_0 \;\; \mathbf{I}\,]
   \begin{bmatrix} \mathbf{N}_R \\ \mathbf{N}_0 \end{bmatrix}
@@ -3783,23 +3792,48 @@ rows, these laws form the \emph{conservation matrix}
 with $c$ rows, one per dependent species and so one per independent
 conservation law (every other law is a combination of these, since $c = m -
 r$ is the number of independent laws and the $\mathbf{I}$ block makes the
-rows independent), and $m$ columns, one per species. The row of a dependent species has a 1 in
-that species' column (from $\mathbf{I}$), minus its row of $\mathbf{L}_0$ in
-the columns of the independent species, and 0 for the other dependent
-species: it is the dependent species minus the combination of independent
-species whose rows of $\mathbf{N}$ its own row equals, and its total
-$\boldsymbol{\gamma} \mathbf{y}$ never changes. \code{antimony.conservation}
+rows independent), and $m$ columns, one per species. For
+A $\rightleftharpoons$ B, with \code{A} independent, $\mathbf{N}_R$ is the
+row of \code{A} and $\mathbf{N}_0$ the row of \code{B}. In this example the
+row of \code{B} happens to be minus the row of \code{A},
+$[\,1 \;\; {-1}\,] = (-1)\,[\,{-1} \;\; 1\,]$, so here $\mathbf{L}_0 =
+[\,{-1}\,]$ and
+$\mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,] = [\,1 \;\; 1\,]$,
+the law $A + B$ found at the start of this section. In general
+$\mathbf{L}_0$ has whatever entries express each dependent row as a
+combination of the independent ones, and the factorisation described below
+finds them. \code{antimony.conservation}
 returns $\mathbf{\Gamma}$ as the field \code{gamma}, with its columns put back
 in the model's order of species; for the enzyme model later in this section
 it is the single row $[\,0 \;\; 1 \;\; 1 \;\; 0\,]$, the law \code{E + ES}.
 
-With $\mathbf{T} = \mathbf{\Gamma} \mathbf{y}_0$, the totals in the initial values
-(a vector, one total per law, though written with a capital as in the
-conservation literature),
+Earlier, a single conservation law $\boldsymbol{\gamma}$ gave a single
+total, $T = \boldsymbol{\gamma} \mathbf{y}$, a number. With all $c$ laws as
+the rows of $\mathbf{\Gamma}$, the same product gives all the totals at
+once: $\mathbf{\Gamma} \mathbf{y}$ is a vector with $c$ entries, entry $i$
+being the total of law $i$ (row $i$ of $\mathbf{\Gamma}$ times
+$\mathbf{y}$). The totals never change, so they keep the values they have
+in the initial concentrations $\mathbf{y}_0$:
+\[
+  \mathbf{\Gamma} \mathbf{y} = \mathbf{\Gamma} \mathbf{y}_0 = \mathbf{T} ,
+\]
+where $\mathbf{T}$ is the vector of totals (a vector, one total per law,
+though written with a capital as in the conservation literature). For
+A $\rightleftharpoons$ B, $\mathbf{T}$ has the single entry $A_0 + B_0$.
+Splitting $\mathbf{y}$ into its independent and dependent species,
+\[
+  \mathbf{\Gamma} \mathbf{y} = [\,-\mathbf{L}_0 \;\; \mathbf{I}\,]
+  \begin{bmatrix} \mathbf{y}_{\mathrm{ind}} \\ \mathbf{y}_{\mathrm{dep}}
+  \end{bmatrix} = -\mathbf{L}_0\, \mathbf{y}_{\mathrm{ind}} +
+  \mathbf{y}_{\mathrm{dep}} ,
+\]
+so $\mathbf{\Gamma} \mathbf{y} = \mathbf{T}$ gives
 \[
   \mathbf{y}_{\mathrm{dep}} = \mathbf{L}_0\, \mathbf{y}_{\mathrm{ind}} + \mathbf{T} ,
 \]
-so the independent species determine the dependent ones.
+so the independent species determine the dependent ones. For
+A $\rightleftharpoons$ B this is $B = -A + (A_0 + B_0)$: once $A$ is known,
+so is $B$.
 
 \paragraph{Finding the independent species.} Which species are independent
 is a question about the rows of $\mathbf{N}$: a species is dependent when its
