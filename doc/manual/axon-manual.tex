@@ -4116,7 +4116,20 @@ nor a state the model can reach. The conservation term is built so that
 this cannot happen,
 and $\mathbf{f}(\mathbf{y}) = 0$ holds exactly when both the balance and the
 conservation conditions hold.
-It is built in three steps; the third shows why the two terms cannot cancel.
+
+The added term is only a device for \emph{finding} steady states, and the
+model itself is not changed. A time-course simulation
+(\code{antimony.simulate}, \code{ode.solve}) still integrates
+$d\mathbf{y}/dt = \mathbf{N} \mathbf{v}(\mathbf{y})$ as it is: the real
+dynamics keep the conserved totals constant by themselves, so they need no
+help. Adding the term to the dynamics would even be harmful, since with
+this sign any small error in a total, such as a rounding error of the ODE
+solver, would grow instead of dying away. For finding a steady state the
+sign does not matter, because $\mathbf{f}(\mathbf{y}) = 0$ has the same
+solutions either way.
+
+The conservation term is built in three steps; the third shows why the two
+terms cannot cancel.
 
 \begin{enumerate}
 \item \emph{The totals.} As in Section~\ref{sec:conservation}, a conservation
@@ -4126,16 +4139,16 @@ It is built in three steps; the third shows why the two terms cannot cancel.
   gives the total $E + ES$. The rows of $\mathbf{\Gamma}$ are $c$ such vectors. The columns of
   $\mathbf{W}$ hold the same $c$ laws in another form: written as
   columns, combined so that they are at right angles to each other and of
-  length 1. In symbols, the columns of $\mathbf{\Gamma}^T$ are the laws
+  length 1 (both condition yield orthonormal vectors). In symbols, the columns of $\mathbf{\Gamma}^T$ are the laws
   written as columns, and one way of making them orthonormal is
   \[
     \mathbf{W} = \mathbf{\Gamma}^T (\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2} ,
   \]
-  where $(\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2}$ is the $c \times c$
-  matrix that undoes the lengths of the laws and the angles between them
-  (with a single law, $\mathbf{\Gamma}\mathbf{\Gamma}^T$ is the squared
-  length of $\boldsymbol{\gamma}$, so this just divides $\boldsymbol{\gamma}^T$
-  by its length). Any other orthonormal $\mathbf{W}$ for the same laws,
+  where $(\mathbf{\Gamma}\mathbf{\Gamma}^T)^{-1/2}$ is a $c \times c$
+  matrix that rescales the laws to length 1 and makes them perpendicular
+  (with a single law it just divides $\boldsymbol{\gamma}^T$ by its
+  length; the paragraph ``Why this $\mathbf{W}$ is orthonormal'' below
+  explains how it works). Any other orthonormal $\mathbf{W}$ for the same laws,
   such as the one \code{linalg.null(N')} returns, differs from this one only
   by a rotation of its columns, which changes nothing below.
   ($\mathbf{W}$ is not the kernel matrix
@@ -4287,6 +4300,67 @@ One caveat: ``at right angles'' is measured
 with ordinary lengths in concentration units, so measuring a species in
 different units would change how a change is split, though not the steady
 state that $\mathbf{f}(\mathbf{y}) = 0$ finds.
+
+\paragraph{Why this $\mathbf{W}$ is orthonormal.} The $c \times c$ matrix
+$\mathbf{\Gamma}\mathbf{\Gamma}^T$ is the \emph{Gram matrix} of the
+conservation laws: entry $(i, j)$ is the dot product of law $i$ with law
+$j$, $\boldsymbol{\gamma}_i \cdot \boldsymbol{\gamma}_j$. Its diagonal holds
+the squared lengths of the laws, and an entry off the diagonal is zero only
+when the two laws are at right angles; so it records the lengths of the laws
+and the angles between them. Write $\mathbf{M} = \mathbf{\Gamma}
+\mathbf{\Gamma}^T$. It is symmetric, and because the laws are independent
+its eigenvalues are positive, so it can be written $\mathbf{M} = \mathbf{Q}
+\mathbf{\Lambda} \mathbf{Q}^T$, with the eigenvalues on the diagonal of
+$\mathbf{\Lambda}$ and orthonormal eigenvectors in $\mathbf{Q}$. Its inverse
+square root is
+\[
+  \mathbf{M}^{-1/2} = \mathbf{Q}\, \mathbf{\Lambda}^{-1/2} \mathbf{Q}^T ,
+\]
+with $\mathbf{\Lambda}^{-1/2}$ holding one over the square root of each
+eigenvalue; it is symmetric. Multiplying $\mathbf{M}$ by it on both sides
+gives the identity. For a single positive number $\lambda$ this is
+$(1/\sqrt{\lambda})\, \lambda\, (1/\sqrt{\lambda}) = \lambda / \lambda = 1$,
+and the matrix case works the same way, one eigenvalue at a time:
+\[
+  \mathbf{M}^{-1/2} \mathbf{M}\, \mathbf{M}^{-1/2}
+  = \mathbf{Q} \mathbf{\Lambda}^{-1/2} \underbrace{\mathbf{Q}^T
+    \mathbf{Q}}_{\mathbf{I}} \mathbf{\Lambda} \underbrace{\mathbf{Q}^T
+    \mathbf{Q}}_{\mathbf{I}} \mathbf{\Lambda}^{-1/2} \mathbf{Q}^T
+  = \mathbf{Q} \bigl( \mathbf{\Lambda}^{-1/2} \mathbf{\Lambda}\,
+    \mathbf{\Lambda}^{-1/2} \bigr) \mathbf{Q}^T
+  = \mathbf{Q} \mathbf{Q}^T = \mathbf{I} ,
+\]
+since $\mathbf{Q}^T \mathbf{Q} = \mathbf{Q} \mathbf{Q}^T = \mathbf{I}$ (the
+eigenvectors are orthonormal), and the three diagonal matrices in the
+bracket multiply entry by entry, each entry being
+$(1/\sqrt{\lambda})\, \lambda\, (1/\sqrt{\lambda}) = 1$. For one law, $\mathbf{M}$ is the single
+number $|\boldsymbol{\gamma}|^2$ and $\mathbf{M}^{-1/2} =
+1/|\boldsymbol{\gamma}|$: dividing by the length. Orthonormal columns means
+$\mathbf{W}^T \mathbf{W} = \mathbf{I}$, and with $\mathbf{W} =
+\mathbf{\Gamma}^T \mathbf{M}^{-1/2}$,
+\[
+  \mathbf{W}^T \mathbf{W}
+  = \mathbf{M}^{-1/2}\, \mathbf{\Gamma} \mathbf{\Gamma}^T\, \mathbf{M}^{-1/2}
+  = \mathbf{M}^{-1/2}\, \mathbf{M}\, \mathbf{M}^{-1/2} = \mathbf{I} :
+\]
+the Gram matrix in the middle is cancelled by the half powers on either
+side. For example, two laws that share a species, $\boldsymbol{\gamma}_1 =
+[\,1 \;\; 1 \;\; 0\,]$ and $\boldsymbol{\gamma}_2 = [\,0 \;\; 1 \;\; 1\,]$,
+have
+\[
+  \mathbf{M} = \begin{bmatrix} 2 & 1 \\ 1 & 2 \end{bmatrix} ,
+  \qquad
+  \mathbf{M}^{-1/2} \approx \begin{bmatrix} 0.7887 & -0.2113 \\
+    -0.2113 & 0.7887 \end{bmatrix} ,
+  \qquad
+  \mathbf{W} \approx \begin{bmatrix} 0.7887 & -0.2113 \\ 0.5774 & 0.5774 \\
+    -0.2113 & 0.7887 \end{bmatrix} :
+\]
+each law has squared length 2 and the two overlap by 1; $\mathbf{M}$ has
+eigenvalues 3 and 1; and the columns of $\mathbf{W}$ have length 1 and are
+at right angles to each other. Each column mixes both laws, which is why
+$\mathbf{W}$ holds the laws ``combined into'' orthonormal columns rather than
+the laws themselves.
 
 The added term also mends the Jacobian. Whatever $\mathbf{y}$ is, the rates of
 change $\mathbf{N} \mathbf{v}(\mathbf{y})$ never point along a conserved direction, so their
