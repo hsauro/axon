@@ -360,6 +360,7 @@ type
     procedure CmdCut(Sender: TObject);
     procedure CmdCopy(Sender: TObject);
     function FocusedViewer: TRhoMarkdownViewer;
+    function FocusedEdit: TCustomEdit;
     procedure CmdPaste(Sender: TObject);
     procedure CmdSelectAll(Sender: TObject);
     procedure CmdFind(Sender: TObject);
@@ -4473,19 +4474,39 @@ begin
 end;
 {$ENDIF}
 
+{ A one-line text box with the focus (the REPL's input, the input box of a
+  running program, a find bar), else nil. The Edit menu's shortcuts reach
+  the form before the box sees the key, so Undo, Cut, Copy, Paste and
+  Select All act on the box when it has the focus, not on the editor. }
+function TfrmMain.FocusedEdit: TCustomEdit;
+begin
+  Result := nil;
+  if (Focused <> nil) and (Focused.GetObject is TCustomEdit) then
+    Result := TCustomEdit(Focused.GetObject);
+end;
+
 procedure TfrmMain.CmdUndo(Sender: TObject);
 begin
-  if CurrentDoc <> nil then CurrentDoc.Editor.Undo;
+  if FocusedEdit <> nil then
+    FocusedEdit.Undo
+  else if CurrentDoc <> nil then
+    CurrentDoc.Editor.Undo;
 end;
 
 procedure TfrmMain.CmdRedo(Sender: TObject);
 begin
+  // A text box has no redo; never redo in the editor while one has the focus.
+  if FocusedEdit <> nil then
+    Exit;
   if CurrentDoc <> nil then CurrentDoc.Editor.Redo;
 end;
 
 procedure TfrmMain.CmdCut(Sender: TObject);
 begin
-  if CurrentDoc <> nil then CurrentDoc.Editor.CutSelection;
+  if FocusedEdit <> nil then
+    FocusedEdit.CutToClipboard
+  else if CurrentDoc <> nil then
+    CurrentDoc.Editor.CutSelection;
 end;
 
 { The Help or Documentation viewer when it has the focus (the user clicked
@@ -4503,7 +4524,9 @@ end;
 procedure TfrmMain.CmdCopy(Sender: TObject);
 begin
   // From a viewer, the text as shown (not its markdown).
-  if FocusedViewer <> nil then
+  if FocusedEdit <> nil then
+    FocusedEdit.CopyToClipboard
+  else if FocusedViewer <> nil then
     FocusedViewer.CopySelection(True)
   else if FOutput.Editor.IsFocused then
     FOutput.Editor.CopySelection
@@ -4515,12 +4538,17 @@ end;
 
 procedure TfrmMain.CmdPaste(Sender: TObject);
 begin
-  if CurrentDoc <> nil then CurrentDoc.Editor.PasteClipboard;
+  if FocusedEdit <> nil then
+    FocusedEdit.PasteFromClipboard
+  else if CurrentDoc <> nil then
+    CurrentDoc.Editor.PasteClipboard;
 end;
 
 procedure TfrmMain.CmdSelectAll(Sender: TObject);
 begin
-  if FocusedViewer <> nil then
+  if FocusedEdit <> nil then
+    FocusedEdit.SelectAll
+  else if FocusedViewer <> nil then
     FocusedViewer.SelectAll
   else if FOutput.Editor.IsFocused then
     FOutput.Editor.SelectAll
