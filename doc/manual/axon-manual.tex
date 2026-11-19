@@ -1563,7 +1563,7 @@ the reals nearest to $\pi$ and $e$. Infinities and NaN display as
 \code{Inf} and \code{NaN}, and come from arithmetic, such as \code{1.0 / 0.0},
 or from text, as in \code{real("Inf")}. Appendix~\ref{app:builtins} lists every built-in function.
 
-\section{Linear algebra}
+\section{Linear algebra}\label{sec:linalg}
 
 The core operators handle the everyday cases: \code{A * B} multiplies through
 an optimised BLAS library, \code{A \ b} solves a square system by LU
@@ -3762,7 +3762,7 @@ rows form the reduced stoichiometry matrix $\mathbf{N}_R$ ($r$ rows). Each of th
 $c$ \emph{dependent} species has a row of $\mathbf{N}$ that is a combination of the
 independent rows. This splits the stoichiometry matrix into two blocks, $\mathbf{N}_R$ with $r$ rows and $\mathbf{N}_0$ with $c$ rows, such that the dependent rows can be computed from the linearly independent rows in $\mathbf{N}_R$ using:
 %
-$$\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R . $$ 
+$$\mathbf{N}_0 = \mathbf{L}_0 \mathbf{N}_R . $$
 %
 If we order the independent species be be first in the stoichiometry matrix, we can write:
 \[
@@ -3900,7 +3900,13 @@ Transposing,
   \mathbf{L}_0 = (\mathbf{R}_{11}^{-1} \mathbf{R}_{12})^T ,
 \]
 which costs one triangular solve, $\mathbf{R}_{11} \backslash
-\mathbf{R}_{12}$. Then $\mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\;
+\mathbf{R}_{12}$. (The backslash is Axon's left division, as in MATLAB
+(Section~\ref{sec:linalg}):
+$\mathbf{A} \backslash \mathbf{B}$ is the matrix $\mathbf{X}$ that solves
+$\mathbf{A} \mathbf{X} = \mathbf{B}$, which is $\mathbf{A}^{-1} \mathbf{B}$,
+found by solving the equations rather than by forming the inverse. Here
+$\mathbf{A} = \mathbf{R}_{11}$ is upper triangular, so the solve is a cheap
+back substitution, column by column.) Then $\mathbf{\Gamma} = [\,-\mathbf{L}_0 \;\;
 \mathbf{I}\,]$, with its columns put back in the species' order. For
 integer stoichiometry the entries of $\mathbf{L}_0$ are integers, apart from
 rounding errors of the solve, so entries within $10^{-10}$ of a whole number
@@ -4075,31 +4081,42 @@ obvious way of including the laws, writing them as $c$ more equations under
 the $m$ balances, would give $m + c$ equations in $m$ unknowns, which
 Newton's method cannot use as it stands.
 
-The idea is easiest to see in words first.
+The idea is easiest to describe in words first.
 
 A steady state in a model with conservation laws has to satisfy two
-conditions. The rates must balance, so that no species changes; and the
-conserved totals must keep the values they had at the start, since the
-reactions cannot change them. The first condition alone is not enough: as
+conditions. The \emph{balance condition}: the rates must balance, so that
+no species changes, $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$. The
+\emph{conservation condition}: the conserved totals must keep the values
+they had at the start, since the reactions cannot change them. The
+balance condition alone is not enough: as
 Section~\ref{sec:conservation} showed, $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$ has a whole family
-of solutions, one for each choice of totals. The second condition picks one
+of solutions, one for each choice of totals. The conservation condition picks one
 member of that family. The difficulty is that together the two conditions
 make too many equations: $m$ for the balances plus $c$ for the totals, for
-only $m$ unknowns. The reduced method gets out of this by throwing away $c$
-of the balances, those of the dependent species, and that is what forces it
-to choose which species are dependent.
+only $m$ unknowns. The reduced method avoids this by throwing away $c$
+of the balances, which represent the dependent species, leaving only the independent species which form a non-singular Jacobian matrix.
 
-The full system instead adds the two conditions together, so that
-there are $m$ equations again, and does it in a way that loses nothing. It
-is the system
+The full method instead keeps all $m$ balance equations and adds to each of
+them a term built from the conservation laws. The added term measures how
+far the conserved totals are from their starting values, so it is zero
+exactly when the conservation condition holds. The result is the system
 \[
   \mathbf{f}(\mathbf{y}) = \mathbf{N} \mathbf{v}(\mathbf{y})
     + \mathbf{W} (\mathbf{W}^T \mathbf{y} - \mathbf{W}^T \mathbf{y}_0) = 0 ,
 \]
-$m$ equations in the $m$ unknowns $\mathbf{y}$. Its first term is the rate of
-change of the species, as in $\mathbf{N} \mathbf{v}(\mathbf{y}) = 0$; its
-second term expresses the conservation laws, through a matrix $\mathbf{W}$
-that step~1 below defines. That second term is built in three steps.
+still $m$ equations in the $m$ unknowns $\mathbf{y}$. Its first term is the
+rate of change of the species, $\mathbf{N} \mathbf{v}(\mathbf{y})$, as in
+the balance equations; its second term is the added conservation term,
+built from a matrix $\mathbf{W}$ that holds the conservation laws. Adding two
+terms has a danger: a sum can be zero even when neither term is, as
+$3 + (-3) = 0$. If that could happen here, a solution of
+$\mathbf{f}(\mathbf{y}) = 0$ might have rates that do not balance, exactly
+cancelled by totals that are wrong, and it would be neither a steady state
+nor a state the model can reach. The conservation term is built so that
+this cannot happen,
+and $\mathbf{f}(\mathbf{y}) = 0$ holds exactly when both the balance and the
+conservation conditions hold.
+It is built in three steps; the third shows why the two terms cannot cancel.
 
 \begin{enumerate}
 \item \emph{The totals.} As in Section~\ref{sec:conservation}, a conservation
