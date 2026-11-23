@@ -2913,6 +2913,10 @@ Function & Result \\
   from 0 to 1, ready for \code{fill} and \code{color} \\
 \code{colors.rgb(name, alpha = a)} & The same with an opacity \code{a} from 0
   (invisible) to 1 (solid): \code{[r, g, b, a]} \\
+\code{colors.hsv2rgb(h, s, v)} & The colour of hue \code{h}, saturation
+  \code{s} and brightness \code{v}, each from 0 to 1, as \code{[r, g, b]}:
+  \code{h} = 0 is red, 1/3 green, 2/3 blue, and 1 red again. Stepping
+  \code{h} gives a rainbow; \code{alpha} works as for \code{rgb} \\
 \code{colors.rgb255(name)} & The red, green and blue parts as integers from
   0 to 255 \\
 \code{colors.hex(name)} & The colour as text \code|"#RRGGBB"|, which

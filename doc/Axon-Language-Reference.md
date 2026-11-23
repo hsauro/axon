@@ -976,6 +976,7 @@ draw.save("_tmp_koch.svg")
 | Function | Result |
 | --- | --- |
 | `rgb(name; alpha)` | The colour as a real vector `[r, g, b]` with components from 0 to 1, as `graphics` and `draw` take colours; with `alpha` (a number from 0 to 1), `[r, g, b, alpha]` |
+| `hsv2rgb(h, s, v; alpha)` | The colour of hue `h`, saturation `s` and value (brightness) `v` as `[r, g, b]` from 0 to 1, as `rgb` gives, or `[r, g, b, alpha]`. `s` and `v` run from 0 to 1; `h` is 0 for red, 1/3 for green and 2/3 for blue, and wraps round, so any finite number may be given (as Python's `colorsys.hsv_to_rgb`) |
 | `rgb255(name)` | The colour's red, green and blue as ints from 0 to 255, `[r, g, b]` |
 | `hex(name)` | The colour as text `"#RRGGBB"` |
 | `has(name)` | Whether there is a colour of that name (`false` for a value that is not a string) |
@@ -987,7 +988,7 @@ import colors
 draw.circle(320, 240, 100, fill = colors.rgb("CornflowerBlue"), color = colors.hex("Navy"))
 ```
 
-An unknown name raises `ArgumentError`, a name that is not a string `TypeError`, and an `alpha` outside 0 to 1 `ArgumentError`.
+An unknown name raises `ArgumentError`, a name that is not a string `TypeError`, and an `alpha` outside 0 to 1 `ArgumentError`. `hsv2rgb` raises `TypeError` for an argument that is not a number, and `ArgumentError` for `s` or `v` outside 0 to 1 or an infinite or NaN `h`.
 
 ### The ode module
 

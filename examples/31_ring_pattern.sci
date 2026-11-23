@@ -9,32 +9,7 @@
 ## black background.
 
 import draw
-
-function hsv2rgb(h, s, v)
-  # h, s, v in [0,1] -> [r,g,b] in [0,1], same algorithm as Python's colorsys
-  if s == 0.0
-    return [v, v, v]
-  end
-  i = floor(h * 6.0)
-  f = h * 6.0 - i
-  p = v * (1.0 - s)
-  q = v * (1.0 - s * f)
-  t = v * (1.0 - s * (1.0 - f))
-  k = mod(int(i), 6)
-  if k == 0
-    return [v, t, p]
-  elseif k == 1
-    return [q, v, p]
-  elseif k == 2
-    return [p, v, t]
-  elseif k == 3
-    return [p, q, v]
-  elseif k == 4
-    return [t, p, v]
-  else
-    return [v, p, q]
-  end
-end
+import colors
 
 function arc(x, y, heading, radius, extent, steps)
   # Mirrors turtle.circle(radius, extent): positive radius -> center to the
@@ -72,7 +47,7 @@ steps = 60          # arc resolution (points per 90 degree sweep)
 
 for j in 0:24
   for i in 0:14
-    col = hsv2rgb(i / 15.0, j / 25.0, 1.0)
+    col = colors.hsv2rgb(i / 15.0, j / 25.0, 1.0)
 
     heading = heading - 90.0
     [xs1, ys1, x, y, heading] = arc(x, y, heading, 200.0 - j * 4.0, 90.0, steps)

@@ -191,6 +191,56 @@ export function rgb(name; alpha = nothing)
   return [c[1], c[2], c[3], alpha + 0.0]
 end
 
+## The colour of hue h, saturation s and value (brightness) v as a real
+## vector [r, g, b] from 0 to 1, as rgb gives; with alpha, [r, g, b, alpha].
+## s and v run from 0 to 1. h too: 0 is red, 1/3 green, 2/3 blue, and it
+## wraps round, so 1 is red again and h may be any number. As Python's
+## colorsys.hsv_to_rgb.
+export function hsv2rgb(h, s, v; alpha = nothing)
+  for x in {h, s, v}
+    if not (typeof(x) == "int" or typeof(x) == "real")
+      error("TypeError", "colors.hsv2rgb needs numbers, got " + typeof(x))
+    end
+  end
+  if not (s >= 0 and s <= 1 and v >= 0 and v <= 1)
+    error("ArgumentError", "colors.hsv2rgb: s and v must be from 0 to 1")
+  end
+  if not (h - h == 0)
+    error("ArgumentError", "colors.hsv2rgb: h must be finite")
+  end
+  v = v + 0.0
+  h6 = mod(h + 0.0, 1.0) * 6.0
+  k = int(floor(h6))
+  f = h6 - k
+  if k == 6            # mod rounded a tiny negative h up to 1: red
+    k = 0
+    f = 0.0
+  end
+  p = v * (1.0 - s)
+  q = v * (1.0 - s * f)
+  t = v * (1.0 - s * (1.0 - f))
+  if k == 0
+    c = [v, t, p]
+  elseif k == 1
+    c = [q, v, p]
+  elseif k == 2
+    c = [p, v, t]
+  elseif k == 3
+    c = [p, q, v]
+  elseif k == 4
+    c = [t, p, v]
+  else
+    c = [v, p, q]
+  end
+  if typeof(alpha) == "nothing"
+    return c
+  end
+  if not (typeof(alpha) == "int" or typeof(alpha) == "real") or not (alpha >= 0 and alpha <= 1)
+    error("ArgumentError", "colors.hsv2rgb: alpha must be a number from 0 to 1")
+  end
+  return [c[1], c[2], c[3], alpha + 0.0]
+end
+
 ## The colour's red, green and blue as ints from 0 to 255.
 export function rgb255(name)
   return table[listed(name, "rgb255")]
