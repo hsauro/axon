@@ -2792,10 +2792,25 @@ is the Game of Life.
 
 \subsection{All the draw functions}\label{sec:drawfns}
 
-The tables list every function of the \code{draw} module, with the keywords
-that matter most. Shapes also take \code{color} (the line or outline, black by
-default), \code{width} (in points, 1), and, for closed shapes, \code{fill};
-lines take \code{dash}, \code{cap} and \code{join} (Section~\ref{sec:draw}).
+The tables list every function of the \code{draw} module with all its
+keywords, which come after the \code{;} and are given by name, as in
+\code{draw.circle(0, 0, 1, fill = "yellow", color = "red", width = 2)}. These
+keywords are shared by the shapes (Section~\ref{sec:draw} describes colours):
+
+\begin{longtable}{@{}p{0.2\linewidth}p{0.74\linewidth}@{}}
+\toprule
+Keyword & Meaning \\
+\midrule
+\endhead
+\code{color} & The colour of a line, or of a shape's outline (\code{"black"}) \\
+\code{width} & The width of a line or outline in points (1) \\
+\code{fill} & The colour inside a closed shape (\code{"none"}) \\
+\code{dash} & A dash pattern such as \code{[8, 4]} (a solid line) \\
+\code{cap} & The ends of a line: \code{"butt"}, \code{"round"} or \code{"square"} (\code{"butt"}) \\
+\code{join} & The corners of a line: \code{"round"}, \code{"miter"} or \code{"bevel"} (\code{"round"}) \\
+\bottomrule
+\end{longtable}
+
 \code{help draw.circle}, or \key{F1} on a name in the IDE, shows the details,
 and the Language Reference's ``The draw module'' has the full rules.
 
@@ -2821,15 +2836,15 @@ Function & What it does \\
 Function & What it does \\
 \midrule
 \endhead
-\code{draw.line(x1, y1, x2, y2)} & A line between two points \\
-\code{draw.polyline(x, y)} & A line through the points \code{(x[k], y[k])}; a NaN breaks it \\
-\code{draw.polygon(x, y)} & A closed shape through the points \\
-\code{draw.rect(x, y, w, h)} & A rectangle with lower-left corner \code{(x, y)} \\
-\code{draw.circle(x, y, r)} & A circle of radius \code{r} around \code{(x, y)} \\
-\code{draw.ellipse(x, y, rx, ry; angle)} & An ellipse with semi-axes \code{rx} and \code{ry}, turned by \code{angle} degrees \\
-\code{draw.arc(x, y, r, start, sweep; wedge)} & Part of a circle, from \code{start} through \code{sweep} degrees anticlockwise; \code{wedge = true} makes a pie slice \\
-\code{draw.points(x, y; shape, size)} & Markers: \code{"circle"}, \code{"square"}, \code{"diamond"}, \code{"triangle"}, \code{"plus"} or \code{"cross"}, \code{size} points across (4) \\
-\code{draw.text(x, y, s; size, anchor, angle, font, bold)} & Text, centred vertically on \code{y}; \code{anchor} is \code{"start"}, \code{"middle"} or \code{"end"} \\
+\code{draw.line(x1, y1, x2, y2; color, width, dash, cap)} & A line between two points \\
+\code{draw.polyline(x, y; color, width, dash, cap, join)} & A line through the points \code{(x[k], y[k])}; a NaN breaks it \\
+\code{draw.polygon(x, y; fill, color, width, join)} & A closed shape through the points \\
+\code{draw.rect(x, y, w, h; fill, color, width)} & A rectangle with lower-left corner \code{(x, y)} \\
+\code{draw.circle(x, y, r; fill, color, width)} & A circle of radius \code{r} around \code{(x, y)} \\
+\code{draw.ellipse(x, y, rx, ry; angle, fill, color, width)} & An ellipse with semi-axes \code{rx} and \code{ry}, turned by \code{angle} degrees \\
+\code{draw.arc(x, y, r, start, sweep; wedge, fill, color, width)} & Part of a circle, from \code{start} through \code{sweep} degrees anticlockwise; \code{wedge = true} makes a pie slice \\
+\code{draw.points(x, y; shape, size, color, fill)} & Markers: \code{"circle"}, \code{"square"}, \code{"diamond"}, \code{"triangle"}, \code{"plus"} or \code{"cross"}, \code{size} points across (4) \\
+\code{draw.text(x, y, s; size, color, anchor, angle, font, bold)} & Text, centred vertically on \code{y}; \code{anchor} is \code{"start"}, \code{"middle"} or \code{"end"} \\
 \bottomrule
 \end{longtable}
 \paragraph{Images.}
@@ -4307,7 +4322,7 @@ conservation laws: entry $(i, j)$ is the dot product of law $i$ with law
 $j$, $\boldsymbol{\gamma}_i \cdot \boldsymbol{\gamma}_j$. Its diagonal holds
 the squared lengths of the laws, and an entry off the diagonal is zero only
 when the two laws are at right angles; so it records the lengths of the laws
-and the angles between them. Write $\mathbf{M} = \mathbf{\Gamma}
+and the angles between them. Let us define $\mathbf{M} = \mathbf{\Gamma}
 \mathbf{\Gamma}^T$. It is symmetric, and because the laws are independent
 its eigenvalues are positive, so it can be written $\mathbf{M} = \mathbf{Q}
 \mathbf{\Lambda} \mathbf{Q}^T$, with the eigenvalues on the diagonal of
