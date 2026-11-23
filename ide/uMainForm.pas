@@ -411,6 +411,7 @@ const
   // Error squiggles, readable on both themes.
   ColorError = $FFE53935;
   ColorJit = $FFE53935;      // the squiggle under a line that runs interpreted (as errors')
+  JitTipPrefix = 'Runs interpreted: ';  // starts the tip of each such squiggle
   FileFilter = 'Axon files (*.sci)|*.sci|All files (*.*)|*.*';
 
 { ---------------- menu shortcut labels ---------------- }
@@ -4052,6 +4053,15 @@ begin
   FHelpViewer.FontSize := FPrefs.OutputFontSize;
   if FDocsViewer <> nil then
     FDocsViewer.FontSize := FPrefs.DocsFontSize;
+  // Turning the JIT report off also takes away the squiggles the last run put
+  // under lines that run interpreted; error squiggles stay.
+  if not FPrefs.ShowJitReport then
+    for Doc in FDocs do
+      Doc.Editor.RemoveMarkers(
+        function(M: TEditorMarker): Boolean
+        begin
+          Result := M.Message.StartsWith(JitTipPrefix);
+        end);
 end;
 
 procedure TfrmMain.CmdPreferences(Sender: TObject);
@@ -4201,7 +4211,7 @@ begin
         First := Length(Text) - Length(Text.TrimLeft) + 1;
         if Text.Trim <> '' then
           Doc.Editor.AddMarker(Where.Line, First, Length(Text.TrimRight) - First + 1,
-            TMarkerKind.mkSquiggle, ColorJit, 'Runs interpreted: ' + FJitRejected[K]);
+            TMarkerKind.mkSquiggle, ColorJit, JitTipPrefix + FJitRejected[K]);
       end;
     end;
     Inc(Shown);
