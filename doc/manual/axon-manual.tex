@@ -4169,7 +4169,15 @@ terms cannot cancel.
   length; the paragraph ``Why this $\mathbf{W}$ is orthonormal'' below
   explains how it works). Any other orthonormal $\mathbf{W}$ for the same laws,
   such as the one \code{linalg.null(N')} returns, differs from this one only
-  by a rotation of its columns, which changes nothing below.
+  by a rotation of its columns, $\mathbf{W}' = \mathbf{W} \mathbf{U}$ with
+  $\mathbf{U} \mathbf{U}^T = \mathbf{I}$. That does not matter, because the
+  method uses $\mathbf{W}$ only through the product $\mathbf{W}
+  \mathbf{W}^T$: the conservation term is $\mathbf{W}(\mathbf{W}^T \mathbf{y}
+  - \mathbf{W}^T \mathbf{y}_0) = \mathbf{W} \mathbf{W}^T (\mathbf{y} -
+  \mathbf{y}_0)$, and its Jacobian is $\mathbf{W} \mathbf{W}^T$. That product
+  is the same for every choice, since $\mathbf{W}' \mathbf{W}'^T =
+  \mathbf{W} \mathbf{U} \mathbf{U}^T \mathbf{W}^T = \mathbf{W}
+  \mathbf{W}^T$, so $\mathbf{f}(\mathbf{y})$ and its solution are too.
   ($\mathbf{W}$ is not the kernel matrix
   $\mathbf{K}$, which holds flux modes, the null space of $\mathbf{N}$;
   $\mathbf{W}$ spans the null space of $\mathbf{N}^T$.) So
@@ -4289,9 +4297,10 @@ $\mathbf{N}$, so some combination of reactions can produce it, and it leaves
 every conserved total as it was. The second part is a \emph{change of
 totals}: material added to or taken away from a conserved moiety, as when
 more enzyme is added. No reaction can produce it. $\mathbf{W}\mathbf{W}^T$
-picks out this second part and discards the first, which is why it is
-called the \emph{projection} onto the conserved directions;
-$\mathbf{I} - \mathbf{W}\mathbf{W}^T$ picks out the first. For
+picks out the change of totals and discards the redistribution, which is
+why it is called the \emph{projection} onto the conserved directions;
+$\mathbf{I} - \mathbf{W}\mathbf{W}^T$ does the opposite, picking out the
+redistribution and discarding the change of totals. For
 A $\rightleftharpoons$ B, adding one unit of \code{A} splits as
 \[
   \begin{bmatrix} 1 \\ 0 \end{bmatrix}
@@ -4299,8 +4308,10 @@ A $\rightleftharpoons$ B, adding one unit of \code{A} splits as
   + \begin{bmatrix} \tfrac12 \\[2pt] \tfrac12 \end{bmatrix} :
 \]
 the total $A + B$ rises by 1, shared equally between the two species (the
-second part, $\mathbf{W}\mathbf{W}^T \Delta\mathbf{y}$), and half a unit of
-\code{B} is converted into \code{A} (the first part). In the conservation
+change of totals, $\mathbf{W}\mathbf{W}^T \Delta\mathbf{y}$, the second
+vector), and half a unit of \code{B} is converted into \code{A} (the
+redistribution, $(\mathbf{I} - \mathbf{W}\mathbf{W}^T)\,\Delta\mathbf{y}$,
+the first vector). In the conservation
 term $\mathbf{W}\mathbf{W}^T(\mathbf{y} - \mathbf{y}_0)$ the change is the
 whole departure of $\mathbf{y}$ from the starting state, and
 $\mathbf{W}\mathbf{W}^T$ keeps the part of it that no sequence of reactions
