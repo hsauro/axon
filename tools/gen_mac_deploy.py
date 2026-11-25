@@ -1,7 +1,8 @@
 """Writes the macOS deployment entries of ide/AxonIDE.dproj.
 
 The IDE runs `axon` from its own folder and reads stdlib/, examples/, help/ and
-UserExamples/ next to it (Contents/MacOS in the app bundle). On Windows axon.dproj's
+UserExamples/ next to it (Contents/MacOS in the app bundle), where licenses/ (the
+native libraries' licence texts, lib/licenses) also goes. On Windows axon.dproj's
 post-build step copies those files; on macOS PAServer deploys only the files
 listed in the project's Deployment section, one entry per file. This script
 replaces the entries it owns (Class="File" on OSXARM64 with a LocalName from
@@ -37,6 +38,8 @@ def files():
         ('examples', ['examples/*.sci']),
         ('help', ['help/*.md', 'doc/Axon-Language-Reference.md', 'doc/Axon-White-Paper.md']),
         ('UserExamples', ['UserExamples/*']),
+        # The native libraries' licences, which must travel with them.
+        ('licenses', ['lib/licenses/*']),
     ]
     for remote, patterns in groups:
         for pattern in patterns:
@@ -62,8 +65,8 @@ def entry(local, remote_dir, remote_name, executable, cfg):
 
 def owned(local):
     return (re.match(r'\.\.\\OSXARM64\\(Debug|Release)\\axon$', local) is not None or
-            local.startswith(('..\\lib\\macos\\', '..\\stdlib\\', '..\\examples\\', '..\\help\\', '..\\doc\\',
-                              '..\\UserExamples\\')))
+            local.startswith(('..\\lib\\macos\\', '..\\lib\\licenses\\', '..\\stdlib\\', '..\\examples\\',
+                              '..\\help\\', '..\\doc\\', '..\\UserExamples\\')))
 
 
 def main():
