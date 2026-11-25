@@ -2703,8 +2703,9 @@ Keyword & Meaning \\
 \midrule
 \endhead
 \code{color} & The colour of a line, or of a shape's outline (black by
-  default) \\
-\code{width} & The line's width in points (1 by default) \\
+  default, or the colour set with \code{draw.style}) \\
+\code{width} & The line's width in points (1 by default, or the width
+  set with \code{draw.style}) \\
 \code{fill} & The colour inside a closed shape: \code{rect}, \code{circle},
   \code{ellipse}, \code{polygon} (none by default) \\
 \code{dash} & A dashed line: \code{[8, 4]} draws 8 points, then leaves a gap
@@ -2727,6 +2728,17 @@ vector, it can also be computed, as the tree in the next example is. For the
 \code{colors.names()} lists the names. (Its \code{"Red"} is the web's pure red,
 where the name \code{"red"} on its own is the softer red of the plot
 palette.)
+
+\paragraph{A style for many shapes.} A drawing with many shapes in the
+same colour need not repeat it in every call.
+\code{draw.style(color = "navy", width = 2)} makes navy and 2 points the colour and width of
+every shape drawn afterwards without its own \code{color} or
+\code{width}: lines, polylines, polygons, rectangles, circles, ellipses,
+arcs and points. A shape's own keyword still applies to that shape alone,
+\code{draw.style(width = 1)} changes only the width, and
+\code{draw.style()} goes back to black and 1 point. Text keeps its own
+colour, black unless given, and the turtle has its own pen, described
+next.
 
 \paragraph{Putting it together.} Functions that call themselves draw
 fractals naturally, a compiled function can fill an image pixel by pixel, and
@@ -2754,14 +2766,18 @@ which the JIT compiles.
 
 \paragraph{The turtle.} \code{draw.turtle} places a turtle with a pen;
 \code{forward}, \code{back}, \code{left} and \code{right} steer it,
-\code{pen} sets its colour and width, \code{penup} and \code{pendown} lift
+\code{pen} sets its colour and width (separately from
+\code{draw.style}), \code{penup} and \code{pendown} lift
 and lower the pen, and \code{push} and \code{pop} save and return to a
 position, for branches. \code{draw.lsystem(axiom, rules, n)} rewrites a
 string \code{n} times, and \code{draw.lsystem_draw(s, step, angle)} has the
 turtle draw it: \code{F} moves forward drawing, \code{+} and \code{-} turn,
 \code{[} and \code{]} start and end a branch, and other letters, such as the
 plant's \code{X}, only steer the rewriting. \code{draw.lsystem_path} returns
-the points instead, to scale or place before drawing.
+the points instead, to scale or place before drawing. Turtle moves and
+the shape functions can be mixed on one canvas: everything is drawn in
+the order of the calls, so a shape drawn after some turtle moves covers
+their line.
 
 \paragraph{Animation.} A loop that redraws the canvas and ends each pass with
 \code{draw.frame()} makes an animation: in the IDE each frame replaces the
@@ -2802,8 +2818,8 @@ keywords are shared by the shapes (Section~\ref{sec:draw} describes colours):
 Keyword & Meaning \\
 \midrule
 \endhead
-\code{color} & The colour of a line, or of a shape's outline (\code{"black"}) \\
-\code{width} & The width of a line or outline in points (1) \\
+\code{color} & The colour of a line, or of a shape's outline (\code{"black"}, or the colour set with \code{draw.style}) \\
+\code{width} & The width of a line or outline in points (1, or the width set with \code{draw.style}) \\
 \code{fill} & The colour inside a closed shape (\code{"none"}) \\
 \code{dash} & A dash pattern such as \code{[8, 4]} (a solid line) \\
 \code{cap} & The ends of a line: \code{"butt"}, \code{"round"} or \code{"square"} (\code{"butt"}) \\
@@ -2836,6 +2852,7 @@ Function & What it does \\
 Function & What it does \\
 \midrule
 \endhead
+\code{draw.style(; color, width)} & The colour and width of the shapes drawn afterwards without their own (\code{draw.style()} goes back to black and 1 point; text and the turtle are not affected) \\
 \code{draw.line(x1, y1, x2, y2; color, width, dash, cap)} & A line between two points \\
 \code{draw.polyline(x, y; color, width, dash, cap, join)} & A line through the points \code{(x[k], y[k])}; a NaN breaks it \\
 \code{draw.polygon(x, y; fill, color, width, join)} & A closed shape through the points \\

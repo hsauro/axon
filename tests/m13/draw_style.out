@@ -1,0 +1,11 @@
+line black 1.0
+line red 3.0
+ellipse red 3.0
+rect blue 3.0
+markers red -
+text black -
+polyline red 0.5
+polygon black 1.0
+polyline black 1.0
+ellipse black 1.0
+polyline black 1.0

@@ -37,6 +37,11 @@ path_x = vector()
 path_y = vector()
 tstack = {}
 
+# The style of the shapes (style): the colour and width a shape uses when
+# its own color or width is not given.
+scolor = "black"
+swidth = 1.0
+
 function fail(kind, message)
   error(kind, message)
 end
@@ -106,8 +111,17 @@ function py(y)
   return c.height - (y - c.y0) * c.sy
 end
 
-# Adds an item to the canvas (made already).
+# Adds an item to the canvas (made already), after the line the turtle is
+# still drawing, if any, so that the canvas keeps the order of the calls
+# when turtle moves and shapes are mixed.
 function add(item)
+  if length(path_x) >= 2
+    flush()
+  end
+  add_item(item)
+end
+
+function add_item(item)
   global items
   global changed
   items = append(items, item)
@@ -208,72 +222,116 @@ atexit(show_unshown)
 
 # ---------------------------------------------------------------- shapes
 
+## The colour and width (in points) of the shapes: line, polyline, polygon,
+## rect, circle, ellipse, arc and points use them when their own color or
+## width is not given, until style is called again. Only what is given
+## changes; style() with neither goes back to black and 1 point. A shape's
+## own color or width still applies to that shape alone. Text keeps its
+## own colour, and the turtle has its own pen (pen).
+export function style(; color = nothing, width = nothing)
+  global scolor
+  global swidth
+  if typeof(color) == "nothing" and typeof(width) == "nothing"
+    scolor = "black"
+    swidth = 1.0
+    return nothing
+  end
+  if typeof(width) != "nothing"
+    if not is_number(width)
+      fail("TypeError", "draw.style: width must be a number")
+    end
+    if not (width >= 0)
+      fail("ArgumentError", "draw.style: width must not be negative")
+    end
+    swidth = width + 0.0
+  end
+  if typeof(color) != "nothing"
+    scolor = color
+  end
+  return nothing
+end
+
+# A shape's colour and width: its own when given, else the style's.
+function scol(c)
+  if typeof(c) == "nothing"
+    return scolor
+  end
+  return c
+end
+
+function swid(w)
+  if typeof(w) == "nothing"
+    return swidth
+  end
+  return w
+end
+
 ## A line from (x1, y1) to (x2, y2). cap is "butt", "round" or "square".
-export function line(x1, y1, x2, y2; color = "black", width = 1.0, dash = nothing, cap = "butt")
+export function line(x1, y1, x2, y2; color = nothing, width = nothing, dash = nothing, cap = "butt")
   c = canvas_now()
   add({kind: "line", x: ([x1; x2] - c.x0) * c.sx, y: c.height - ([y1; y2] - c.y0) * c.sy,
-       color: color, width: width, dash: dash, cap: cap})
+       color: scol(color), width: swid(width), dash: dash, cap: cap})
 end
 
 ## A line through the points (x[k], y[k]); a NaN breaks it. join is "round",
 ## "miter" or "bevel".
-export function polyline(x, y; color = "black", width = 1.0, dash = nothing, cap = "butt",
+export function polyline(x, y; color = nothing, width = nothing, dash = nothing, cap = "butt",
                          join = "round")
   c = canvas_now()
   add({kind: "polyline", x: (vector(x) - c.x0) * c.sx, y: c.height - (vector(y) - c.y0) * c.sy,
-       color: color, width: width, dash: dash, cap: cap, join: join})
+       color: scol(color), width: swid(width), dash: dash, cap: cap, join: join})
 end
 
 ## A closed shape through the points, filled with fill and outlined with
 ## color ("none" for no outline).
-export function polygon(x, y; fill = "none", color = "black", width = 1.0, join = "round")
+export function polygon(x, y; fill = "none", color = nothing, width = nothing, join = "round")
   c = canvas_now()
   add({kind: "polygon", x: (vector(x) - c.x0) * c.sx, y: c.height - (vector(y) - c.y0) * c.sy,
-       fill: fill, color: color, width: width, join: join})
+       fill: fill, color: scol(color), width: swid(width), join: join})
 end
 
 ## A rectangle with lower-left corner (x, y), width w and height h.
-export function rect(x, y, w, h; fill = "none", color = "black", width = 1.0)
+export function rect(x, y, w, h; fill = "none", color = nothing, width = nothing)
   c = canvas_now()
   add({kind: "rect", x: (x - c.x0) * c.sx, y: c.height - (y + h - c.y0) * c.sy, w: w * c.sx,
-       h: h * c.sy, fill: fill, color: color, width: width})
+       h: h * c.sy, fill: fill, color: scol(color), width: swid(width)})
 end
 
 ## A circle of radius r around (x, y). (With different scales along x and y,
 ## see canvas, it is drawn as the ellipse it becomes.)
-export function circle(x, y, r; fill = "none", color = "black", width = 1.0)
+export function circle(x, y, r; fill = "none", color = nothing, width = nothing)
   c = canvas_now()
   add({kind: "ellipse", x: (x - c.x0) * c.sx, y: c.height - (y - c.y0) * c.sy, rx: r * c.sx,
-       ry: r * c.sy, fill: fill, color: color, width: width})
+       ry: r * c.sy, fill: fill, color: scol(color), width: swid(width)})
 end
 
 ## An ellipse around (x, y) with semi-axes rx and ry, turned by angle degrees
 ## anticlockwise.
-export function ellipse(x, y, rx, ry; angle = 0.0, fill = "none", color = "black", width = 1.0)
+export function ellipse(x, y, rx, ry; angle = 0.0, fill = "none", color = nothing, width = nothing)
   c = canvas_now()
   add({kind: "ellipse", x: (x - c.x0) * c.sx, y: c.height - (y - c.y0) * c.sy, rx: rx * c.sx,
-       ry: ry * c.sy, angle: angle, fill: fill, color: color, width: width})
+       ry: ry * c.sy, angle: angle, fill: fill, color: scol(color), width: swid(width)})
 end
 
 ## An arc of the circle of radius r around (x, y), from start through sweep
 ## degrees anticlockwise (start 0 is the positive x direction). wedge = true
 ## closes it through the centre, a pie slice that fill can fill.
-export function arc(x, y, r, start, sweep; color = "black", width = 1.0, wedge = false,
+export function arc(x, y, r, start, sweep; color = nothing, width = nothing, wedge = false,
                     fill = "none")
   c = canvas_now()
   add({kind: "arc", x: (x - c.x0) * c.sx, y: c.height - (y - c.y0) * c.sy, r: r * c.sx,
-       start: start, sweep: sweep, color: color, width: width, wedge: wedge, fill: fill})
+       start: start, sweep: sweep, color: scol(color), width: swid(width), wedge: wedge, fill: fill})
 end
 
 ## Markers at (x, y), numbers or vectors: shape "circle", "square", "diamond",
 ## "triangle", "plus" or "cross", size in points.
-export function points(x, y; shape = "circle", size = 4.0, color = "black", fill = nothing)
+export function points(x, y; shape = "circle", size = 4.0, color = nothing, fill = nothing)
   if typeof(fill) == "nothing"
     fill = color
   end
   c = canvas_now()
   add({kind: "markers", x: (vector(x) - c.x0) * c.sx, y: c.height - (vector(y) - c.y0) * c.sy,
-       shape: shape, size: size, color: color, fill: fill})
+       shape: shape, size: size, color: scol(color), fill: fill})
 end
 
 ## Text at (x, y): size in points, anchor "start", "middle" or "end", angle in
@@ -347,7 +405,7 @@ function flush()
   global path_x
   global path_y
   if length(path_x) >= 2
-    add({kind: "polyline", x: px(path_x), y: py(path_y), color: tcolor, width: twidth,
+    add_item({kind: "polyline", x: px(path_x), y: py(path_y), color: tcolor, width: twidth,
          cap: "round", join: "round"})
   end
   path_x = vector()
