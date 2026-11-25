@@ -174,4 +174,4 @@ Prebuilt native libraries are in `lib/win64` and `lib/macos`; see [lib/README.md
 
 ## Licence
 
-Axon's own code and documentation are released under the [MIT licence](LICENSE). The prebuilt native libraries in `lib/` are third-party software under their own licences, listed in [lib/README.md](lib/README.md): OpenBLAS, SUNDIALS, Skia and MIR are BSD or MIT licensed, and the MinGW runtime DLLs are GPL with the GCC Runtime Library Exception.
+Axon's own code and documentation are released under the [MIT licence](LICENSE). The prebuilt native libraries in `lib/` are third-party software under their own licences, whose texts are in [lib/licenses](lib/licenses): OpenBLAS, SUNDIALS and Skia are BSD-3-Clause, and MIR is MIT. The Windows OpenBLAS DLL contains parts of the GCC runtime, which are under the GPL with the GCC Runtime Library Exception; the exception allows them in software under any licence, so Axon remains MIT licensed.
