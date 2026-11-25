@@ -31,45 +31,6 @@ The Axon IDE runs programs and a REPL side by side with the editor. Figures appe
 
 ## Examples
 
-**Reaction models.** The `antimony` module reads models written in [Antimony](https://tellurium.readthedocs.io/en/latest/antimony.html), simulates them, finds steady states (with conservation laws handled automatically) and does metabolic control analysis:
-
-```axon
-import antimony
-import fmt
-import plot
-
-# A feedback-inhibited pathway, written in Antimony.
-model = antimony.load("""
-    J0: -> S1;      v0 / (1 + (S3/Ki)^h)
-    J1: S1 -> S2;   Vm1*S1/(Km1 + S1)
-    J2: S2 -> S3;   Vm2*S2/(Km2 + S2)
-    J3: S3 -> ;     k3*S3
-    v0 = 10; Ki = 1; h = 4; Vm1 = 12; Km1 = 2; Vm2 = 15; Km2 = 1.5; k3 = 2""")
-
-# A time course, plotted.
-sol = antimony.simulate(model, 10.0, points = 201)
-names = antimony.species_names(model)
-for i in 1:length(names)
-  plot.line(sol.t, sol.y[i, :], label = names[i])
-end
-plot.xlabel("time")
-plot.show()
-
-# The steady state, and which steps control the flux through the pathway.
-c = antimony.control(model)
-println(fmt.matrix(c.y', cols = c.species, decimals = 3))
-println(fmt.matrix(c.flux_control[1:1, :], rows = {"flux"}, cols = c.reactions, decimals = 2))
-```
-
-```
-   S1     S2     S3
-0.553  0.314  1.299
-        J0    J1    J2    J3
-flux  0.25  0.00  0.00  0.75
-```
-
-The model's rate laws become one function that the JIT compiles to native code, so even models with dozens of reactions simulate quickly.
-
 **Plots, 2D and 3D.** `plot` draws line, scatter, bar and histogram charts, surfaces, 3D bars, curves and scatter plots, and saves them as PNG, SVG or PDF:
 
 ```axon
@@ -121,6 +82,45 @@ draw.circle(0, 0, 0.18, fill = "white", color = "none")
 draw.text(0, 0, "Axon", size = 28, anchor = "middle", bold = true)
 draw.show()
 ```
+
+**Reaction models.** The `antimony` module reads models written in [Antimony](https://tellurium.readthedocs.io/en/latest/antimony.html), simulates them, finds steady states (with conservation laws handled automatically) and does metabolic control analysis:
+
+```axon
+import antimony
+import fmt
+import plot
+
+# A feedback-inhibited pathway, written in Antimony.
+model = antimony.load("""
+    J0: -> S1;      v0 / (1 + (S3/Ki)^h)
+    J1: S1 -> S2;   Vm1*S1/(Km1 + S1)
+    J2: S2 -> S3;   Vm2*S2/(Km2 + S2)
+    J3: S3 -> ;     k3*S3
+    v0 = 10; Ki = 1; h = 4; Vm1 = 12; Km1 = 2; Vm2 = 15; Km2 = 1.5; k3 = 2""")
+
+# A time course, plotted.
+sol = antimony.simulate(model, 10.0, points = 201)
+names = antimony.species_names(model)
+for i in 1:length(names)
+  plot.line(sol.t, sol.y[i, :], label = names[i])
+end
+plot.xlabel("time")
+plot.show()
+
+# The steady state, and which steps control the flux through the pathway.
+c = antimony.control(model)
+println(fmt.matrix(c.y', cols = c.species, decimals = 3))
+println(fmt.matrix(c.flux_control[1:1, :], rows = {"flux"}, cols = c.reactions, decimals = 2))
+```
+
+```
+   S1     S2     S3
+0.553  0.314  1.299
+        J0    J1    J2    J3
+flux  0.25  0.00  0.00  0.75
+```
+
+The model's rate laws become one function that the JIT compiles to native code, so even models with dozens of reactions simulate quickly.
 
 The [examples/](examples) folder has more, from the basics to ODEs with events, sparse matrices, random numbers, metabolic control analysis and animations; the IDE's Welcome tab lists them.
 
